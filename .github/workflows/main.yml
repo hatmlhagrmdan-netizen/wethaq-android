@@ -15,6 +15,26 @@ jobs:
       - name: جلب المشروع
         uses: actions/checkout@v4
 
+      - name: فك مشروع Android
+        run: |
+          mkdir -p android-project
+          unzip -q wethaq-android-project.zip -d android-project
+          echo "محتويات المشروع:"
+          find android-project -maxdepth 3 -type f | sort
+
+      - name: تحديد مجلد المشروع
+        id: project
+        shell: bash
+        run: |
+          GRADLEW=$(find android-project -type f -name gradlew -print -quit)
+          if [ -z "$GRADLEW" ]; then
+            echo "لم يتم العثور على gradlew داخل ملف ZIP"
+            exit 1
+          fi
+          PROJECT_DIR=$(dirname "$GRADLEW")
+          echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+          echo "مجلد المشروع: $PROJECT_DIR"
+
       - name: إعداد Java
         uses: actions/setup-java@v4
         with:
@@ -23,17 +43,34 @@ jobs:
 
       - name: إعداد Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
 
       - name: إعداد Gradle
         uses: gradle/actions/setup-gradle@v4
 
       - name: بناء APK
+        working-directory: ${{ steps.project.outputs.dir }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --stacktrace
+
+      - name: البحث عن APK
+        id: apk
+        shell: bash
+        run: |
+          APK=$(find android-project -type f -path '*/app/build/outputs/apk/debug/app-debug.apk' -print -quit)
+          if [ -z "$APK" ]; then
+            echo "لم يتم العثور على APK بعد البناء"
+            find android-project -type f -name '*.apk' -print
+            exit 1
+          fi
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          echo "تم العثور على APK: $APK"
 
       - name: رفع APK
         uses: actions/upload-artifact@v4
         with:
           name: Wethaq-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
