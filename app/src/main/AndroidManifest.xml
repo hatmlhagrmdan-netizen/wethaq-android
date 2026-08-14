@@ -3,6 +3,7 @@
     <application
         android:allowBackup="false"
         android:fullBackupContent="false"
+        android:icon="@drawable/profile"
         android:label="وَثاق"
         android:supportsRtl="true"
         android:theme="@style/Theme.Wethaq">
