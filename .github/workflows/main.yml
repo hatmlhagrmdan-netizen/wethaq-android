@@ -101,12 +101,11 @@ jobs:
           ls -lh "$RUNNER_TEMP/Wethaq-release-signed.apk"
           echo "WETHAQ_APK=$RUNNER_TEMP/Wethaq-release-signed.apk" >> "$GITHUB_ENV"
 
-      - name: Verify APK is signed
+      - name: Verify APK signature and installability
         shell: bash
         run: |
           set -e
-          jarsigner -verify -verbose -certs "$WETHAQ_APK" >/tmp/jarsigner.txt 2>&1
-          grep -q "jar verified" /tmp/jarsigner.txt
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$WETHAQ_APK"
           echo 'APK signature verification passed.'
 
       - name: Upload installable Release APK
