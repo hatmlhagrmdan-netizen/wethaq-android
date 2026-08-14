@@ -39,27 +39,28 @@ jobs:
         shell: bash
         run: |
           set -e
-          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Create temporary release signing key
         shell: bash
         run: |
           set -e
+          KEY_PASSWORD='wethaq-release-key'
           keytool -genkeypair \
             -v \
+            -storetype PKCS12 \
             -keystore "$RUNNER_TEMP/wethaq-release.keystore" \
-            -storepass "wethaq-temp-store" \
-            -keypass "wethaq-temp-key" \
+            -storepass "$KEY_PASSWORD" \
+            -keypass "$KEY_PASSWORD" \
             -alias "wethaq" \
             -keyalg RSA \
             -keysize 2048 \
             -validity 10000 \
             -dname "CN=Wethaq, OU=Wethaq, O=Wethaq, L=Raqqa, ST=Syria, C=SY"
           echo "WETHAQ_KEYSTORE=$RUNNER_TEMP/wethaq-release.keystore" >> "$GITHUB_ENV"
-          echo "WETHAQ_STORE_PASSWORD=wethaq-temp-store" >> "$GITHUB_ENV"
+          echo "WETHAQ_STORE_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
           echo "WETHAQ_KEY_ALIAS=wethaq" >> "$GITHUB_ENV"
-          echo "WETHAQ_KEY_PASSWORD=wethaq-temp-key" >> "$GITHUB_ENV"
+          echo "WETHAQ_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -101,7 +102,7 @@ jobs:
           ls -lh "$RUNNER_TEMP/Wethaq-release-signed.apk"
           echo "WETHAQ_APK=$RUNNER_TEMP/Wethaq-release-signed.apk" >> "$GITHUB_ENV"
 
-      - name: Verify APK signature and installability
+      - name: Verify APK signature
         shell: bash
         run: |
           set -e
