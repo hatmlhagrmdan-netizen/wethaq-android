@@ -35,7 +35,7 @@ jobs:
           cmdline-tools-version: 12266719
           packages: ''
 
-      - name: Install only required Android SDK packages
+      - name: Install required Android SDK packages
         shell: bash
         run: |
           set -e
@@ -65,20 +65,26 @@ jobs:
           set -e
           gradle --no-daemon --stacktrace :app:assembleRelease
 
-      - name: Verify Release APK exists
+      - name: Locate Release APK
         shell: bash
         run: |
           set -e
-          APK='app/build/outputs/apk/release/app-release.apk'
-          test -s "$APK"
-          echo "Release APK created successfully: $APK"
-          ls -lh "$APK"
+          APK_DIR='app/build/outputs/apk/release'
+          APK_PATH="$(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          if [ -z "$APK_PATH" ]; then
+            echo 'ERROR: No Release APK was produced.'
+            find app/build/outputs -type f -maxdepth 5 -print || true
+            exit 1
+          fi
+          echo "Release APK: $APK_PATH"
+          test -s "$APK_PATH"
+          ls -lh "$APK_PATH"
+          echo "APK_PATH=$APK_PATH" >> "$GITHUB_ENV"
 
       - name: Upload Release APK
-        if: ${{ always() && hashFiles('app/build/outputs/apk/release/app-release.apk') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: Wethaq-Release-APK
-          path: app/build/outputs/apk/release/app-release.apk
+          path: ${{ env.APK_PATH }}
           if-no-files-found: error
           retention-days: 30
