@@ -32,11 +32,7 @@ jobs:
       - name: Install Android SDK packages
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -73,11 +69,16 @@ jobs:
           echo 'Checking APK package metadata...'
           aapt dump badging "$APK" | grep -E "package:|application-label:|sdkVersion:|targetSdkVersion:"
 
-          echo 'Checking that the release manifest is not debuggable...'
-          if aapt dump badging "$APK" | grep -q 'debuggable'; then
-            echo 'ERROR: Release APK is debuggable.'
+          echo 'Checking release manifest attributes...'
+          aapt dump xmltree "$APK" AndroidManifest.xml > manifest-tree.txt
+          grep -E "android:(debuggable|allowBackup|label|theme)" manifest-tree.txt || true
+
+          if grep -q 'android:debuggable' manifest-tree.txt; then
+            echo 'ERROR: Release APK contains android:debuggable.'
             exit 1
           fi
+
+          echo 'Release APK verification passed.'
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
