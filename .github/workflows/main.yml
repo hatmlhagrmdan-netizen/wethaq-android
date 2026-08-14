@@ -18,18 +18,24 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 1
 
       - name: Setup Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
 
-      - name: Setup Android SDK
+      - name: Setup Android command-line tools
         uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 12266719
+          packages: ''
 
-      - name: Install Android SDK packages
+      - name: Install only required Android SDK packages
         shell: bash
         run: |
           set -e
@@ -51,8 +57,8 @@ jobs:
           test -f app/src/main/AndroidManifest.xml
           test -f app/src/main/java/com/wethaq/app/MainActivity.kt
           test -f app/src/main/res/values/styles.xml
-          echo "Commit: $(git rev-parse HEAD)"
-          echo "Ref: ${GITHUB_REF}"
+          echo "Checked out: $(git rev-parse HEAD)"
+          echo "Branch/ref: ${GITHUB_REF}"
 
       - name: Build Release APK
         shell: bash
@@ -60,16 +66,22 @@ jobs:
           set -e
           gradle --no-daemon --stacktrace :app:assembleRelease
 
-      - name: Verify APK file
+      - name: Verify Release APK
         shell: bash
         run: |
           set -e
-          APK="app/build/outputs/apk/release/app-release.apk"
-          test -s "$APK"
-          echo "Release APK created successfully: $APK"
+          APK='app/build/outputs/apk/release/app-release.apk'
+          AAPT="$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt"
+          test -f "$APK"
+          test -x "$AAPT"
+          echo "APK: $APK"
           ls -lh "$APK"
+          echo "Package metadata:"
+          "$AAPT" dump badging "$APK" | grep -E '^package:|^application-label:|^sdkVersion:|^targetSdkVersion:'
+          echo "Release APK verification passed."
 
       - name: Upload Release APK
+        if: ${{ always() && hashFiles('app/build/outputs/apk/release/app-release.apk') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: Wethaq-Release-APK
