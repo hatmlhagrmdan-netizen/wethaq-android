@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Wethaq Release APK
+    name: Build Wethaq Signed Release APK
     runs-on: ubuntu-latest
 
     steps:
@@ -39,7 +39,27 @@ jobs:
         shell: bash
         run: |
           set -e
+          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Create temporary release signing key
+        shell: bash
+        run: |
+          set -e
+          keytool -genkeypair \
+            -v \
+            -keystore "$RUNNER_TEMP/wethaq-release.keystore" \
+            -storepass "wethaq-temp-store" \
+            -keypass "wethaq-temp-key" \
+            -alias "wethaq" \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Wethaq, OU=Wethaq, O=Wethaq, L=Raqqa, ST=Syria, C=SY"
+          echo "WETHAQ_KEYSTORE=$RUNNER_TEMP/wethaq-release.keystore" >> "$GITHUB_ENV"
+          echo "WETHAQ_STORE_PASSWORD=wethaq-temp-store" >> "$GITHUB_ENV"
+          echo "WETHAQ_KEY_ALIAS=wethaq" >> "$GITHUB_ENV"
+          echo "WETHAQ_KEY_PASSWORD=wethaq-temp-key" >> "$GITHUB_ENV"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -59,13 +79,13 @@ jobs:
           echo "Checked out: $(git rev-parse HEAD)"
           echo "Branch/ref: ${GITHUB_REF}"
 
-      - name: Build Release APK
+      - name: Build signed Release APK
         shell: bash
         run: |
           set -e
           gradle --no-daemon --stacktrace :app:assembleRelease
 
-      - name: Locate Release APK
+      - name: Prepare installable APK
         shell: bash
         run: |
           set -e
@@ -76,15 +96,23 @@ jobs:
             find app/build/outputs -type f -maxdepth 5 -print || true
             exit 1
           fi
-          echo "Release APK: $APK_PATH"
           test -s "$APK_PATH"
-          ls -lh "$APK_PATH"
-          echo "APK_PATH=$APK_PATH" >> "$GITHUB_ENV"
+          cp "$APK_PATH" "$RUNNER_TEMP/Wethaq-release-signed.apk"
+          ls -lh "$RUNNER_TEMP/Wethaq-release-signed.apk"
+          echo "WETHAQ_APK=$RUNNER_TEMP/Wethaq-release-signed.apk" >> "$GITHUB_ENV"
 
-      - name: Upload Release APK
+      - name: Verify APK is signed
+        shell: bash
+        run: |
+          set -e
+          jarsigner -verify -verbose -certs "$WETHAQ_APK" >/tmp/jarsigner.txt 2>&1
+          grep -q "jar verified" /tmp/jarsigner.txt
+          echo 'APK signature verification passed.'
+
+      - name: Upload installable Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: Wethaq-Release-APK
-          path: ${{ env.APK_PATH }}
+          name: Wethaq-Installable-Release-APK
+          path: ${{ env.WETHAQ_APK }}
           if-no-files-found: error
           retention-days: 30
