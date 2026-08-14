@@ -1,12 +1,15 @@
 package com.wethaq.app
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
-import android.text.InputType
 import android.view.Gravity
 import android.view.View
+import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -20,28 +23,31 @@ import kotlin.random.Random
 
 class MainActivity : AppCompatActivity() {
     private val prefs by lazy { getSharedPreferences("wethaq", Context.MODE_PRIVATE) }
-    private val navy = Color.rgb(17, 31, 49)
-    private val teal = Color.rgb(0, 137, 123)
-    private val bg = Color.rgb(246, 248, 250)
-    private val muted = Color.rgb(96, 108, 120)
-    private val white = Color.WHITE
+    private val navy = Color.rgb(14, 36, 52)
+    private val teal = Color.rgb(0, 128, 116)
+    private val bg = Color.rgb(247, 249, 250)
+    private val muted = Color.rgb(103, 115, 125)
+    private val line = Color.rgb(224, 231, 233)
     private var page = "chats"
     private var chatId = ""
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
+        window.statusBarColor = Color.WHITE
+        window.navigationBarColor = Color.WHITE
         if (prefs.getBoolean("onboarded", false)) showApp() else showWelcome()
     }
 
-    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     private fun root() = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         setBackgroundColor(bg)
         layoutDirection = View.LAYOUT_DIRECTION_RTL
+        fitsSystemWindows = true
     }
 
-    private fun label(value: String, size: Float = 16f, color: Int = navy, bold: Boolean = false) = TextView(this).apply {
+    private fun text(value: String, size: Float = 16f, color: Int = navy, bold: Boolean = false) = TextView(this).apply {
         text = value
         textSize = size
         setTextColor(color)
@@ -50,78 +56,126 @@ class MainActivity : AppCompatActivity() {
         if (bold) typeface = Typeface.DEFAULT_BOLD
     }
 
-    private fun button(value: String, action: () -> Unit, color: Int = teal) = TextView(this).apply {
-        text = value
-        textSize = 15f
-        setTextColor(white)
-        gravity = Gravity.CENTER
-        typeface = Typeface.DEFAULT_BOLD
-        setBackgroundColor(color)
-        setPadding(dp(18), dp(12), dp(18), dp(12))
-        setOnClickListener { action() }
+    private fun rounded(color: Int, radius: Int = 18, stroke: Int? = null) = GradientDrawable().apply {
+        setColor(color)
+        cornerRadius = dp(radius).toFloat()
+        if (stroke != null) setStroke(dp(1), stroke)
     }
 
-    private fun params(height: Int, margin: Int = 6) = LinearLayout.LayoutParams(-1, height).apply {
-        setMargins(dp(margin), dp(margin), dp(margin), dp(margin))
+    private fun button(value: String, action: () -> Unit, fill: Int = teal) = TextView(this).apply {
+        text = value
+        textSize = 15f
+        setTextColor(Color.WHITE)
+        gravity = Gravity.CENTER
+        typeface = Typeface.DEFAULT_BOLD
+        background = rounded(fill, 16)
+        setPadding(dp(16), dp(12), dp(16), dp(12))
+        setOnClickListener { action() }
     }
 
     private fun field(hint: String) = EditText(this).apply {
         this.hint = hint
-        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
         textSize = 16f
         setSingleLine(true)
         setTextColor(navy)
         setHintTextColor(muted)
+        background = rounded(Color.WHITE, 14, line)
         setPadding(dp(14), 0, dp(14), 0)
         layoutDirection = View.LAYOUT_DIRECTION_RTL
+    }
+
+    private fun add(parent: LinearLayout, view: View, w: Int = -1, h: Int = -2, weight: Float = 0f, margin: Int = 0) {
+        parent.addView(view, LinearLayout.LayoutParams(w, if (h == -2) LinearLayout.LayoutParams.WRAP_CONTENT else dp(h), weight).apply {
+            if (margin > 0) setMargins(dp(margin), dp(margin), dp(margin), dp(margin))
+        })
     }
 
     private fun header(title: String, subtitle: String? = null, back: (() -> Unit)? = null): LinearLayout {
         val h = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(10), dp(16), dp(6))
+            setPadding(dp(16), dp(10), dp(16), dp(8))
             layoutDirection = View.LAYOUT_DIRECTION_RTL
         }
-        if (back != null) h.addView(button("‹", back, navy), LinearLayout.LayoutParams(dp(50), dp(48)))
+        if (back != null) add(h, button("‹", back, navy), 48, 48)
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutDirection = View.LAYOUT_DIRECTION_RTL }
-        box.addView(label(title, 25f, navy, true), LinearLayout.LayoutParams(-1, dp(38)))
-        if (subtitle != null) box.addView(label(subtitle, 13f, muted), LinearLayout.LayoutParams(-1, dp(24)))
-        h.addView(box, LinearLayout.LayoutParams(0, dp(62), 1f))
+        add(box, text(title, 24f, navy, true), -1, 34)
+        if (subtitle != null) add(box, text(subtitle, 13f, muted), -1, 24)
+        add(h, box, 0, 62, 1f)
         return h
+    }
+
+    private fun avatar(founder: Boolean = false): ImageView = ImageView(this).apply {
+        setImageResource(R.drawable.profile)
+        scaleType = ImageView.ScaleType.CENTER_CROP
+        background = rounded(Color.WHITE, 100, if (founder) teal else line)
+        clipToOutline = true
+        if (founder) setPadding(dp(2), dp(2), dp(2), dp(2))
     }
 
     private fun showWelcome() {
         val r = root()
-        val top = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(28), dp(20), dp(28), 0) }
-        val photo = ImageView(this).apply { setImageResource(R.drawable.profile); scaleType = ImageView.ScaleType.CENTER_CROP }
-        top.addView(photo, LinearLayout.LayoutParams(dp(120), dp(120)).apply { gravity = Gravity.CENTER })
-        top.addView(label("وَثاق", 40f, navy, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, LinearLayout.LayoutParams(-1, dp(70)))
-        top.addView(label("تواصل عربي مستقل\nبهوية لا تحتاج إلى رقم هاتف", 17f, muted).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, LinearLayout.LayoutParams(-1, dp(70)))
-        r.addView(top, LinearLayout.LayoutParams(-1, 0, 1f))
-        val bottom = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(8), dp(24), dp(28)) }
-        bottom.addView(button("بدء الاستخدام", { showCreateProfile() }), LinearLayout.LayoutParams(-1, dp(56)))
-        bottom.addView(label("خصوصية أولاً • هوية ثلاثية • محادثات", 13f, teal, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, LinearLayout.LayoutParams(-1, dp(48)))
-        r.addView(bottom)
+        val scroll = ScrollView(this)
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(22), dp(24), dp(22), dp(26))
+        }
+        add(content, avatar(true), 142, 142, 0f, 8)
+        add(content, text("وَثاق", 40f, navy, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, -1, 58, 0f, 4)
+        add(content, text("تواصل عربي مستقل", 20f, muted, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, -1, 34)
+        add(content, text("بهوية لا تحتاج إلى رقم هاتف", 16f, muted).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, -1, 30)
+
+        val founder = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = rounded(Color.WHITE, 18, line)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+        }
+        add(founder, avatar(true), 58, 58)
+        val fb = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutDirection = View.LAYOUT_DIRECTION_RTL; setPadding(dp(12), 0, 0, 0) }
+        add(fb, text("المؤسس", 13f, teal, true), -1, 22)
+        add(fb, text("حاتم حسين الحاج رمضان", 17f, navy, true), -1, 28)
+        add(fb, text("مؤسس ومطور تطبيق وَثاق", 12f, muted), -1, 22)
+        add(founder, fb, 0, 72, 1f)
+        add(content, founder, -1, 84, 0f, 8)
+
+        val updates = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = rounded(Color.WHITE, 18); setPadding(dp(16), dp(12), dp(16), dp(12)); layoutDirection = View.LAYOUT_DIRECTION_RTL }
+        add(updates, text("آخر التطورات  🚀", 17f, navy, true), -1, 30)
+        add(updates, text("• هوية ثلاثية بدون رقم هاتف", 14f, navy), -1, 28)
+        add(updates, text("• رسائل محلية جاهزة والعمل جارٍ على المزامنة", 14f, navy), -1, 28)
+        add(updates, text("• تصميم عربي كامل مع خصوصية أولًا", 14f, navy), -1, 28)
+        add(content, updates, -1, 120, 0f, 8)
+
+        add(content, button("بدء الاستخدام  →", { showCreateProfile() }), -1, 56, 0f, 12)
+        add(content, text("خصوصية أولًا  •  هوية ثلاثية  •  محادثات  •  تطور دائم", 12f, teal, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, -1, 44)
+        scroll.addView(content)
+        add(r, scroll, -1, 0, 1f)
         setContentView(r)
     }
 
     private fun showCreateProfile() {
         val r = root()
-        r.setPadding(dp(20), dp(24), dp(20), dp(20))
-        r.addView(header("إنشاء هوية وَثاق", "لن نطلب رقم هاتفك"))
+        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(22), dp(24), dp(22), dp(20)); layoutDirection = View.LAYOUT_DIRECTION_RTL }
+        add(content, header("إنشاء هوية وَثاق", "لن نطلب رقم هاتفك"), -1, 70)
+        add(content, text("اختر اسمك الظاهر داخل التطبيق", 16f, navy, true), -1, 36, 0f, 8)
         val name = field("الاسم الظاهر")
-        r.addView(name, params(dp(56), 8))
-        r.addView(label("سيُنشأ معرّفك الثلاثي تلقائيًا", 16f, teal, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, params(dp(64), 8))
-        r.addView(button("إنشاء هويتي", {
+        name.setText(prefs.getString("name", "") ?: "")
+        add(content, name, -1, 54, 0f, 6)
+        add(content, text("سيُنشأ معرّفك الثلاثي تلقائيًا، ويمكنك مشاركته بدل رقم الهاتف.", 13f, muted).apply { gravity = Gravity.CENTER }, -1, 58, 0f, 6)
+        add(content, button("إنشاء هويتي", {
             val n = name.text.toString().trim()
             if (n.length < 2) Toast.makeText(this, "اكتب اسمًا من حرفين على الأقل", Toast.LENGTH_SHORT).show()
             else {
-                prefs.edit().putBoolean("onboarded", true).putString("name", n).putString("id", generateId()).apply()
+                val id = prefs.getString("id", "")?.ifBlank { generateId() } ?: generateId()
+                prefs.edit().putBoolean("onboarded", true).putString("name", n).putString("id", id).apply()
+                hideKeyboard(name)
                 showApp()
             }
-        }), params(dp(56), 12))
-        r.addView(button("رجوع", { showWelcome() }, navy), params(dp(52), 6))
+        }), -1, 56, 0f, 12)
+        add(content, button("رجوع", { showWelcome() }, navy), -1, 52, 0f, 6)
+        add(r, content, -1, 0, 1f)
         setContentView(r)
     }
 
@@ -135,6 +189,7 @@ class MainActivity : AppCompatActivity() {
         when (page) {
             "contacts" -> showContacts()
             "profile" -> showProfile()
+            "updates" -> showUpdates()
             "settings" -> showSettings()
             else -> showChats()
         }
@@ -143,30 +198,33 @@ class MainActivity : AppCompatActivity() {
     private fun showChats() {
         page = "chats"
         val r = root()
-        r.addView(header("المحادثات", "مرحبًا، ${prefs.getString("name", "مستخدم وَثاق")}"))
-        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(8), dp(14), dp(12)); layoutDirection = View.LAYOUT_DIRECTION_RTL }
+        add(r, header("المحادثات", "مرحبًا، ${prefs.getString("name", "مستخدم وَثاق")}"))
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(8), dp(14), dp(16)); layoutDirection = View.LAYOUT_DIRECTION_RTL }
         val contacts = getContacts()
         if (contacts.length() == 0) {
-            list.addView(label("لا توجد محادثات بعد\nاذهب إلى جهات الاتصال وأضف شخصًا للبدء.", 18f, muted).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, params(dp(150), 8))
+            val empty = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; background = rounded(Color.WHITE, 18); setPadding(dp(20), dp(20), dp(20), dp(20)) }
+            add(empty, text("ابدأ ببناء شبكتك", 20f, navy, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, -1, 40)
+            add(empty, text("أضف معرّف وَثاق من جهات الاتصال ثم ابدأ أول محادثة.", 14f, muted).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, -1, 60)
+            add(empty, button("إضافة جهة اتصال", { showContacts() }), -1, 52, 0f, 10)
+            add(list, empty, -1, 200, 0f, 6)
         } else {
-            for (i in 0 until contacts.length()) list.addView(contactRow(contacts.getJSONObject(i)), params(dp(70), 5))
+            for (i in 0 until contacts.length()) add(list, contactRow(contacts.getJSONObject(i)), -1, 76, 0f, 5)
         }
         val scroll = ScrollView(this); scroll.addView(list)
-        r.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        r.addView(nav("chats"))
+        add(r, scroll, -1, 0, 1f)
+        add(r, nav("chats"), -1, 70)
         setContentView(r)
     }
 
     private fun contactRow(c: JSONObject): View {
         val id = c.optString("id")
         val name = c.optString("name", id)
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), dp(8), dp(12), dp(8)); setBackgroundColor(white); layoutDirection = View.LAYOUT_DIRECTION_RTL }
-        val avatar = label(name.take(1), 18f, white, true).apply { gravity = Gravity.CENTER; setBackgroundColor(teal) }
-        row.addView(avatar, LinearLayout.LayoutParams(dp(52), dp(52)))
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0); layoutDirection = View.LAYOUT_DIRECTION_RTL }
-        box.addView(label(name, 17f, navy, true), LinearLayout.LayoutParams(-1, dp(30)))
-        box.addView(label("@$id", 13f, muted), LinearLayout.LayoutParams(-1, dp(24)))
-        row.addView(box, LinearLayout.LayoutParams(0, dp(60), 1f))
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; background = rounded(Color.WHITE, 16); setPadding(dp(12), dp(8), dp(12), dp(8)); layoutDirection = View.LAYOUT_DIRECTION_RTL }
+        add(row, avatar(), 52, 52)
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutDirection = View.LAYOUT_DIRECTION_RTL; setPadding(dp(12), 0, 0, 0) }
+        add(box, text(name, 17f, navy, true), -1, 28)
+        add(box, text("@$id", 12f, muted), -1, 22)
+        add(row, box, 0, 58, 1f)
         row.setOnClickListener { showChat(id) }
         return row
     }
@@ -174,20 +232,23 @@ class MainActivity : AppCompatActivity() {
     private fun showContacts() {
         page = "contacts"
         val r = root()
-        r.addView(header("جهات الاتصال", "معرّفك: @${prefs.getString("id", "")}"))
-        val input = field("اكتب معرّف وَثاق")
-        r.addView(input, params(dp(52), 8))
-        r.addView(button("إضافة جهة اتصال", {
+        add(r, header("جهات الاتصال", "أضف الأشخاص باستخدام معرّف وَثاق"))
+        val area = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(4), dp(14), dp(8)); layoutDirection = View.LAYOUT_DIRECTION_RTL }
+        val input = field("مثال: nour-sham-1234")
+        add(area, input, -1, 54, 0f, 4)
+        add(area, button("إضافة جهة اتصال", {
             val id = input.text.toString().trim()
             if (id.length < 5) Toast.makeText(this, "أدخل معرّفًا صحيحًا", Toast.LENGTH_SHORT).show()
-            else { addContact(id, id); showContacts() }
-        }), params(dp(52), 6))
-        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(8), dp(14), dp(12)); layoutDirection = View.LAYOUT_DIRECTION_RTL }
+            else { addContact(id, id); input.setText(""); showContacts() }
+        }), -1, 52, 0f, 6)
+        add(area, text("لا تحتاج إلى رقم هاتف. شارك المعرّف فقط.", 13f, teal, true).apply { gravity = Gravity.CENTER }, -1, 32)
+        add(r, area, -1, 154)
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), 0, dp(14), dp(10)); layoutDirection = View.LAYOUT_DIRECTION_RTL }
         val contacts = getContacts()
-        for (i in 0 until contacts.length()) list.addView(contactRow(contacts.getJSONObject(i)), params(dp(70), 5))
+        for (i in 0 until contacts.length()) add(list, contactRow(contacts.getJSONObject(i)), -1, 76, 0f, 5)
         val scroll = ScrollView(this); scroll.addView(list)
-        r.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        r.addView(nav("contacts"))
+        add(r, scroll, -1, 0, 1f)
+        add(r, nav("contacts"), -1, 70)
         setContentView(r)
     }
 
@@ -196,88 +257,139 @@ class MainActivity : AppCompatActivity() {
         val contact = findContact(id)
         val name = contact?.optString("name", id) ?: id
         val r = root()
-        r.addView(header(name, "@$id", { chatId = ""; showChats() }))
-        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(8), dp(12), dp(8)); layoutDirection = View.LAYOUT_DIRECTION_RTL }
+        add(r, header(name, "@$id", { chatId = ""; showChats() }))
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(10), dp(12), dp(8)); layoutDirection = View.LAYOUT_DIRECTION_RTL }
         val messages = getMessages(id)
-        if (messages.length() == 0) list.addView(label("ابدأ أول رسالة في هذه المحادثة", 16f, muted).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, params(dp(100), 8))
+        if (messages.length() == 0) add(list, text("لا توجد رسائل بعد\nأرسل أول رسالة الآن.", 16f, muted).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, -1, 120, 0f, 8)
         for (i in 0 until messages.length()) {
             val m = messages.getJSONObject(i)
             val mine = m.optBoolean("mine")
-            val bubble = label(m.optString("text"), 15f, if (mine) white else navy)
+            val bubble = text(m.optString("text"), 15f, if (mine) Color.WHITE else navy)
+            bubble.background = rounded(if (mine) teal else Color.WHITE, 18)
             bubble.setPadding(dp(14), dp(10), dp(14), dp(10))
-            bubble.setBackgroundColor(if (mine) teal else white)
-            list.addView(bubble, params(-2, 4))
+            list.addView(bubble, LinearLayout.LayoutParams(-2, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(4), dp(4), dp(4), dp(4)); gravity = if (mine) Gravity.START else Gravity.END })
         }
         val scroll = ScrollView(this); scroll.addView(list)
-        r.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        add(r, scroll, -1, 0, 1f)
+        val composer = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8), dp(6), dp(8), dp(8)); layoutDirection = View.LAYOUT_DIRECTION_RTL }
         val input = field("اكتب رسالتك")
-        val send = button("إرسال", {
+        add(composer, input, 0, 52, 1f)
+        add(composer, button("إرسال", {
             val message = input.text.toString().trim()
             if (message.isNotEmpty()) { addMessage(id, message); input.setText(""); showChat(id) }
-        })
-        val composer = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8), dp(6), dp(8), dp(8)); layoutDirection = View.LAYOUT_DIRECTION_RTL }
-        composer.addView(input, LinearLayout.LayoutParams(0, dp(52), 1f))
-        composer.addView(send, LinearLayout.LayoutParams(dp(82), dp(52)))
-        r.addView(composer)
+        }), 82, 52, 0f, 5)
+        add(r, composer, -1, 64)
         setContentView(r)
+    }
+
+    private fun showUpdates() {
+        page = "updates"
+        val r = root()
+        add(r, header("آخر التطورات", "وَثاق يتطور خطوة بخطوة"))
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(8), dp(14), dp(16)); layoutDirection = View.LAYOUT_DIRECTION_RTL }
+        updateCard(list, "جديد", "واجهة وَثاق الجديدة", "تصميم عربي أنظف، بطاقات حديثة، ووضوح أكبر للمحادثات والهوية.")
+        updateCard(list, "جديد", "هوية بلا رقم هاتف", "يمكن إنشاء هوية بمعرّف ثلاثي ومشاركة المعرّف بدل رقم الهاتف.")
+        updateCard(list, "تحديث", "المراسلة المحلية", "المحادثات الحالية تعمل محليًا على الجهاز، مع تجهيز طبقة المزامنة للخادم.")
+        updateCard(list, "قريبًا", "المزامنة الفورية", "ربط العميل بخادم وَثاق لإرسال واستقبال الرسائل في الوقت الحقيقي.")
+        updateCard(list, "قريبًا", "الملفات والوسائط", "صور وملفات ومقاطع صوتية مع أدوات مشاركة أكثر أمانًا.")
+        val scroll = ScrollView(this); scroll.addView(list)
+        add(r, scroll, -1, 0, 1f)
+        add(r, nav("updates"), -1, 70)
+        setContentView(r)
+    }
+
+    private fun updateCard(parent: LinearLayout, tag: String, title: String, body: String) {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = rounded(Color.WHITE, 18); setPadding(dp(16), dp(12), dp(16), dp(12)); layoutDirection = View.LAYOUT_DIRECTION_RTL }
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; layoutDirection = View.LAYOUT_DIRECTION_RTL }
+        add(row, text(tag, 12f, teal, true).apply { gravity = Gravity.CENTER; background = rounded(Color.rgb(232, 247, 244), 12); setPadding(dp(10), dp(5), dp(10), dp(5)) }, 58, 30)
+        add(row, text(title, 17f, navy, true), 0, 32, 1f, 8)
+        add(box, row, -1, 36)
+        add(box, text(body, 13f, muted), -1, 54, 0f, 5)
+        add(parent, box, -1, 110, 0f, 6)
     }
 
     private fun showProfile() {
         page = "profile"
         val r = root()
-        r.addView(header("ملفي الشخصي"))
-        val image = ImageView(this).apply { setImageResource(R.drawable.profile); scaleType = ImageView.ScaleType.CENTER_CROP }
-        r.addView(image, LinearLayout.LayoutParams(dp(150), dp(150)).apply { gravity = Gravity.CENTER; setMargins(0, dp(20), 0, dp(20)) })
-        r.addView(label(prefs.getString("name", "حاتم حسين الحاج رمضان") ?: "حاتم حسين الحاج رمضان", 24f, navy, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, params(dp(50), 4))
-        r.addView(label("@${prefs.getString("id", "")}", 16f, teal, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, params(dp(40), 4))
-        r.addView(button("نسخ المعرّف", { copyId() }), params(dp(52), 12))
-        r.addView(nav("profile"))
+        add(r, header("ملفي الشخصي", "هويتك داخل وَثاق"))
+        val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; background = rounded(Color.WHITE, 22); setPadding(dp(18), dp(20), dp(18), dp(20)); layoutDirection = View.LAYOUT_DIRECTION_RTL }
+        add(card, avatar(true), 128, 128)
+        add(card, text(prefs.getString("name", "حاتم حسين الحاج رمضان") ?: "حاتم حسين الحاج رمضان", 23f, navy, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, -1, 42, 0f, 8)
+        add(card, text("@${prefs.getString("id", "غير مُنشأ")}", 15f, teal, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, -1, 30)
+        add(card, text("مستخدم وَثاق", 13f, muted).apply { gravity = Gravity.CENTER }, -1, 28)
+        add(card, button("نسخ المعرّف", { copyId() }), -1, 50, 0f, 10)
+        add(card, text("المؤسس: حاتم حسين الحاج رمضان", 13f, teal, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, -1, 30)
+        add(r, card, -1, 340, 0f, 14)
+        add(r, nav("profile"), -1, 70)
         setContentView(r)
     }
 
     private fun showSettings() {
         page = "settings"
         val r = root()
-        r.addView(header("الإعدادات"))
-        r.addView(label("وَثاق\nالإصدار 1.0.0\n\nالرسائل الحالية محفوظة محليًا على الجهاز. ربط الخادم سيتم عند نشر Backend.", 16f, muted).apply { setPadding(dp(20), dp(20), dp(20), dp(20)) }, params(dp(180), 8))
-        r.addView(button("إعادة إنشاء الهوية", { prefs.edit().clear().apply(); chatId = ""; showWelcome() }, Color.rgb(198, 40, 40)), params(dp(52), 8))
-        r.addView(nav("settings"))
+        add(r, header("الإعدادات", "الخصوصية والتحكم"))
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(8), dp(14), dp(12)); layoutDirection = View.LAYOUT_DIRECTION_RTL }
+        settingCard(list, "الخصوصية", "لا نطلب رقم هاتفك. الهوية تعتمد على معرّف وَثاق.")
+        settingCard(list, "البيانات", "الرسائل الحالية محفوظة محليًا على جهازك.")
+        settingCard(list, "الخادم", "المزامنة الفورية ستعمل بعد ربط Backend الإنتاجي.")
+        settingCard(list, "الإصدار", "وَثاق 1.1.0 • نسخة تطويرية")
+        add(list, button("إعادة إنشاء الهوية", { prefs.edit().clear().apply(); chatId = ""; showWelcome() }, Color.rgb(188, 48, 55)), -1, 52, 0f, 8)
+        val scroll = ScrollView(this); scroll.addView(list)
+        add(r, scroll, -1, 0, 1f)
+        add(r, nav("settings"), -1, 70)
         setContentView(r)
+    }
+
+    private fun settingCard(parent: LinearLayout, title: String, body: String) {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = rounded(Color.WHITE, 16); setPadding(dp(16), dp(10), dp(16), dp(10)); layoutDirection = View.LAYOUT_DIRECTION_RTL }
+        add(box, text(title, 16f, navy, true), -1, 28)
+        add(box, text(body, 13f, muted), -1, 40)
+        add(parent, box, -1, 80, 0f, 5)
     }
 
     private fun nav(active: String): LinearLayout {
         val n = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(dp(6), dp(6), dp(6), dp(8)); layoutDirection = View.LAYOUT_DIRECTION_RTL }
-        n.addView(button("المحادثات", { page = "chats"; showChats() }, if (active == "chats") teal else navy), LinearLayout.LayoutParams(0, dp(50), 1f))
-        n.addView(button("جهات الاتصال", { page = "contacts"; showContacts() }, if (active == "contacts") teal else navy), LinearLayout.LayoutParams(0, dp(50), 1f))
-        n.addView(button("ملفي", { page = "profile"; showProfile() }, if (active == "profile") teal else navy), LinearLayout.LayoutParams(0, dp(50), 1f))
-        n.addView(button("الإعدادات", { page = "settings"; showSettings() }, if (active == "settings") teal else navy), LinearLayout.LayoutParams(0, dp(50), 1f))
+        navItem(n, "المحادثات", "chats", active == "chats") { page = "chats"; showChats() }
+        navItem(n, "التطورات", "updates", active == "updates") { page = "updates"; showUpdates() }
+        navItem(n, "الجهات", "contacts", active == "contacts") { page = "contacts"; showContacts() }
+        navItem(n, "ملفي", "profile", active == "profile") { page = "profile"; showProfile() }
         return n
     }
 
+    private fun navItem(parent: LinearLayout, title: String, key: String, active: Boolean, action: () -> Unit) {
+        val v = TextView(this).apply { text = title; textSize = 11f; setTextColor(if (active) Color.WHITE else navy); gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD; background = rounded(if (active) teal else Color.WHITE, 14, if (active) teal else line); setOnClickListener { action() } }
+        parent.addView(v, LinearLayout.LayoutParams(0, dp(52), 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
+    }
+
     private fun copyId() {
-        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        cm.setPrimaryClip(android.content.ClipData.newPlainText("Wethaq ID", prefs.getString("id", "")))
+        val id = prefs.getString("id", "") ?: ""
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("Wethaq ID", id))
         Toast.makeText(this, "تم نسخ المعرّف", Toast.LENGTH_SHORT).show()
     }
 
-    private fun getContacts(): JSONArray = JSONArray(prefs.getString("contacts", "[]") ?: "[]")
+    private fun hideKeyboard(v: View) { (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(v.windowToken, 0) }
+
+    private fun getContacts(): JSONArray = try { JSONArray(prefs.getString("contacts", "[]") ?: "[]") } catch (_: Exception) { JSONArray() }
+
     private fun addContact(id: String, name: String) {
         val a = getContacts()
-        var exists = false
-        for (i in 0 until a.length()) if (a.getJSONObject(i).optString("id") == id) exists = true
-        if (!exists) a.put(JSONObject().apply { put("id", id); put("name", name) })
+        for (i in 0 until a.length()) if (a.getJSONObject(i).optString("id") == id) return
+        a.put(JSONObject().apply { put("id", id); put("name", name) })
         prefs.edit().putString("contacts", a.toString()).apply()
     }
+
     private fun findContact(id: String): JSONObject? {
         val a = getContacts()
         for (i in 0 until a.length()) if (a.getJSONObject(i).optString("id") == id) return a.getJSONObject(i)
         return null
     }
-    private fun messagesKey(id: String) = "messages_$id"
-    private fun getMessages(id: String): JSONArray = JSONArray(prefs.getString(messagesKey(id), "[]") ?: "[]")
-    private fun addMessage(id: String, value: String) {
+
+    private fun getMessages(id: String): JSONArray = try { JSONArray(prefs.getString("messages_$id", "[]") ?: "[]") } catch (_: Exception) { JSONArray() }
+
+    private fun addMessage(id: String, message: String) {
         val a = getMessages(id)
-        a.put(JSONObject().apply { put("text", value); put("mine", true) })
-        prefs.edit().putString(messagesKey(id), a.toString()).apply()
+        a.put(JSONObject().apply { put("text", message); put("mine", true) })
+        prefs.edit().putString("messages_$id", a.toString()).apply()
     }
 }
