@@ -15,11 +15,13 @@ android {
         versionName = "1.0.0"
     }
 
-    signingConfigs {
-        create("release") {
-            val keystorePath = System.getenv("WETHAQ_KEYSTORE")
-            if (!keystorePath.isNullOrBlank()) {
-                storeFile = file(keystorePath)
+    val keystorePath = System.getenv("WETHAQ_KEYSTORE")
+    val hasReleaseSigning = !keystorePath.isNullOrBlank()
+
+    if (hasReleaseSigning) {
+        signingConfigs {
+            create("wethaqRelease") {
+                storeFile = file(keystorePath!!)
                 storePassword = System.getenv("WETHAQ_STORE_PASSWORD")
                 keyAlias = System.getenv("WETHAQ_KEY_ALIAS")
                 keyPassword = System.getenv("WETHAQ_KEY_PASSWORD")
@@ -34,8 +36,13 @@ android {
         release {
             isDebuggable = false
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("wethaqRelease")
+            }
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 
