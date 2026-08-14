@@ -1,163 +1,88 @@
-name: بناء تطبيق وَثاق
+name: بناء APK Release لتطبيق وَثاق
 
 on:
   workflow_dispatch:
   push:
     branches:
       - main
+      - fix/release-build
+
+permissions:
+  contents: read
 
 jobs:
   build:
-    name: بناء APK
+    name: Build Wethaq Release APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: جلب المشروع
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: فك ملف المشروع
-        shell: bash
-        run: |
-          set -e
-
-          if [ ! -f "wethaq-android-project.zip" ]; then
-            echo "❌ لم يتم العثور على wethaq-android-project.zip"
-            exit 1
-          fi
-
-          rm -rf android-project
-          mkdir -p android-project
-
-          unzip -q "wethaq-android-project.zip" -d android-project
-
-          echo "✅ تم فك المشروع بنجاح"
-          find android-project -maxdepth 4 -type f | sort | head -200
-
-      - name: البحث عن مشروع Android
-        id: project
-        shell: bash
-        run: |
-          set -e
-
-          SETTINGS=$(find android-project \
-            -type f \
-            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
-            -print -quit)
-
-          if [ -z "$SETTINGS" ]; then
-            echo "❌ لم يتم العثور على settings.gradle أو settings.gradle.kts"
-            echo "محتويات المشروع:"
-            find android-project -maxdepth 5 -type f | sort
-            exit 1
-          fi
-
-          PROJECT_DIR=$(dirname "$SETTINGS")
-
-          echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
-
-          echo "✅ تم العثور على مشروع Android:"
-          echo "$PROJECT_DIR"
-
-      - name: تثبيت Java 17
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
           cache: gradle
 
-      - name: إعداد Android SDK
+      - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: تثبيت أدوات Android
+      - name: Install Android SDK packages
         shell: bash
         run: |
           yes | sdkmanager --licenses >/dev/null || true
-
           sdkmanager \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-      - name: إعداد Gradle
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.13"
+          gradle-version: '8.13'
 
-      - name: فحص ملفات Gradle
-        working-directory: ${{ steps.project.outputs.dir }}
-        shell: bash
-        run: |
-          echo "===== settings ====="
-          if [ -f "settings.gradle" ]; then
-            cat settings.gradle
-          fi
-
-          if [ -f "settings.gradle.kts" ]; then
-            cat settings.gradle.kts
-          fi
-
-          echo "===== build files ====="
-
-          if [ -f "build.gradle" ]; then
-            cat build.gradle
-          fi
-
-          if [ -f "build.gradle.kts" ]; then
-            cat build.gradle.kts
-          fi
-
-      - name: بناء APK
-        working-directory: ${{ steps.project.outputs.dir }}
+      - name: Verify Android project
         shell: bash
         run: |
           set -e
+          test -f settings.gradle.kts
+          test -f build.gradle.kts
+          test -f app/build.gradle.kts
+          test -f app/src/main/AndroidManifest.xml
+          test -f app/src/main/java/com/wethaq/app/MainActivity.kt
+          test -f app/src/main/res/values/styles.xml
+          echo 'Android project structure OK.'
 
-          gradle \
-            --no-daemon \
-            --stacktrace \
-            -Pkotlin.jvm.target.validation.mode=warning \
-            assembleDebug
-
-      - name: البحث عن APK
-        id: apk
+      - name: Build Release APK
         shell: bash
         run: |
           set -e
+          gradle --no-daemon --stacktrace :app:assembleRelease
 
-          echo "البحث عن ملفات APK..."
+      - name: Verify Release APK
+        shell: bash
+        run: |
+          set -e
+          APK='app/build/outputs/apk/release/app-release.apk'
+          test -f "$APK"
+          echo "APK: $APK"
+          ls -lh "$APK"
 
-          find android-project \
-            -type f \
-            -name "*.apk" \
-            -print
+          echo 'Checking APK package metadata...'
+          aapt dump badging "$APK" | grep -E "package:|application-label:|sdkVersion:|targetSdkVersion:"
 
-          APK=$(find android-project \
-            -type f \
-            -path "*/build/outputs/apk/debug/*.apk" \
-            -print -quit)
-
-          if [ -z "$APK" ]; then
-            echo "❌ لم يتم العثور على APK"
+          echo 'Checking that the release manifest is not debuggable...'
+          if aapt dump badging "$APK" | grep -q 'debuggable'; then
+            echo 'ERROR: Release APK is debuggable.'
             exit 1
           fi
 
-          echo "✅ تم العثور على APK:"
-          echo "$APK"
-
-          echo "path=$APK" >> "$GITHUB_OUTPUT"
-
-      - name: رفع APK
+      - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: Wethaq-APK
-          path: ${{ steps.apk.outputs.path }}
+          name: Wethaq-Release-APK
+          path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 30
-
-      - name: نجاح البناء
-        shell: bash
-        run: |
-          echo "======================================"
-          echo "✅ تم بناء تطبيق وَثاق بنجاح"
-          echo "📦 ملف APK جاهز"
-          echo "======================================"
