@@ -112,15 +112,12 @@ class MainActivity : AppCompatActivity() {
         r.addView(header("إنشاء هوية وَثاق", "لن نطلب رقم هاتفك"))
         val name = field("الاسم الظاهر")
         r.addView(name, params(dp(56), 8))
-        val idText = label("سيُنشأ معرّفك الثلاثي تلقائيًا", 16f, teal, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }
-        r.addView(idText, params(dp(64), 8))
+        r.addView(label("سيُنشأ معرّفك الثلاثي تلقائيًا", 16f, teal, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, params(dp(64), 8))
         r.addView(button("إنشاء هويتي", {
             val n = name.text.toString().trim()
-            if (n.length < 2) {
-                Toast.makeText(this, "اكتب اسمًا من حرفين على الأقل", Toast.LENGTH_SHORT).show()
-            } else {
-                val id = generateId()
-                prefs.edit().putBoolean("onboarded", true).putString("name", n).putString("id", id).apply()
+            if (n.length < 2) Toast.makeText(this, "اكتب اسمًا من حرفين على الأقل", Toast.LENGTH_SHORT).show()
+            else {
+                prefs.edit().putBoolean("onboarded", true).putString("name", n).putString("id", generateId()).apply()
                 showApp()
             }
         }), params(dp(56), 12))
@@ -149,10 +146,10 @@ class MainActivity : AppCompatActivity() {
         r.addView(header("المحادثات", "مرحبًا، ${prefs.getString("name", "مستخدم وَثاق")}"))
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(8), dp(14), dp(12)); layoutDirection = View.LAYOUT_DIRECTION_RTL }
         val contacts = getContacts()
-        if (contacts.length == 0) {
+        if (contacts.length() == 0) {
             list.addView(label("لا توجد محادثات بعد\nاذهب إلى جهات الاتصال وأضف شخصًا للبدء.", 18f, muted).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, params(dp(150), 8))
         } else {
-            for (i in 0 until contacts.length) list.addView(contactRow(contacts.getJSONObject(i)), params(dp(70), 5))
+            for (i in 0 until contacts.length()) list.addView(contactRow(contacts.getJSONObject(i)), params(dp(70), 5))
         }
         val scroll = ScrollView(this); scroll.addView(list)
         r.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -187,7 +184,7 @@ class MainActivity : AppCompatActivity() {
         }), params(dp(52), 6))
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(8), dp(14), dp(12)); layoutDirection = View.LAYOUT_DIRECTION_RTL }
         val contacts = getContacts()
-        for (i in 0 until contacts.length) list.addView(contactRow(contacts.getJSONObject(i)), params(dp(70), 5))
+        for (i in 0 until contacts.length()) list.addView(contactRow(contacts.getJSONObject(i)), params(dp(70), 5))
         val scroll = ScrollView(this); scroll.addView(list)
         r.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         r.addView(nav("contacts"))
@@ -202,12 +199,13 @@ class MainActivity : AppCompatActivity() {
         r.addView(header(name, "@$id", { chatId = ""; showChats() }))
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(8), dp(12), dp(8)); layoutDirection = View.LAYOUT_DIRECTION_RTL }
         val messages = getMessages(id)
-        if (messages.length == 0) list.addView(label("ابدأ أول رسالة في هذه المحادثة", 16f, muted).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, params(dp(100), 8))
-        for (i in 0 until messages.length) {
+        if (messages.length() == 0) list.addView(label("ابدأ أول رسالة في هذه المحادثة", 16f, muted).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, params(dp(100), 8))
+        for (i in 0 until messages.length()) {
             val m = messages.getJSONObject(i)
-            val bubble = label(m.optString("text"), 15f, if (m.optBoolean("mine")) white else navy)
+            val mine = m.optBoolean("mine")
+            val bubble = label(m.optString("text"), 15f, if (mine) white else navy)
             bubble.setPadding(dp(14), dp(10), dp(14), dp(10))
-            bubble.setBackgroundColor(if (m.optBoolean("mine")) teal else white)
+            bubble.setBackgroundColor(if (mine) teal else white)
             list.addView(bubble, params(-2, 4))
         }
         val scroll = ScrollView(this); scroll.addView(list)
@@ -266,13 +264,13 @@ class MainActivity : AppCompatActivity() {
     private fun addContact(id: String, name: String) {
         val a = getContacts()
         var exists = false
-        for (i in 0 until a.length) if (a.getJSONObject(i).optString("id") == id) exists = true
+        for (i in 0 until a.length()) if (a.getJSONObject(i).optString("id") == id) exists = true
         if (!exists) a.put(JSONObject().apply { put("id", id); put("name", name) })
         prefs.edit().putString("contacts", a.toString()).apply()
     }
     private fun findContact(id: String): JSONObject? {
         val a = getContacts()
-        for (i in 0 until a.length) if (a.getJSONObject(i).optString("id") == id) return a.getJSONObject(i)
+        for (i in 0 until a.length()) if (a.getJSONObject(i).optString("id") == id) return a.getJSONObject(i)
         return null
     }
     private fun messagesKey(id: String) = "messages_$id"
