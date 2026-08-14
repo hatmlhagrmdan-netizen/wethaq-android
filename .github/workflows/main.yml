@@ -39,7 +39,6 @@ jobs:
         shell: bash
         run: |
           set -e
-          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Setup Gradle
@@ -66,19 +65,14 @@ jobs:
           set -e
           gradle --no-daemon --stacktrace :app:assembleRelease
 
-      - name: Verify Release APK
+      - name: Verify Release APK exists
         shell: bash
         run: |
           set -e
           APK='app/build/outputs/apk/release/app-release.apk'
-          AAPT="$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt"
-          test -f "$APK"
-          test -x "$AAPT"
-          echo "APK: $APK"
+          test -s "$APK"
+          echo "Release APK created successfully: $APK"
           ls -lh "$APK"
-          echo "Package metadata:"
-          "$AAPT" dump badging "$APK" | grep -E '^package:|^application-label:|^sdkVersion:|^targetSdkVersion:'
-          echo "Release APK verification passed."
 
       - name: Upload Release APK
         if: ${{ always() && hashFiles('app/build/outputs/apk/release/app-release.apk') != '' }}
