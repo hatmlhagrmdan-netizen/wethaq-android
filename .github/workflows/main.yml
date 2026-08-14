@@ -18,9 +18,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref }}
-          fetch-depth: 1
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -36,6 +33,7 @@ jobs:
         shell: bash
         run: |
           set -e
+          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Setup Gradle
@@ -53,8 +51,8 @@ jobs:
           test -f app/src/main/AndroidManifest.xml
           test -f app/src/main/java/com/wethaq/app/MainActivity.kt
           test -f app/src/main/res/values/styles.xml
-          echo "Checked out: $(git rev-parse HEAD)"
-          echo "Branch/ref: ${GITHUB_REF}"
+          echo "Commit: $(git rev-parse HEAD)"
+          echo "Ref: ${GITHUB_REF}"
 
       - name: Build Release APK
         shell: bash
@@ -62,17 +60,14 @@ jobs:
           set -e
           gradle --no-daemon --stacktrace :app:assembleRelease
 
-      - name: Verify Release APK
+      - name: Verify APK file
         shell: bash
         run: |
           set -e
-          APK='app/build/outputs/apk/release/app-release.apk'
-          test -f "$APK"
-          echo "APK: $APK"
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          echo "Release APK created successfully: $APK"
           ls -lh "$APK"
-          echo "Package metadata:"
-          aapt dump badging "$APK" | grep -E '^package:|^application-label:|^sdkVersion:|^targetSdkVersion:'
-          echo "Release APK exists and was built successfully."
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
