@@ -1,0 +1,39 @@
+name: Fix Wethaq Kotlin build
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: ${{ !contains(github.event.head_commit.message, '[kotlin-fix-95]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Fix Kotlin compile errors
+        shell: bash
+        run: |
+          set -e
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/main/java/com/wethaq/app/MainActivity.kt')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('import okhttp3.RequestBody.Companion.toRequestBody\n', 'import okhttp3.RequestBody.Companion.toRequestBody\nimport okhttp3.MediaType.Companion.toMediaType\n')
+          s=s.replace('add(c,button(action){val a=n.text.toString().trim();val b=y.text.toString().trim().toIntOrNull();val words=a.split(Regex("\\\\s+")).filter{it.isNotBlank()};val max=Calendar.getInstance().get(Calendar.YEAR);if(words.size<3){toast("اكتب الاسم الثلاثي");return@button};if(b==null||b !in 1900..max){toast("سنة الميلاد غير صحيحة");return@button};submit(a,b)},58,0f,6)', 'add(c,button(action, {val a=n.text.toString().trim();val b=y.text.toString().trim().toIntOrNull();val words=a.split(Regex("\\\\s+")).filter{it.isNotBlank()};val max=Calendar.getInstance().get(Calendar.YEAR);if(words.size<3){toast("اكتب الاسم الثلاثي");return@button};if(b==null||b !in 1900..max){toast("سنة الميلاد غير صحيحة");return@button};submit(a,b)}),58,0f,6)')
+          s=s.replace('toRequestBody("application/json; charset=utf-8")', 'toRequestBody("application/json; charset=utf-8".toMediaType())')
+          p.write_text(s,encoding='utf-8')
+          PY
+          grep -q 'toMediaType' app/src/main/java/com/wethaq/app/MainActivity.kt
+          grep -q 'button(action, {' app/src/main/java/com/wethaq/app/MainActivity.kt
+          git diff --check
+      - name: Commit fix
+        run: |
+          git config user.name "wethaq-build-fixer"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/src/main/java/com/wethaq/app/MainActivity.kt
+          git rm .github/workflows/fix-build-95.yml
+          git commit -m "إصلاح أخطاء Kotlin وبناء وَثاق [kotlin-fix-95]"
+          git push
