@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 path = Path("app/src/main/java/com/wethaq/app/MainActivity.kt")
 s = path.read_text(encoding="utf-8")
@@ -10,8 +11,9 @@ s = s.replace('background = white;', 'setBackgroundColor(white);')
 s = s.replace('background=white;', 'setBackgroundColor(white);')
 s = s.replace('putString("wethaq_id", u.optString("wethaq_id")).putString("name", u.optString("name"))', 'putString("wethaq_id", u.optString("wethaq_id")).putString("server_id", u.optString("id")).putString("name", u.optString("name"))')
 
-# Use the newly supplied founder portrait instead of the old collage image.
-s = s.replace('R.drawable.profile', 'R.drawable.profile_photo')
+# Use the approved founder portrait. Do not turn profile_photo into profile_photo_photo.
+s = re.sub(r'R\.drawable\.profile(?!_photo)', 'R.drawable.profile_photo', s)
+s = s.replace('R.drawable.profile_photo_photo', 'R.drawable.profile_photo')
 
 # Explicit passwordless login entry point.
 old = 'add(c, button("إنشاء هويتي", { createIdentity() }), -1, 58, 0f, 8); add(c, center("لا توجد كلمة مرور ولا رقم هاتف", 12f, muted), -1, 30)'
