@@ -1,0 +1,6 @@
+{
+  "name": "wethaq-backend",
+  "type": "node",
+  "start": "npm start",
+  "root": "backend"
+}
