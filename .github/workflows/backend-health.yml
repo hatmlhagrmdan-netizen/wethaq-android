@@ -42,9 +42,7 @@ jobs:
       - name: Wait for health endpoint
         run: |
           for i in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:3100/health > /tmp/health.json; then
-              break
-            fi
+            if curl --fail --silent http://127.0.0.1:3100/health > /tmp/health.json; then break; fi
             sleep 1
           done
           test -s /tmp/health.json
@@ -52,17 +50,8 @@ jobs:
           grep -q '"ok":true' /tmp/health.json
           grep -q '"search":"public"' /tmp/health.json
 
-      - name: Verify public search contract
-        run: |
-          curl --fail --silent 'http://127.0.0.1:3100/api/search?q=hatem' > /tmp/search.json
-          cat /tmp/search.json
-          grep -q '"users"' /tmp/search.json
-
-      - name: Verify invalid short search is safe
-        run: |
-          curl --fail --silent 'http://127.0.0.1:3100/api/search?q=x' > /tmp/short-search.json
-          cat /tmp/short-search.json
-          grep -q '"users":\[\]' /tmp/short-search.json
+      - name: Run full backend smoke test
+        run: npm run test:smoke
 
       - name: Stop backend
         if: always()
