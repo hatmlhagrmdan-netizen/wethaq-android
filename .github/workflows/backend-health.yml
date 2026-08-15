@@ -26,11 +26,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: backend/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Start backend
         env:
@@ -49,6 +47,7 @@ jobs:
             fi
             sleep 1
           done
+          test -s /tmp/health.json
           cat /tmp/health.json
           grep -q '"ok":true' /tmp/health.json
           grep -q '"search":"public"' /tmp/health.json
