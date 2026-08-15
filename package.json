@@ -1,0 +1,12 @@
+{
+  "name": "wethaq-backend-host",
+  "private": true,
+  "version": "1.0.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "install": "npm --prefix backend install",
+    "start": "npm --prefix backend start"
+  }
+}
