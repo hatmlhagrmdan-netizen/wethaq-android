@@ -10,6 +10,7 @@ import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import okhttp3.*
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.security.SecureRandom
 import java.util.Calendar
@@ -27,7 +28,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy(){ socket?.close(1000,"closed"); super.onDestroy() }
     private fun dp(n:Int)=(n*resources.displayMetrics.density).toInt()
     private fun bg(c:Int,r:Int=18,s:Int?=null)=android.graphics.drawable.GradientDrawable().apply{setColor(c);cornerRadius=dp(r).toFloat();if(s!=null)setStroke(dp(1),s)}
-    private fun root()=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(::bg.get().let{Color.rgb(247,249,250)});layoutDirection=View.LAYOUT_DIRECTION_RTL}
+    private fun root()=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(Color.rgb(247,249,250));layoutDirection=View.LAYOUT_DIRECTION_RTL}
     private fun label(s:String,size:Float=16f,c:Int=navy,b:Boolean=false)=TextView(this).apply{text=s;textSize=size;setTextColor(c);gravity=Gravity.CENTER_VERTICAL;layoutDirection=View.LAYOUT_DIRECTION_RTL;textAlignment=View.TEXT_ALIGNMENT_VIEW_START;if(b)typeface=Typeface.DEFAULT_BOLD}
     private fun center(s:String,size:Float=16f,c:Int=navy,b:Boolean=false)=label(s,size,c,b).apply{gravity=Gravity.CENTER;textAlignment=View.TEXT_ALIGNMENT_CENTER}
     private fun button(s:String,a:()->Unit,c:Int=teal)=TextView(this).apply{text=s;textSize=15f;setTextColor(Color.WHITE);gravity=Gravity.CENTER;typeface=Typeface.DEFAULT_BOLD;background=bg(c,16);setPadding(dp(12),dp(8),dp(12),dp(8));setOnClickListener{a()}}
