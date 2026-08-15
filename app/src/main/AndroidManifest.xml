@@ -4,7 +4,7 @@
     <application
         android:allowBackup="false"
         android:fullBackupContent="false"
-        android:icon="@drawable/profile"
+        android:icon="@drawable/profile_photo"
         android:label="وَثاق"
         android:supportsRtl="true"
         android:usesCleartextTraffic="false"
