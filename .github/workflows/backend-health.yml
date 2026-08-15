@@ -1,0 +1,72 @@
+name: اختبار Backend وثاق
+
+on:
+  push:
+    paths:
+      - 'backend/**'
+      - 'render.yaml'
+      - '.github/workflows/backend-health.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'render.yaml'
+      - '.github/workflows/backend-health.yml'
+
+jobs:
+  backend-health:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start backend
+        env:
+          PORT: 3100
+          DB_PATH: ${{ runner.temp }}/wethaq-test.db
+          JWT_SECRET: ci-test-secret-change-me
+        run: |
+          node server.js > /tmp/wethaq-backend.log 2>&1 &
+          echo $! > /tmp/wethaq-backend.pid
+
+      - name: Wait for health endpoint
+        run: |
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3100/health > /tmp/health.json; then
+              break
+            fi
+            sleep 1
+          done
+          cat /tmp/health.json
+          grep -q '"ok":true' /tmp/health.json
+          grep -q '"search":"public"' /tmp/health.json
+
+      - name: Verify public search contract
+        run: |
+          curl --fail --silent 'http://127.0.0.1:3100/api/search?q=hatem' > /tmp/search.json
+          cat /tmp/search.json
+          grep -q '"users"' /tmp/search.json
+
+      - name: Verify invalid short search is safe
+        run: |
+          curl --fail --silent 'http://127.0.0.1:3100/api/search?q=x' > /tmp/short-search.json
+          cat /tmp/short-search.json
+          grep -q '"users":\[\]' /tmp/short-search.json
+
+      - name: Stop backend
+        if: always()
+        run: |
+          if [ -f /tmp/wethaq-backend.pid ]; then kill "$(cat /tmp/wethaq-backend.pid)" || true; fi
+          cat /tmp/wethaq-backend.log || true
