@@ -62,7 +62,7 @@ class MainActivity : AppCompatActivity() {
         window.statusBarColor = Color.WHITE
         window.navigationBarColor = Color.WHITE
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
-        if (token.isBlank() || myId.isBlank()) welcome() else home()
+        if (token.isBlank() || myId.isBlank()) welcome() else validateSession()
     }
 
     override fun onDestroy() {
@@ -72,12 +72,40 @@ class MainActivity : AppCompatActivity() {
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
+    private fun validateSession() {
+        api("GET", "/api/me", null) { ok, body ->
+            handler.post {
+                if (ok) {
+                    home()
+                    return@post
+                }
+                when (body.optString("error")) {
+                    "unauthorized", "invalid_token", "user_not_found" -> {
+                        clearIdentity()
+                        welcome()
+                    }
+                    else -> {
+                        home()
+                        toast("تم فتح وثاق محليًا، وسيُعاد الاتصال عند توفر الشبكة.")
+                    }
+                }
+            }
+        }
+    }
+
+    private fun clearIdentity() {
+        val device = prefs.getString("device_key", "") ?: ""
+        prefs.edit().clear().putString("device_key", device).apply()
+        socket?.close(1000, "identity cleared")
+        socket = null
+    }
+
     private fun shape(color: Int, radius: Int = 18, stroke: Int? = null) = GradientDrawable().apply {
         setColor(color); cornerRadius = dp(radius).toFloat(); if (stroke != null) setStroke(dp(1), stroke)
     }
 
     private fun text(s: String, size: Float = 16f, color: Int = navy, bold: Boolean = false) = TextView(this).apply {
-        text = s; textSize = size; setTextColor(color); gravity = Gravity.CENTER_VERTICAL; includeFontPadding = false
+        text = s; textSize = size; setTextColor(color); gravity = Gravity.CENTER_VERTICAL; includeFontPadding = true
         layoutDirection = View.LAYOUT_DIRECTION_RTL; textAlignment = View.TEXT_ALIGNMENT_VIEW_START
         if (bold) typeface = Typeface.DEFAULT_BOLD
     }
@@ -105,7 +133,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun add(parent: LinearLayout, view: View, width: Int = -1, height: Int = -2, weight: Float = 0f, margin: Int = 0) {
         val h = if (height == -2) LinearLayout.LayoutParams.WRAP_CONTENT else dp(height)
-        val p = LinearLayout.LayoutParams(width, h, weight)
+        val actualWidth = when {
+            width == -1 -> LinearLayout.LayoutParams.MATCH_PARENT
+            width == 0 -> 0
+            else -> dp(width)
+        }
+        val p = LinearLayout.LayoutParams(actualWidth, h, weight)
         if (margin > 0) p.setMargins(dp(margin), dp(margin), dp(margin), dp(margin))
         parent.addView(view, p)
     }
@@ -115,7 +148,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun avatar(size: Int = 58, founder: Boolean = false) = ImageView(this).apply {
-        setImageResource(if (founder) R.drawable.profile_photo else android.R.drawable.ic_menu_myplaces)
+        setImageResource(if (founder) R.drawable.profile else android.R.drawable.ic_menu_myplaces)
         scaleType = ImageView.ScaleType.CENTER_CROP; background = shape(if (founder) Color.WHITE else Color.rgb(235, 240, 242), 100, if (founder) teal else border)
         clipToOutline = true; contentDescription = if (founder) "صورة مؤسس وَثاق" else "صورة المستخدم"
         layoutParams = LinearLayout.LayoutParams(dp(size), dp(size)); if (founder) setPadding(dp(2), dp(2), dp(2), dp(2))
