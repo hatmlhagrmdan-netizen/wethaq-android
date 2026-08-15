@@ -90,14 +90,15 @@ function broadcast(userId,payload) { const s=online.get(Number(userId)); if(!s)r
 function markSeen(id){db.prepare('UPDATE users SET last_seen=? WHERE id=?').run(now(),id);}
 function safeName(name){return name.replace(/[<>\u0000-\u001f]/g,'').trim().replace(/\s+/g,' ');}
 
-app.get('/health',(_req,res)=>res.json({ok:true,service:'wethaq',version:'2.0.0',auth:'name_birth_device_key',time:now()}));
+app.get('/health',(_req,res)=>res.json({ok:true,service:'wethaq',version:'3.0.0',auth:'name_birth_device_key',time:now()}));
 
 // إنشاء هوية أو استعادتها على الجهاز نفسه. لا توجد كلمة مرور.
 app.post('/api/identity', (req,res)=>{
   if(!rateLimit(`identity:${req.ip}`,20,15*60*1000))return res.status(429).json({error:'rate_limited'});
   const name=safeName(String(req.body?.name||'')); const birthYear=Number(req.body?.birthYear); const deviceKey=String(req.body?.deviceKey||'').trim();
   const current=new Date().getUTCFullYear();
-  if(!validText(name,MAX_NAME)||name.split(/\s+/).length<2||!Number.isInteger(birthYear)||birthYear<1900||birthYear>current||deviceKey.length<24||deviceKey.length>256)return res.status(400).json({error:'invalid_identity'});
+  const wordCount=name.split(/\s+/).filter(Boolean).length;
+  if(!validText(name,MAX_NAME)||wordCount<3||!Number.isInteger(birthYear)||birthYear<1900||birthYear>current||deviceKey.length<24||deviceKey.length>256)return res.status(400).json({error:'invalid_identity'});
   const base=makeBaseId(name,birthYear);
   let user=db.prepare('SELECT * FROM users WHERE wethaq_id=?').get(base);
   if(user){
