@@ -4,7 +4,12 @@ path = Path("app/src/main/java/com/wethaq/app/MainActivity.kt")
 s = path.read_text(encoding="utf-8")
 
 # Use the single approved photo that actually exists in the repository.
-s = s.replace("R.drawable.profile", "R.drawable.profile_photo")
+s = s.replace("R.drawable.profile)", "R.drawable.profile_photo)")
+s = s.replace("R.drawable.profile,", "R.drawable.profile_photo,")
+s = s.replace("R.drawable.profile;", "R.drawable.profile_photo;")
+s = s.replace("R.drawable.profile)", "R.drawable.profile_photo)")
+# Repair an accidental double suffix if an older version of this script already ran.
+s = s.replace("R.drawable.profile_photo_photo", "R.drawable.profile_photo")
 
 # Never regress the session flow to the old direct-home behavior.
 s = s.replace(
