@@ -77,15 +77,11 @@ jobs:
           test -f app/src/main/AndroidManifest.xml
           test -f app/src/main/java/com/wethaq/app/MainActivity.kt
           test -f app/src/main/res/values/styles.xml
-          test -f scripts/repair-kotlin-build.py
+          test -f app/src/main/res/drawable/profile_photo.jpg
+          ! grep -Eq 'R\.drawable\.profile_photo_photo|R\.drawable\.profile([^_A-Za-z0-9]|$)' app/src/main/java/com/wethaq/app/MainActivity.kt
+          grep -q 'R.drawable.profile_photo' app/src/main/java/com/wethaq/app/MainActivity.kt
           echo "Checked out: $(git rev-parse HEAD)"
           echo "Branch/ref: ${GITHUB_REF}"
-
-      - name: Repair Kotlin source before release build
-        shell: bash
-        run: |
-          set -e
-          python3 scripts/repair-kotlin-build.py
 
       - name: Build signed Release APK
         shell: bash
