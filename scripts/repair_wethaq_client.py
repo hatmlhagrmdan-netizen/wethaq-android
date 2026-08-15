@@ -1,22 +1,26 @@
 from pathlib import Path
-import re
 
 path = Path("app/src/main/java/com/wethaq/app/MainActivity.kt")
 s = path.read_text(encoding="utf-8")
 
-# 1) الصورة الجديدة المعتمدة رسميًا في المستودع.
-s = s.replace("R.drawable.profile_photo", "R.drawable.profile")
+# Use the single approved photo that actually exists in the repository.
+s = s.replace("R.drawable.profile", "R.drawable.profile_photo")
 
-# 2) لا ندخل مباشرة إلى الشاشة الرئيسية ببيانات جلسة قديمة أو منتهية.
+# Never regress the session flow to the old direct-home behavior.
+s = s.replace(
+    'if(token.isBlank()||myId.isBlank()) welcome() else home()',
+    'if(token.isBlank()||myId.isBlank()) welcome() else validateSession()'
+)
 s = s.replace(
     'if (token.isBlank() || myId.isBlank()) welcome() else home()',
     'if (token.isBlank() || myId.isBlank()) welcome() else validateSession()'
 )
 
-# 3) نصوص عربية أوضح وأقل عرضة للقص داخل TextView.
+# Keep Arabic text vertically readable.
+s = s.replace("includeFontPadding=false", "includeFontPadding=true")
 s = s.replace("includeFontPadding = false", "includeFontPadding = true")
 
-# 4) اجعل الأحجام الثابتة في مساعد add بوحدات dp بدل البكسل الخام.
+# Ensure the add() helper treats width=0 as a weighted zero width and -1 as match-parent.
 old_add = '''    private fun add(parent: LinearLayout, view: View, width: Int = -1, height: Int = -2, weight: Float = 0f, margin: Int = 0) {
         val h = if (height == -2) LinearLayout.LayoutParams.WRAP_CONTENT else dp(height)
         val p = LinearLayout.LayoutParams(width, h, weight)
@@ -37,39 +41,5 @@ new_add = '''    private fun add(parent: LinearLayout, view: View, width: Int = 
 if old_add in s:
     s = s.replace(old_add, new_add)
 
-# 5) جلسة موثوقة: إذا كان التوكن قديمًا نمسحه، وإذا كانت الشبكة منقطعة لا نحذف الهوية المحلية.
-if "private fun validateSession()" not in s:
-    marker = '    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()\n'
-    function = '''
-    private fun validateSession() {
-        api("GET", "/api/me", null) { ok, body ->
-            handler.post {
-                if (ok) {
-                    home()
-                    return@post
-                }
-                when (body.optString("error")) {
-                    "unauthorized", "invalid_token", "user_not_found" -> {
-                        clearIdentity()
-                        welcome()
-                    }
-                    else -> {
-                        home()
-                        toast("تم فتح وثاق محليًا، وسيُعاد الاتصال عند توفر الشبكة.")
-                    }
-                }
-            }
-        }
-    }
-
-    private fun clearIdentity() {
-        val device = prefs.getString("device_key", "") ?: ""
-        prefs.edit().clear().putString("device_key", device).apply()
-        socket?.close(1000, "identity cleared")
-        socket = null
-    }
-'''
-    s = s.replace(marker, marker + function)
-
 path.write_text(s, encoding="utf-8")
-print("Wethaq client repair applied")
+print("Wethaq client repair applied: approved profile photo + stable session flow")
