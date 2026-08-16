@@ -82,6 +82,10 @@ jobs:
           s=p.read_text(encoding='utf-8')
           s=s.replace('return@button','Unit')
           s=s.replace('return@identityForm','Unit')
+          marker='    private fun button(s: String, action: () -> Unit, color: Int = teal) = TextView(this).apply {'
+          overload='    private fun button(s: String, color: Int, action: () -> Unit) = button(s, action, color)\n'
+          if overload not in s and marker in s:
+              s=s.replace(marker, overload+marker, 1)
           p.write_text(s,encoding='utf-8')
           PY
       - name: Build signed Release APK
