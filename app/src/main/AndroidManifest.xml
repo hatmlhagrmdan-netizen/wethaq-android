@@ -4,7 +4,8 @@
     <application
         android:allowBackup="false"
         android:fullBackupContent="false"
-        android:icon="@drawable/profile_photo"
+        android:icon="@drawable/ic_wethaq"
+        android:roundIcon="@drawable/ic_wethaq"
         android:label="وَثاق"
         android:supportsRtl="true"
         android:usesCleartextTraffic="false"
