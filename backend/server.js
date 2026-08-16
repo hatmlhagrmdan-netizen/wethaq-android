@@ -154,20 +154,27 @@ function broadcast(id, payload) {
   }
   return sent;
 }
-
-app.get('/', (_req, res) => res.json({ service: 'wethaq', status: 'online', health: '/health' }));
-app.get('/health', (_req, res) => res.json({ ok: true, service: 'wethaq', version: '4.2.0', auth: 'name_birth_year', search: 'public', websocket: '/ws', time: now() }));
-
-app.post('/api/identity', (req, res) => {
-  if (!rateLimit(`identity:${req.ip}`, 20, 900000)) return res.status(429).json({ error: 'rate_limited' });
+function identityInput(req, res) {
   const name = safeName(req.body?.name);
   const birthYear = Number(req.body?.birthYear);
   const deviceKey = String(req.body?.deviceKey || '').trim();
   const currentYear = new Date().getUTCFullYear();
   const words = name.split(/\s+/).filter(Boolean).length;
   if (!validText(name, MAX_NAME) || words < 3 || !Number.isInteger(birthYear) || birthYear < 1900 || birthYear > currentYear || deviceKey.length < 24 || deviceKey.length > MAX_DEVICE_KEY) {
-    return res.status(400).json({ error: 'invalid_identity' });
+    res.status(400).json({ error: 'invalid_identity' });
+    return null;
   }
+  return { name, birthYear, deviceKey };
+}
+
+app.get('/', (_req, res) => res.json({ service: 'wethaq', status: 'online', health: '/health' }));
+app.get('/health', (_req, res) => res.json({ ok: true, service: 'wethaq', version: '4.3.0', auth: 'name_birth_year', search: 'public', websocket: '/ws', time: now() }));
+
+app.post('/api/identity', (req, res) => {
+  if (!rateLimit(`identity:${req.ip}`, 20, 900000)) return res.status(429).json({ error: 'rate_limited' });
+  const input = identityInput(req, res);
+  if (!input) return;
+  const { name, birthYear, deviceKey } = input;
   const base = makeBaseId(name, birthYear);
   let user = db.prepare('SELECT * FROM users WHERE wethaq_id=?').get(base);
   if (user) {
@@ -178,22 +185,41 @@ app.post('/api/identity', (req, res) => {
     const result = db.prepare('INSERT INTO users(wethaq_id,name,birth_year,password_hash,device_key,last_seen) VALUES(?,?,?,?,?,?)').run(id, name, birthYear, null, deviceKey, now());
     user = db.prepare('SELECT * FROM users WHERE id=?').get(result.lastInsertRowid);
   }
-  user = db.prepare('SELECT * FROM users WHERE id=?').get(user.id || db.prepare('SELECT id FROM users WHERE wethaq_id=?').get(base)?.id);
+  user = db.prepare('SELECT * FROM users WHERE id=?').get(user.id);
   return res.status(201).json({ user: publicUser(user), token: tokenFor(user) });
+});
+
+app.post('/api/identity/sync', (req, res) => {
+  if (!rateLimit(`sync:${req.ip}`, 30, 900000)) return res.status(429).json({ error: 'rate_limited' });
+  const input = identityInput(req, res);
+  if (!input) return;
+  const { name, birthYear, deviceKey } = input;
+  const requestedId = String(req.body?.wethaqId || '').trim();
+  let user = requestedId ? db.prepare('SELECT * FROM users WHERE wethaq_id=?').get(requestedId) : null;
+  if (!user) user = db.prepare('SELECT * FROM users WHERE name=? AND birth_year=?').get(name, birthYear);
+  if (!user) {
+    const base = requestedId && /^[A-Za-z0-9_]{3,80}$/.test(requestedId) ? requestedId : makeWethaqId(name, birthYear);
+    const existing = db.prepare('SELECT id FROM users WHERE wethaq_id=?').get(base);
+    const id = existing ? makeWethaqId(name, birthYear) : base;
+    const result = db.prepare('INSERT INTO users(wethaq_id,name,birth_year,password_hash,device_key,last_seen) VALUES(?,?,?,?,?,?)').run(id, name, birthYear, null, deviceKey, now());
+    user = db.prepare('SELECT * FROM users WHERE id=?').get(result.lastInsertRowid);
+  } else {
+    db.prepare('UPDATE users SET name=?,birth_year=?,device_key=?,last_seen=? WHERE id=?').run(name, birthYear, deviceKey, now(), user.id);
+    user = db.prepare('SELECT * FROM users WHERE id=?').get(user.id);
+  }
+  return res.json({ user: publicUser(user), token: tokenFor(user) });
 });
 
 app.post('/api/login', (req, res) => {
   if (!rateLimit(`login:${req.ip}`, 20, 900000)) return res.status(429).json({ error: 'rate_limited' });
-  const name = safeName(req.body?.name);
-  const birthYear = Number(req.body?.birthYear);
-  const deviceKey = String(req.body?.deviceKey || '').trim();
-  const currentYear = new Date().getUTCFullYear();
-  if (!validText(name, MAX_NAME) || !Number.isInteger(birthYear) || birthYear < 1900 || birthYear > currentYear) return res.status(400).json({ error: 'invalid_identity' });
+  const input = identityInput(req, res);
+  if (!input) return;
+  const { name, birthYear, deviceKey } = input;
   let user = db.prepare('SELECT * FROM users WHERE name=? AND birth_year=?').get(name, birthYear);
   if (!user) return res.status(404).json({ error: 'user_not_found' });
-  if (user.device_key && deviceKey.length >= 24 && user.device_key !== deviceKey) return res.status(409).json({ error: 'identity_not_on_device' });
-  if (!user.device_key && deviceKey.length >= 24) db.prepare('UPDATE users SET device_key=? WHERE id=?').run(deviceKey, user.id);
-  markSeen(user.id);
+  // Login is intentionally based on the Wethaq identity, not a single physical phone.
+  // A user can therefore sign in on another phone with the same name and birth year.
+  db.prepare('UPDATE users SET device_key=?,last_seen=? WHERE id=?').run(deviceKey, now(), user.id);
   user = db.prepare('SELECT * FROM users WHERE id=?').get(user.id);
   return res.json({ user: publicUser(user), token: tokenFor(user) });
 });
@@ -205,7 +231,6 @@ app.get('/api/me', auth, (req, res) => {
   return res.json({ user: publicUser(user) });
 });
 
-// Public search is intentional: a fresh client must be able to find identities before a local token exists.
 app.get('/api/search', (req, res) => {
   const q = safeName(req.query.q);
   if (q.length < 2) return res.json({ users: [] });
@@ -237,7 +262,7 @@ app.get('/api/messages/:wethaqId', auth, (req, res) => {
 
 app.post('/api/messages', auth, (req, res) => {
   const to = String(req.body?.to || '').trim();
-  const body = safeMessage(req.body?.body);
+  const body = safeMessage(req.body?.body ?? req.body?.text);
   if (!to || !body || body.length > MAX_MESSAGE || /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(body)) return res.status(400).json({ error: 'invalid_message' });
   const receiver = db.prepare('SELECT id,wethaq_id,name FROM users WHERE wethaq_id=?').get(to);
   if (!receiver) return res.status(404).json({ error: 'user_not_found' });
