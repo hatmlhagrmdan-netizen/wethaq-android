@@ -16,14 +16,13 @@ jobs:
           cache: gradle
       - name: Install Gradle
         uses: gradle/actions/setup-gradle@v4
-      - name: Normalize Kotlin source
+      - name: Fix generated Kotlin syntax
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
           p = Path('app/src/main/java/com/wethaq/app/MainActivity.kt')
           s = p.read_text()
-          s = re.sub(r'string\(\)\?\s*:', 'string() ?:', s)
+          s = s.replace('dp(...)', 'dp(1)')
           p.write_text(s)
           PY
       - name: Build release APK
