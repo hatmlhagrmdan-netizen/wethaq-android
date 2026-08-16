@@ -3,6 +3,7 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -16,14 +17,6 @@ jobs:
           cache: gradle
       - name: Install Gradle
         uses: gradle/actions/setup-gradle@v4
-      - name: Fix generated Kotlin syntax
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('app/src/main/java/com/wethaq/app/MainActivity.kt')
-          s = p.read_text().replace('dp(...)', 'dp(1)')
-          p.write_text(s)
-          PY
       - name: Build release APK
         run: gradle clean assembleRelease --stacktrace --no-daemon --console=plain
       - name: Verify APK exists
