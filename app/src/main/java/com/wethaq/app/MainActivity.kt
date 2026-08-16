@@ -56,7 +56,15 @@ class MainActivity : AppCompatActivity() {
     private fun card() = android.graphics.drawable.GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = dp(16).toFloat(); setStroke(dp(1), line) }
     private fun txt(s: String, size: Float = 16f, color: Int = navy, bold: Boolean = false) = TextView(this).apply { text = s; textSize = size; setTextColor(color); gravity = Gravity.CENTER_VERTICAL; if (bold) typeface = android.graphics.Typeface.DEFAULT_BOLD; layoutDirection = View.LAYOUT_DIRECTION_RTL }
     private fun center(s: String, size: Float = 16f, color: Int = navy, bold: Boolean = false) = txt(s,size,color,bold).apply { gravity = Gravity.CENTER }
-    private fun button(s: String, action: () -> Unit, color: Int = teal) = TextView(this).apply { text=s; textSize=15f; setTextColor(Color.WHITE); gravity=Gravity.CENTER; typeface=android.graphics.Typeface.DEFAULT_BOLD; background=android.graphics.drawable.GradientDrawable().apply { setColor(color); cornerRadius=dp(15).toFloat() }; setPadding(dp(10),dp(8),dp(10),dp(8)); setOnClickListener { action() } }
+    private fun button(s: String, vararg args: Any): TextView {
+        val action = args.filterIsInstance<Function0<*>>().firstOrNull()?.let { fn -> { fn.invoke() } } ?: {}
+        val color = args.filterIsInstance<Int>().firstOrNull() ?: teal
+        return TextView(this).apply {
+            text=s; textSize=15f; setTextColor(Color.WHITE); gravity=Gravity.CENTER; typeface=android.graphics.Typeface.DEFAULT_BOLD
+            background=android.graphics.drawable.GradientDrawable().apply { setColor(color); cornerRadius=dp(15).toFloat() }
+            setPadding(dp(10),dp(8),dp(10),dp(8)); setOnClickListener { action() }
+        }
+    }
     private fun outline(s: String, action: () -> Unit) = TextView(this).apply { text=s; textSize=14f; setTextColor(navy); gravity=Gravity.CENTER; typeface=android.graphics.Typeface.DEFAULT_BOLD; background=card(); setOnClickListener { action() } }
     private fun field(hint: String, numeric: Boolean=false) = EditText(this).apply { this.hint=hint; textSize=16f; setTextColor(navy); setHintTextColor(gray); setSingleLine(true); inputType=if(numeric) InputType.TYPE_CLASS_NUMBER else InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES; background=card(); setPadding(dp(14),0,dp(14),0); layoutDirection=View.LAYOUT_DIRECTION_RTL }
     private fun add(p: LinearLayout, v: View, h: Int=-2, w: Float=0f, m: Int=0) { val lp=LinearLayout.LayoutParams(-1, if(h<0) -2 else dp(h), w); if(m>0) lp.setMargins(dp(m),dp(m),dp(m),dp(m)); p.addView(v,lp) }
