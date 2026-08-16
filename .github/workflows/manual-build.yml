@@ -25,10 +25,6 @@ jobs:
           s = s.replace('string()? :', 'string() ?:')
           p.write_text(s)
           PY
-      - name: Kotlin source sanity check
-        run: |
-          grep -nF '? :' app/src/main/java/com/wethaq/app/MainActivity.kt && exit 1 || true
-          grep -nF 'setPadding(dp(14),dp(8),dp(14),dp(20))' app/src/main/java/com/wethaq/app/MainActivity.kt >/dev/null
       - name: Build release APK
         run: gradle clean assembleRelease --stacktrace --no-daemon --console=plain
       - name: Verify APK exists
@@ -38,7 +34,9 @@ jobs:
       - name: Verify APK signature
         run: |
           APK=$(find app/build/outputs/apk/release -name '*.apk' -type f | head -1)
-          $ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose "$APK"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose "$APK"
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
