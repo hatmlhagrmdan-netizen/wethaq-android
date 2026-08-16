@@ -11,8 +11,8 @@ android {
         applicationId = "com.wethaq.app"
         minSdk = 23
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.5.0"
+        versionCode = 6
+        versionName = "1.5.1"
     }
 
     val keystorePath = System.getenv("WETHAQ_KEYSTORE")
@@ -52,4 +52,5 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
