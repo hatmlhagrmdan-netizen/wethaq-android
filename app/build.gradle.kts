@@ -11,8 +11,8 @@ android {
         applicationId = "com.wethaq.app"
         minSdk = 23
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.4.0"
+        versionCode = 5
+        versionName = "1.5.0"
     }
 
     val keystorePath = System.getenv("WETHAQ_KEYSTORE")
