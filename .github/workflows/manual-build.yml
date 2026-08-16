@@ -16,24 +16,16 @@ jobs:
           cache: gradle
       - name: Install Gradle
         uses: gradle/actions/setup-gradle@v4
-      - name: Normalize Kotlin source
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('app/src/main/java/com/wethaq/app/MainActivity.kt')
-          s = p.read_text()
-          s = s.replace('string()? :', 'string() ?:')
-          p.write_text(s)
-          PY
       - name: Build release APK
         run: gradle clean assembleRelease --stacktrace --no-daemon --console=plain
       - name: Verify APK exists
         run: |
-          test -s app/build/outputs/apk/release/*.apk
-          ls -lh app/build/outputs/apk/release/*.apk
+          APK=$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)
+          test -n "$APK" && test -s "$APK"
+          ls -lh "$APK"
       - name: Verify APK signature
         run: |
-          APK=$(find app/build/outputs/apk/release -name '*.apk' -type f | head -1)
+          APK=$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
           test -x "$APKSIGNER"
           "$APKSIGNER" verify --verbose "$APK"
