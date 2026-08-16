@@ -2,15 +2,21 @@ services:
   - type: web
     name: wethaq-backend
     runtime: node
-    plan: free
+    plan: starter
     rootDir: backend
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /health
     envVars:
+      - key: NODE_ENV
+        value: production
       - key: NODE_VERSION
         value: 22
       - key: JWT_SECRET
         generateValue: true
       - key: DB_PATH
-        value: ./wethaq.db
+        value: /var/data/wethaq.db
+    disk:
+      name: wethaq-data
+      mountPath: /var/data
+      sizeGB: 1
