@@ -81,15 +81,19 @@ class LauncherActivity : AppCompatActivity() {
         brand.addView(title, LinearLayout.LayoutParams(-1, dp(64)))
 
         brand.addView(text("WETHAQ", 15f, accent, true), LinearLayout.LayoutParams(-1, dp(34)))
-        brand.addView(text("منصة هوية وتواصل رقمية", 16f, soft, false), LinearLayout.LayoutParams(-1, dp(38)))
+        brand.addView(text("منصة هوية وتواصل رقمية", 16f, soft), LinearLayout.LayoutParams(-1, dp(38)))
 
         val line = View(this).apply { setBackgroundColor(Color.rgb(42, 89, 98)) }
-        val lineParams = LinearLayout.LayoutParams(dp(110), dp(1)).apply { topMargin = dp(10); bottomMargin = dp(10); gravity = Gravity.CENTER }
+        val lineParams = LinearLayout.LayoutParams(dp(110), dp(1)).apply {
+            topMargin = dp(10)
+            bottomMargin = dp(10)
+            gravity = Gravity.CENTER
+        }
         brand.addView(line, lineParams)
 
         brand.addView(text("صاحب المشروع", 13f, Color.rgb(137, 176, 183), true), LinearLayout.LayoutParams(-1, dp(28)))
         brand.addView(text("حاتم حسين الحاج رمضان", 21f, white, true), LinearLayout.LayoutParams(-1, dp(40)))
-        brand.addView(text("هوية رقمية • تواصل • ثقة", 13f, soft, false), LinearLayout.LayoutParams(-1, dp(32)))
+        brand.addView(text("هوية رقمية • تواصل • ثقة", 13f, soft), LinearLayout.LayoutParams(-1, dp(32)))
 
         val enter = Button(this).apply {
             text = "الدخول إلى وَثاق"
@@ -103,7 +107,7 @@ class LauncherActivity : AppCompatActivity() {
         brand.addView(enter, enterParams)
 
         root.addView(brand, LinearLayout.LayoutParams(-1, LinearLayout.LayoutParams.WRAP_CONTENT))
-        root.addView(text("WETHAQ • إصدار Android", 12f, Color.rgb(115, 151, 158), false), LinearLayout.LayoutParams(-1, dp(38)))
+        root.addView(text("WETHAQ • إصدار Android", 12f, Color.rgb(115, 151, 158)), LinearLayout.LayoutParams(-1, dp(38)))
         setContentView(root)
     }
 
