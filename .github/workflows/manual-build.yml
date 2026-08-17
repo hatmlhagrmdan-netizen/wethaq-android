@@ -4,7 +4,7 @@ on:
     branches: [main]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,13 +18,40 @@ jobs:
           cache: gradle
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+      - name: Repair Kotlin source
+        run: |
+          set -e
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/wethaq/app/MainActivity.kt')
+          s = p.read_text(encoding='utf-8')
+          replacements = {
+              'button("تسجيل الدخول") { identityForm(false) }': 'button("تسجيل الدخول", { identityForm(false) })',
+              'button("بحث عن مستخدم") { search(q.text.toString()) }': 'button("بحث عن مستخدم", { search(q.text.toString()) })',
+              'button("إرسال") {\n            val body = input.text.toString().trim()\n            if (body.isNotBlank()) { input.setText(""); bubble(messages, body, "جاري الإرسال"); send(uid, body, messages) }\n        }': 'button("إرسال", {\n            val body = input.text.toString().trim()\n            if (body.isNotBlank()) { input.setText(""); bubble(messages, body, "جاري الإرسال"); send(uid, body, messages) }\n        })'
+          }
+          for old, new in replacements.items():
+              s = s.replace(old, new)
+          p.write_text(s, encoding='utf-8')
+          PY
+          git diff --check
       - name: Validate source
         run: |
           set -e
           test -f app/src/main/java/com/wethaq/app/MainActivity.kt
           test -f app/src/main/java/com/wethaq/app/LauncherActivity.kt
           test -f app/src/main/AndroidManifest.xml
+          grep -F 'button("تسجيل الدخول", { identityForm(false) })' app/src/main/java/com/wethaq/app/MainActivity.kt
+          grep -F 'button("بحث عن مستخدم", { search(q.text.toString()) })' app/src/main/java/com/wethaq/app/MainActivity.kt
           git diff --check
+      - name: Commit source repair
+        run: |
+          set -e
+          git config user.name "Wethaq Build Bot"
+          git config user.email "actions@github.com"
+          git add app/src/main/java/com/wethaq/app/MainActivity.kt
+          git diff --cached --quiet || git commit -m "Fix Kotlin button invocations"
+          git push
       - name: Build release
         run: gradle clean assembleRelease --stacktrace --no-daemon --console=plain
       - name: Locate APK
