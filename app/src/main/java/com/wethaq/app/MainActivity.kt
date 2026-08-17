@@ -116,7 +116,7 @@ class MainActivity : AppCompatActivity() {
         add(c, label("وَثاق", 42f, ink, true), 62, 4)
         add(c, label("WETHAQ  •  هوية وتواصل مستقل", 14f, tealDark, true), 38, 2)
         add(c, label("هوية رقمية عربية بسيطة، آمنة، وقابلة للاستخدام حتى عند انقطاع الإنترنت.", 16f, muted), 70, 14)
-        add(c, button("تسجيل الدخول") { identityForm(false) }, 56, 8)
+        add(c, button("تسجيل الدخول", { identityForm(false) }), 56, 8)
         add(c, button("إنشاء هوية جديدة", { identityForm(true) }, tealDark), 56, 8)
         fill(r, c)
         add(r, label("وَثاق  •  Wethaq", 13f, muted, true), 40, 0)
@@ -166,7 +166,7 @@ class MainActivity : AppCompatActivity() {
         add(c, label("مرحبًا، $myName", 20f, ink, true), 46, 2)
         val q = field("ابحث بالاسم أو المعرف")
         add(c, q, 54, 5)
-        add(c, button("بحث عن مستخدم") { search(q.text.toString()) }, 52, 5)
+        add(c, button("بحث عن مستخدم", { search(q.text.toString()) }), 52, 5)
         add(c, button("جهات الاتصال", { contacts() }, tealDark), 52, 5)
         add(c, button("ملفي والمعرف", { profile() }, Color.rgb(67, 85, 94)), 52, 5)
         add(c, button("إرسال الرسائل المحفوظة", { flushPending() }, Color.rgb(86, 105, 113)), 48, 5)
@@ -255,10 +255,10 @@ class MainActivity : AppCompatActivity() {
         fill(c, messages)
         val input = field("اكتب رسالتك")
         add(c, input, 54, 4)
-        add(c, button("إرسال") {
+        add(c, button("إرسال", {
             val body = input.text.toString().trim()
             if (body.isNotBlank()) { input.setText(""); bubble(messages, body, "جاري الإرسال"); send(uid, body, messages) }
-        }, 52, 4)
+        }), 52, 4)
         add(c, button("رجوع", { contacts() }, Color.DKGRAY), 46, 3)
         fill(r, c)
         setContentView(r)
