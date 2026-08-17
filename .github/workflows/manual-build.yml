@@ -4,6 +4,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   BUILD_REVISION: "wethaq-release-2026-08-17"
 
@@ -12,63 +15,82 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up JDK
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
+
       - name: Install Gradle
         uses: gradle/actions/setup-gradle@v4
-      - name: Validate Kotlin source
+
+      - name: Validate repository source
+        shell: bash
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('app/src/main/java/com/wethaq/app/MainActivity.kt')
-          s = p.read_text()
-          signature = '    private fun button(s: String, action: () -> Unit, color: Int = teal) = Button(this).apply {'
-          overload = '    private fun button(s: String, action: () -> Unit) = button(s, action, teal)\n\n'
-          if signature not in s:
-              raise SystemExit('button signature not found')
-          if overload.strip() not in s:
-              s = s.replace(signature, overload + signature, 1)
-          s = s.replace('add(c, button(if (register) "إنشاء الهوية" else "دخول") {', 'add(c, button(if (register) "إنشاء الهوية" else "دخول", {', 1)
-          s = s.replace('android.graphics...', 'android.graphics.drawable.GradientDrawable')
-          s = s.replace('json?.toString()? : "{}"', 'json?.toString() ?: "{}"')
-          s = s.replace('json?.toString() ? : "{}"', 'json?.toString() ?: "{}"')
-          s = s.replace('res.body?.string()? : "{}"', 'res.body?.string() ?: "{}"')
-          s = s.replace('res.body?.string() ? : "{}"', 'res.body?.string() ?: "{}"')
-          p.write_text(s)
-          print('Kotlin source validation/patch complete')
-          PY
-          grep -n "private fun button" app/src/main/java/com/wethaq/app/MainActivity.kt
+          set -euo pipefail
+          test -f app/src/main/java/com/wethaq/app/MainActivity.kt
+          test -f app/src/main/java/com/wethaq/app/LauncherActivity.kt
+          test -f app/src/main/AndroidManifest.xml
+          if grep -nE 'button\([^\n]*\) \{' app/src/main/java/com/wethaq/app/MainActivity.kt | grep -q '},[[:space:]]*[a-zA-Z_]'; then
+            echo 'Invalid button trailing-lambda call detected in MainActivity.kt'
+            exit 1
+          fi
+          git diff --check
+          echo 'Repository source validation passed.'
+
       - name: Build release APK
         run: gradle clean assembleRelease --stacktrace --no-daemon --console=plain
+
       - name: Verify APK exists
+        shell: bash
         run: |
-          APK=$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)
-          test -n "$APK" && test -s "$APK"
-          echo "APK=$APK"
+          set -euo pipefail
+          APK=$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' ! -name 'Wethaq-release.apk' -print -quit)
+          test -n "$APK"
+          test -s "$APK"
+          echo "SOURCE_APK=$APK"
           ls -lh "$APK"
-      - name: Sign and verify APK
+
+      - name: Sign and verify final APK
+        shell: bash
         run: |
-          APK=$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)
+          set -euo pipefail
+          SOURCE_APK=$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' ! -name 'Wethaq-release.apk' -print -quit)
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
           test -x "$APKSIGNER"
-          if "$APKSIGNER" verify --verbose "$APK"; then
-            FINAL="$APK"
+          FINAL="app/build/outputs/apk/release/Wethaq-release.apk"
+          rm -f "$FINAL"
+          if "$APKSIGNER" verify "$SOURCE_APK" >/dev/null 2>&1; then
+            cp "$SOURCE_APK" "$FINAL"
           else
-            keytool -genkeypair -v -keystore /tmp/wethaq-release.jks -storepass changeit -keypass changeit -alias wethaq -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Wethaq, OU=Release, O=Wethaq, C=US"
-            FINAL="app/build/outputs/apk/release/Wethaq-release.apk"
-            "$APKSIGNER" sign --ks /tmp/wethaq-release.jks --ks-pass pass:changeit --key-pass pass:changeit --ks-key-alias wethaq --out "$FINAL" "$APK"
+            keytool -genkeypair -v \
+              -keystore /tmp/wethaq-release.jks \
+              -storepass changeit \
+              -keypass changeit \
+              -alias wethaq \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Wethaq, OU=Release, O=Wethaq, C=US"
+            "$APKSIGNER" sign \
+              --ks /tmp/wethaq-release.jks \
+              --ks-pass pass:changeit \
+              --key-pass pass:changeit \
+              --ks-key-alias wethaq \
+              --out "$FINAL" \
+              "$SOURCE_APK"
           fi
           "$APKSIGNER" verify --verbose "$FINAL"
           test -s "$FINAL"
-          echo "FINAL_APK=$FINAL"
           sha256sum "$FINAL"
-      - name: Upload APK
+          echo "FINAL_APK=$FINAL"
+
+      - name: Upload final APK only
         uses: actions/upload-artifact@v4
         with:
           name: Wethaq-release
-          path: app/build/outputs/apk/release/*.apk
+          path: app/build/outputs/apk/release/Wethaq-release.apk
           if-no-files-found: error
+          retention-days: 90
