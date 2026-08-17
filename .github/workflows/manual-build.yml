@@ -4,6 +4,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  BUILD_REVISION: "wethaq-release-2026-08-17"
+
 jobs:
   build:
     runs-on: ubuntu-latest
