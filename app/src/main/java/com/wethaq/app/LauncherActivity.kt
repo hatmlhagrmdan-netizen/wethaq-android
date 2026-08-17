@@ -11,7 +11,6 @@ import android.view.Gravity
 import android.view.View
 import android.view.Window
 import android.widget.Button
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -67,11 +66,10 @@ class LauncherActivity : AppCompatActivity() {
             background = rounded(panel, 28)
         }
 
-        val icon = ImageView(this).apply {
-            setImageResource(R.drawable.ic_wethaq)
-            contentDescription = "وَثاق"
-            setPadding(dp(20), dp(20), dp(20), dp(20))
+        val icon = text("و", 54f, accent, true).apply {
             background = rounded(Color.rgb(21, 67, 78), 60)
+            setPadding(dp(18), dp(8), dp(18), dp(8))
+            contentDescription = "وَثاق"
         }
         brand.addView(icon, LinearLayout.LayoutParams(dp(108), dp(108)))
 
