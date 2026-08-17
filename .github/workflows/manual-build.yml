@@ -29,6 +29,41 @@ jobs:
               raise SystemExit('button signature not found')
           if overload.strip() not in s:
               s = s.replace(signature, overload + signature, 1)
+          old = '''        add(c, button(if (register) "إنشاء الهوية" else "دخول") {
+            val entered = n.text.toString().trim().replace(Regex("\\\\s+"), " ")
+            val year = y.text.toString().toIntOrNull()
+            val words = entered.split(" ").filter { it.isNotBlank() }
+            if (words.size < 3 || year == null || year !in 1900..java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)) {
+                toast("تحقق من الاسم الثلاثي وسنة الميلاد")
+                return@button
+            }
+            val path = if (register) "/api/identity" else "/api/login"
+            val data = JSONObject().put("name", entered).put("birthYear", year).put("deviceKey", deviceKey())
+            request("POST", path, data, false) { ok, body ->
+                runOnUiThread {
+                    if (ok && saveIdentity(body)) home() else toast(serverError(body, if (register) "تعذر إنشاء الهوية" else "تعذر تسجيل الدخول"))
+                }
+            }
+        }, teal), 56, 10)'''
+          new = '''        add(c, button(if (register) "إنشاء الهوية" else "دخول", {
+            val entered = n.text.toString().trim().replace(Regex("\\\\s+"), " ")
+            val year = y.text.toString().toIntOrNull()
+            val words = entered.split(" ").filter { it.isNotBlank() }
+            if (words.size < 3 || year == null || year !in 1900..java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)) {
+                toast("تحقق من الاسم الثلاثي وسنة الميلاد")
+                return@button
+            }
+            val path = if (register) "/api/identity" else "/api/login"
+            val data = JSONObject().put("name", entered).put("birthYear", year).put("deviceKey", deviceKey())
+            request("POST", path, data, false) { ok, body ->
+                runOnUiThread {
+                    if (ok && saveIdentity(body)) home() else toast(serverError(body, if (register) "تعذر إنشاء الهوية" else "تعذر تسجيل الدخول"))
+                }
+            }
+        }, teal), 56, 10)'''
+          if old not in s:
+              raise SystemExit('invalid login button block not found')
+          s = s.replace(old, new, 1)
           s = s.replace('android.graphics...', 'android.graphics.drawable.GradientDrawable')
           s = s.replace('json?.toString()? : "{}"', 'json?.toString() ?: "{}"')
           s = s.replace('json?.toString() ? : "{}"', 'json?.toString() ?: "{}"')
@@ -38,7 +73,6 @@ jobs:
           print('Kotlin source validation/patch complete')
           PY
           grep -n "private fun button" app/src/main/java/com/wethaq/app/MainActivity.kt
-          grep -n "android.graphics\.\.\." app/src/main/java/com/wethaq/app/MainActivity.kt && exit 1 || true
       - name: Build release APK
         run: gradle clean assembleRelease --stacktrace --no-daemon --console=plain
       - name: Verify APK exists
