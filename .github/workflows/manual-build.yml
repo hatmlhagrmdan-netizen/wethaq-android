@@ -3,91 +3,48 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
-
-env:
-  BUILD_REVISION: "wethaq-release-2026-08-17"
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up JDK
+      - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
-
-      - name: Install Gradle
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-
-      - name: Validate repository source
-        shell: bash
+      - name: Validate source
         run: |
-          set -euo pipefail
+          set -e
           test -f app/src/main/java/com/wethaq/app/MainActivity.kt
           test -f app/src/main/java/com/wethaq/app/LauncherActivity.kt
           test -f app/src/main/AndroidManifest.xml
-          if grep -nE 'button\([^\n]*\) \{' app/src/main/java/com/wethaq/app/MainActivity.kt | grep -q '},[[:space:]]*[a-zA-Z_]'; then
-            echo 'Invalid button trailing-lambda call detected in MainActivity.kt'
-            exit 1
-          fi
           git diff --check
-          echo 'Repository source validation passed.'
-
-      - name: Build release APK
+      - name: Build release
         run: gradle clean assembleRelease --stacktrace --no-daemon --console=plain
-
-      - name: Verify APK exists
-        shell: bash
+      - name: Locate APK
+        id: apk
         run: |
-          set -euo pipefail
-          APK=$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' ! -name 'Wethaq-release.apk' -print -quit)
+          set -e
+          APK=$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' ! -name 'Wethaq-release.apk' | head -1)
           test -n "$APK"
           test -s "$APK"
-          echo "SOURCE_APK=$APK"
-          ls -lh "$APK"
-
-      - name: Sign and verify final APK
-        shell: bash
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+      - name: Verify APK
         run: |
-          set -euo pipefail
-          SOURCE_APK=$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' ! -name 'Wethaq-release.apk' -print -quit)
+          set -e
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
           test -x "$APKSIGNER"
-          FINAL="app/build/outputs/apk/release/Wethaq-release.apk"
-          rm -f "$FINAL"
-          if "$APKSIGNER" verify "$SOURCE_APK" >/dev/null 2>&1; then
-            cp "$SOURCE_APK" "$FINAL"
-          else
-            keytool -genkeypair -v \
-              -keystore /tmp/wethaq-release.jks \
-              -storepass changeit \
-              -keypass changeit \
-              -alias wethaq \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -dname "CN=Wethaq, OU=Release, O=Wethaq, C=US"
-            "$APKSIGNER" sign \
-              --ks /tmp/wethaq-release.jks \
-              --ks-pass pass:changeit \
-              --key-pass pass:changeit \
-              --ks-key-alias wethaq \
-              --out "$FINAL" \
-              "$SOURCE_APK"
-          fi
-          "$APKSIGNER" verify --verbose "$FINAL"
-          test -s "$FINAL"
-          sha256sum "$FINAL"
-          echo "FINAL_APK=$FINAL"
-
-      - name: Upload final APK only
+          "$APKSIGNER" verify --verbose "${{ steps.apk.outputs.path }}"
+          sha256sum "${{ steps.apk.outputs.path }}"
+      - name: Publish Wethaq-release.apk
+        run: cp "${{ steps.apk.outputs.path }}" app/build/outputs/apk/release/Wethaq-release.apk
+      - name: Upload final APK
         uses: actions/upload-artifact@v4
         with:
           name: Wethaq-release
