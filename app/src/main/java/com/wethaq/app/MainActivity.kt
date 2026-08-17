@@ -135,7 +135,7 @@ class MainActivity : AppCompatActivity() {
         add(c, n, 56, 6)
         add(c, y, 56, 6)
         add(c, label("سيُنشأ المعرف تلقائيًا من الاسم وسنة الميلاد.", 13f, muted), 42, 4)
-        add(c, button(if (register) "إنشاء الهوية" else "دخول") {
+        add(c, button(if (register) "إنشاء الهوية" else "دخول", {
             val entered = n.text.toString().trim().replace(Regex("\\s+"), " ")
             val year = y.text.toString().toIntOrNull()
             val words = entered.split(" ").filter { it.isNotBlank() }
