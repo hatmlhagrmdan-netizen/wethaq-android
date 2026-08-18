@@ -62,19 +62,23 @@ jobs:
           test -n "$APK"
           test -s "$APK"
           echo "path=$APK" >> "$GITHUB_OUTPUT"
+          echo "size=$(stat -c%s "$APK")" >> "$GITHUB_OUTPUT"
       - name: Verify APK
         run: |
           set -e
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
           test -x "$APKSIGNER"
           "$APKSIGNER" verify --verbose "${{ steps.apk.outputs.path }}"
-          sha256sum "${{ steps.apk.outputs.path }}"
+          sha256sum "${{ steps.apk.outputs.path }}" | tee app/build/outputs/apk/release/SHA256SUMS.txt
+          test "${{ steps.apk.outputs.size }}" -gt 100000
       - name: Publish Wethaq-release.apk
         run: cp "${{ steps.apk.outputs.path }}" app/build/outputs/apk/release/Wethaq-release.apk
       - name: Upload final APK
         uses: actions/upload-artifact@v4
         with:
           name: Wethaq-release
-          path: app/build/outputs/apk/release/Wethaq-release.apk
+          path: |
+            app/build/outputs/apk/release/Wethaq-release.apk
+            app/build/outputs/apk/release/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 90
