@@ -42,6 +42,11 @@ class MainActivity : AppCompatActivity() {
         if (myName.isBlank() || myId.isBlank() || token.isBlank()) welcome() else home()
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (myName.isNotBlank() && myId.isNotBlank() && token.isNotBlank()) flushPending(false)
+    }
+
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     private fun root() = LinearLayout(this).apply {
@@ -150,7 +155,7 @@ class MainActivity : AppCompatActivity() {
                     if (ok && saveIdentity(body)) home() else toast(serverError(body, if (register) "تعذر إنشاء الهوية" else "تعذر تسجيل الدخول"))
                 }
             }
-        }, teal), 56, 10)
+        }), 56, 10)
         add(c, button("رجوع", { welcome() }, Color.rgb(65, 78, 84)), 50, 4)
         fill(r, c)
         setContentView(r)
@@ -187,7 +192,6 @@ class MainActivity : AppCompatActivity() {
             cm.setPrimaryClip(ClipData.newPlainText("Wethaq ID", myId))
             toast("تم نسخ المعرف")
         }), 52, 8)
-        add(c, button("تغيير الصورة الشخصية", { startActivity(Intent(this, AvatarActivity::class.java)) }, tealDark), 52, 6)
         add(c, button("رجوع", { home() }, Color.DKGRAY), 50, 6)
         fill(r, c)
         setContentView(r)
@@ -313,22 +317,35 @@ class MainActivity : AppCompatActivity() {
         if (!network() || token.isBlank()) { toast("لا يوجد اتصال بالخادم الآن"); return }
         val old = JSONArray(prefs.getString("pending", "[]") ?: "[]")
         if (old.length() == 0) { toast("لا توجد رسائل معلقة"); return }
-        val remaining = JSONArray()
-        var sent = 0
-        for (i in 0 until old.length()) {
-            val m = old.optJSONObject(i) ?: continue
-            val to = m.optString("to")
-            val body = m.optString("body")
-            if (to.isBlank() || body.isBlank()) continue
-            request("POST", "/api/messages", JSONObject().put("to", to).put("body", body), true) { ok, _ ->
-                synchronized(remaining) {
-                    if (ok) sent++ else remaining.put(m)
-                    if (i == old.length() - 1) runOnUiThread {
-                        prefs.edit().putString("pending", remaining.toString()).apply()
-                        toast("تم إرسال $sent رسالة معلقة")
-                    }
-                }
+        Thread {
+            val remaining = JSONArray()
+            var sent = 0
+            for (i in 0 until old.length()) {
+                val m = old.optJSONObject(i) ?: continue
+                val to = m.optString("to")
+                val body = m.optString("body")
+                if (to.isBlank() || body.isBlank()) continue
+                val result = postMessageBlocking(to, body)
+                if (result.first) sent++ else remaining.put(m)
             }
+            prefs.edit().putString("pending", remaining.toString()).apply()
+            runOnUiThread { toast("تم إرسال $sent رسالة معلقة") }
+        }.start()
+    }
+
+    private fun postMessageBlocking(to: String, body: String): Pair<Boolean, JSONObject> {
+        return try {
+            val req = Request.Builder().url(baseUrl + "/api/messages")
+                .header("Accept", "application/json")
+                .header("Authorization", "Bearer $token")
+                .post(JSONObject().put("to", to).put("body", body).toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                .build()
+            client.newCall(req).execute().use { res ->
+                val raw = res.body?.string() ?: "{}"
+                Pair(res.isSuccessful, try { JSONObject(raw) } catch (_: Exception) { JSONObject() })
+            }
+        } catch (e: Exception) {
+            Pair(false, JSONObject().put("error", "network"))
         }
     }
 
