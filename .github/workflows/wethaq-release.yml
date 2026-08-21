@@ -17,6 +17,11 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      WETHAQ_STORE_PASSWORD: wethaq-ci-store-2026
+      WETHAQ_KEY_ALIAS: wethaq-release
+      WETHAQ_KEY_PASSWORD: wethaq-ci-key-2026
+      WETHAQ_KEYSTORE: ${{ github.workspace }}/wethaq-release.keystore
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -27,10 +32,23 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Gradle 8.7
+      - name: Setup Gradle 8.9
         uses: gradle/actions/setup-gradle@v5
         with:
-          gradle-version: '8.7'
+          gradle-version: '8.9'
+
+      - name: Create isolated release keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool -genkeypair -v \
+            -keystore "$WETHAQ_KEYSTORE" \
+            -storepass "$WETHAQ_STORE_PASSWORD" \
+            -keypass "$WETHAQ_KEY_PASSWORD" \
+            -alias "$WETHAQ_KEY_ALIAS" \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Wethaq Release, OU=Wethaq, O=Wethaq, L=Online, ST=NA, C=SY"
+          test -s "$WETHAQ_KEYSTORE"
 
       - name: Validate final project
         shell: bash
@@ -41,6 +59,7 @@ jobs:
           test -f finalapp/build.gradle.kts
           test -f finalapp/src/main/AndroidManifest.xml
           test -f finalapp/src/main/java/com/wethaq/finalapp/MainActivity.java
+          test -f finalapp/src/main/java/com/wethaq/finalapp/LauncherActivity.java
           grep -q 'include(":finalapp")' settings.gradle.kts
           grep -q 'applicationId = "com.wethaq.app"' finalapp/build.gradle.kts
           grep -q 'versionName = "2.0.0"' finalapp/build.gradle.kts
@@ -52,7 +71,7 @@ jobs:
           set -euo pipefail
           gradle :finalapp:clean :finalapp:assembleRelease --no-daemon --stacktrace --console=plain
 
-      - name: Locate APK
+      - name: Locate and inspect APK
         id: apk
         shell: bash
         run: |
@@ -61,15 +80,20 @@ jobs:
           test -f "$APK"
           test -s "$APK"
           echo "path=$APK" >> "$GITHUB_OUTPUT"
+          ls -lh "$APK"
 
-      - name: Verify APK
+      - name: Verify APK signature and package
         shell: bash
         run: |
           set -euo pipefail
+          APK="${{ steps.apk.outputs.path }}"
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
-          test -n "$APKSIGNER"
-          "$APKSIGNER" verify --verbose "${{ steps.apk.outputs.path }}"
-          sha256sum "${{ steps.apk.outputs.path }}" > finalapp/build/outputs/apk/release/SHA256SUMS.txt
+          AAPT2=$(find "$ANDROID_HOME/build-tools" -type f -name aapt2 | sort -V | tail -1)
+          test -x "$APKSIGNER"
+          test -x "$AAPT2"
+          "$APKSIGNER" verify --verbose "$APK"
+          "$AAPT2" dump badging "$APK" | grep -q "package: name='com.wethaq.app'"
+          sha256sum "$APK" | tee finalapp/build/outputs/apk/release/SHA256SUMS.txt
 
       - name: Prepare canonical release file
         shell: bash
