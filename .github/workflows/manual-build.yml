@@ -4,7 +4,7 @@ on:
     branches: [main]
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -15,55 +15,56 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
-      - name: Set up Gradle
+      - name: Install Gradle 8.7
         uses: gradle/actions/setup-gradle@v4
-      - name: Repair Kotlin source
+        with:
+          gradle-version: '8.7'
+      - name: Validate project
         run: |
           set -e
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('app/src/main/java/com/wethaq/app/MainActivity.kt')
-          s = p.read_text(encoding='utf-8')
-          replacements = {
-              'button("تسجيل الدخول") { identityForm(false) }': 'button("تسجيل الدخول", { identityForm(false) })',
-              'button("بحث عن مستخدم") { search(q.text.toString()) }': 'button("بحث عن مستخدم", { search(q.text.toString()) })',
-              'button("إرسال") {\n            val body = input.text.toString().trim()\n            if (body.isNotBlank()) { input.setText(""); bubble(messages, body, "جاري الإرسال"); send(uid, body, messages) }\n        }': 'button("إرسال", {\n            val body = input.text.toString().trim()\n            if (body.isNotBlank()) { input.setText(""); bubble(messages, body, "جاري الإرسال"); send(uid, body, messages) }\n        })'
-          }
-          for old, new in replacements.items():
-              s = s.replace(old, new)
-          p.write_text(s, encoding='utf-8')
-          PY
-          git diff --check
-      - name: Validate source
-        run: |
-          set -e
-          test -f app/src/main/java/com/wethaq/app/MainActivity.kt
-          test -f app/src/main/java/com/wethaq/app/LauncherActivity.kt
+          test -f settings.gradle.kts
+          test -f build.gradle.kts
+          test -f app/build.gradle.kts
           test -f app/src/main/AndroidManifest.xml
-          grep -F 'button("تسجيل الدخول", { identityForm(false) })' app/src/main/java/com/wethaq/app/MainActivity.kt
-          grep -F 'button("بحث عن مستخدم", { search(q.text.toString()) })' app/src/main/java/com/wethaq/app/MainActivity.kt
+          test -f app/src/main/java/com/wethaq/app/MainActivity.kt
+          grep -F 'applicationId = "com.wethaq.app"' app/build.gradle.kts
+          grep -F 'versionName = "1.8.0"' app/build.gradle.kts
           git diff --check
-      - name: Commit source repair
+      - name: Create temporary release signing key when repository signing secrets are unavailable
+        env:
+          STORE_PASSWORD: ${{ secrets.WETHAQ_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.WETHAQ_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.WETHAQ_KEY_ALIAS }}
         run: |
           set -e
-          git config user.name "Wethaq Build Bot"
-          git config user.email "actions@github.com"
-          git add app/src/main/java/com/wethaq/app/MainActivity.kt
-          git diff --cached --quiet || git commit -m "Fix Kotlin button invocations"
-          git push
-      - name: Build release
+          if [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_PASSWORD" ] && [ -n "$KEY_ALIAS" ]; then
+            echo "Using configured Wethaq release signing credentials"
+            exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/wethaq-signing"
+          keytool -genkeypair -v \
+            -keystore "$RUNNER_TEMP/wethaq-signing/wethaq-release.jks" \
+            -storepass "WethaqBuild2026!" \
+            -keypass "WethaqBuild2026!" \
+            -alias "wethaq" \
+            -keyalg RSA -keysize 4096 -validity 10000 \
+            -dname "CN=Wethaq, OU=Wethaq, O=Wethaq, L=Raqqa, ST=Syria, C=SY"
+          echo "WETHAQ_KEYSTORE=$RUNNER_TEMP/wethaq-signing/wethaq-release.jks" >> "$GITHUB_ENV"
+          echo "WETHAQ_STORE_PASSWORD=WethaqBuild2026!" >> "$GITHUB_ENV"
+          echo "WETHAQ_KEY_ALIAS=wethaq" >> "$GITHUB_ENV"
+          echo "WETHAQ_KEY_PASSWORD=WethaqBuild2026!" >> "$GITHUB_ENV"
+      - name: Build release APK
         run: gradle clean assembleRelease --stacktrace --no-daemon --console=plain
       - name: Locate APK
         id: apk
         run: |
           set -e
-          APK=$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' ! -name 'Wethaq-release.apk' | head -1)
+          APK=$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -1)
           test -n "$APK"
           test -s "$APK"
           echo "path=$APK" >> "$GITHUB_OUTPUT"
           echo "size=$(stat -c%s "$APK")" >> "$GITHUB_OUTPUT"
-      - name: Verify APK
+      - name: Verify and fingerprint APK
         run: |
           set -e
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
@@ -71,7 +72,7 @@ jobs:
           "$APKSIGNER" verify --verbose "${{ steps.apk.outputs.path }}"
           sha256sum "${{ steps.apk.outputs.path }}" | tee app/build/outputs/apk/release/SHA256SUMS.txt
           test "${{ steps.apk.outputs.size }}" -gt 100000
-      - name: Publish Wethaq-release.apk
+      - name: Publish canonical APK filename
         run: cp "${{ steps.apk.outputs.path }}" app/build/outputs/apk/release/Wethaq-release.apk
       - name: Upload final APK
         uses: actions/upload-artifact@v4
