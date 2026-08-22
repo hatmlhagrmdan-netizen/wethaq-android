@@ -83,3 +83,5 @@ jobs:
             app/build/outputs/apk/release/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 90
+
+# Build triggered from the known-good Wethaq baseline.
