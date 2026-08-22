@@ -168,7 +168,7 @@ function identityInput(req, res) {
 }
 
 app.get('/', (_req, res) => res.json({ service: 'wethaq', status: 'online', health: '/health' }));
-app.get('/health', (_req, res) => res.json({ ok: true, service: 'wethaq', version: '4.3.0', auth: 'name_birth_year', search: 'public', websocket: '/ws', time: now() }));
+app.get('/health', (_req, res) => res.json({ ok: true, service: 'wethaq', version: '4.4.0', auth: 'name_birth_year', search: 'public', websocket: '/ws', time: now() }));
 
 app.post('/api/identity', (req, res) => {
   if (!rateLimit(`identity:${req.ip}`, 20, 900000)) return res.status(429).json({ error: 'rate_limited' });
@@ -217,8 +217,6 @@ app.post('/api/login', (req, res) => {
   const { name, birthYear, deviceKey } = input;
   let user = db.prepare('SELECT * FROM users WHERE name=? AND birth_year=?').get(name, birthYear);
   if (!user) return res.status(404).json({ error: 'user_not_found' });
-  // Login is intentionally based on the Wethaq identity, not a single physical phone.
-  // A user can therefore sign in on another phone with the same name and birth year.
   db.prepare('UPDATE users SET device_key=?,last_seen=? WHERE id=?').run(deviceKey, now(), user.id);
   user = db.prepare('SELECT * FROM users WHERE id=?').get(user.id);
   return res.json({ user: publicUser(user), token: tokenFor(user) });
@@ -250,6 +248,12 @@ app.post('/api/contacts', auth, (req, res) => {
   if (contact.id === Number(req.user.sub)) return res.status(400).json({ error: 'cannot_add_self' });
   db.prepare('INSERT OR IGNORE INTO contacts(user_id,contact_id) VALUES(?,?)').run(req.user.sub, contact.id);
   return res.status(201).json({ contact: publicUser(contact) });
+});
+
+app.get('/api/messages/inbox', auth, (req, res) => {
+  const rows = db.prepare(`SELECT m.id,m.sender_id,m.receiver_id,m.body,m.status,m.created_at,u.name AS sender_name,u.wethaq_id AS sender_wethaq_id FROM messages m JOIN users u ON u.id=m.sender_id WHERE m.receiver_id=? ORDER BY m.id ASC LIMIT 200`).all(req.user.sub);
+  db.prepare(`UPDATE messages SET status='delivered' WHERE receiver_id=? AND status='sent'`).run(req.user.sub);
+  return res.json({ messages: rows });
 });
 
 app.get('/api/messages/:wethaqId', auth, (req, res) => {
