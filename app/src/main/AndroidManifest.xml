@@ -3,9 +3,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <application
         android:allowBackup="false"
-        android:label="حاتم حسين الحاج رمضان"
+        android:label="وَثاق"
         android:supportsRtl="true"
         android:theme="@style/WethaqTheme">
         <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="portrait">
