@@ -84,4 +84,4 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-# Build from the known-good Wethaq baseline.
+# Keep the release workflow unchanged in behavior.
