@@ -1,8 +1,8 @@
-name: Wethaq Minimal Java Release
+name: Wethaq Production Release
 
 on:
   push:
-    branches: [main]
+    branches: [main, production-final-2.0.2]
     paths:
       - 'app/**'
       - 'settings.gradle'
@@ -28,7 +28,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.9'
-      - name: Validate minimal project
+      - name: Validate Android project
         shell: bash
         run: |
           set -euo pipefail
@@ -38,46 +38,30 @@ jobs:
           test -f app/src/main/AndroidManifest.xml
           test -f app/src/main/java/com/wethaq/app/MainActivity.java
           test -f app/src/main/res/values/styles.xml
-          test ! -f settings.gradle.kts
-          test ! -f build.gradle.kts
-          test ! -f app/build.gradle.kts
-          ! find app -type f -name '*.kt' | grep -q .
           grep -q "include ':app'" settings.gradle
           grep -q "applicationId 'com.wethaq.app'" app/build.gradle
           grep -q "signingConfig signingConfigs.debug" app/build.gradle
+          grep -q "receiver_id" app/src/main/java/com/wethaq/app/MainActivity.java
+          grep -q "wethaq-backend-production.up.railway.app" app/src/main/java/com/wethaq/app/MainActivity.java
           git diff --check
       - name: Build signed release APK
         shell: bash
         run: gradle :app:clean :app:assembleRelease --no-daemon --stacktrace --console=plain
-      - name: Locate and inspect signed APK
-        id: apk
+      - name: Verify APK
         shell: bash
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/release/app-release.apk"
-          test -f "$APK"
           test -s "$APK"
-          echo "path=$APK" >> "$GITHUB_OUTPUT"
-          ls -lh "$APK"
-      - name: Verify APK archive
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK="${{ steps.apk.outputs.path }}"
           unzip -t "$APK" >/dev/null
-          sha256sum "$APK" | tee app/build/outputs/apk/release/SHA256SUMS.txt
-      - name: Verify APK signature
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK="${{ steps.apk.outputs.path }}"
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
           test -x "$APKSIGNER"
           "$APKSIGNER" verify --verbose "$APK"
-      - name: Upload signed release
+          sha256sum "$APK" | tee app/build/outputs/apk/release/SHA256SUMS.txt
+      - name: Upload final APK
         uses: actions/upload-artifact@v4
         with:
-          name: Wethaq-2.0.1-signed-release
+          name: Wethaq-2.0.2-final-release
           path: |
             app/build/outputs/apk/release/app-release.apk
             app/build/outputs/apk/release/SHA256SUMS.txt
