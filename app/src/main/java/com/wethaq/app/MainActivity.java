@@ -84,7 +84,35 @@ public final class MainActivity extends Activity {
 
     private void renderMessages(JSONArray a){if(messages==null)return;messages.removeAllViews();if(a==null||a.length()==0){messages.addView(tv("لا توجد رسائل. ابدأ المحادثة.",15,MUTED,Typeface.NORMAL));return;}String me=prefs.getString("numeric_id","");for(int i=0;i<a.length();i++){JSONObject m=a.optJSONObject(i);if(m==null)continue;boolean mine=String.valueOf(m.optInt("sender_id",-1)).equals(me);LinearLayout b=card();b.setBackgroundColor(mine?PANEL2:PANEL);b.addView(tv(m.optString("body"),16,WHITE,Typeface.NORMAL));b.addView(tv(m.optString("status")+" • "+m.optString("created_at"),11,MUTED,Typeface.NORMAL));messages.addView(b,lp(mine?60:0,5,mine?0:60,5));}}
 
-    private void sendMessage(){String body=messageInput.getText().toString().trim();if(body.length()==0)return;if(!isOnline()){setStatus("يجب الاتصال بالإنترنت لإرسال الرسائل.",true);return;}messageInput.setText("");io.execute(()->{try{JSONObject b=new JSONObject();b.put("to",activeId);b.put("body",body);HttpResult r=request("POST","/api/messages",b.toString(),auth());if(r.code>=200&&r.code<300)main.post(this::loadMessages);else main.post(()->setStatus(error(r),true));}catch(Exception e){main.post(()->setStatus("انقطع الاتصال أثناء الإرسال.",true));}});}
+    private void sendMessage(){
+        String body=messageInput.getText().toString().trim();
+        if(body.length()==0)return;
+        if(activeId==null||activeId.trim().length()==0){setStatus("لم يتم تحديد جهة الاتصال.",true);return;}
+        if(!isOnline()){setStatus("يجب الاتصال بالإنترنت لإرسال الرسائل.",true);return;}
+        final String text=body;
+        final String target=activeId;
+        final String token=auth();
+        setStatus("جاري الإرسال…",false);
+        io.execute(()->{
+            try{
+                JSONObject b=new JSONObject();
+                b.put("to",target);
+                b.put("body",text);
+                HttpResult r=request("POST","/api/messages",b.toString(),token);
+                if(r.code>=200&&r.code<300){
+                    main.post(()->{
+                        messageInput.setText("");
+                        setStatus("تم الإرسال ✓",false);
+                        loadMessages();
+                    });
+                }else{
+                    main.post(()->setStatus("تعذر إرسال الرسالة: "+error(r),true));
+                }
+            }catch(Exception e){
+                main.post(()->setStatus("فشل إرسال الرسالة: "+e.getMessage(),true));
+            }
+        });
+    }
 
     private void startPolling(){stopPolling();poller=()->{if(activeId!=null&&isOnline())loadMessages();if(activeId!=null)main.postDelayed(poller,5000);};main.postDelayed(poller,5000);}
     private void stopPolling(){if(poller!=null)main.removeCallbacks(poller);poller=null;}
