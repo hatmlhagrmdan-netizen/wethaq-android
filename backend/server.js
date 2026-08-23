@@ -13,296 +13,53 @@ const db = new Database(process.env.DB_PATH || 'wethaq.db');
 const PORT = Number(process.env.PORT || 3000);
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
 const MAX_MESSAGE = 4000;
+const MAX_AUDIO_BASE64 = 5 * 1024 * 1024;
 const MAX_NAME = 80;
 const MAX_DEVICE_KEY = 256;
 
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use(cors({ origin: (_origin, callback) => callback(null, true) }));
-app.use(express.json({ limit: '256kb' }));
+app.use(express.json({ limit: '7mb' }));
 
 const online = new Map();
 const attempts = new Map();
 const now = () => new Date().toISOString();
 const validText = (value, max) => typeof value === 'string' && value.trim().length > 0 && value.trim().length <= max;
-
-function rateLimit(key, limit, windowMs) {
-  const t = Date.now();
-  const old = attempts.get(key) || { count: 0, at: t };
-  if (t - old.at > windowMs) {
-    attempts.set(key, { count: 1, at: t });
-    return true;
-  }
-  old.count += 1;
-  attempts.set(key, old);
-  return old.count <= limit;
-}
-
-function ensureColumn(table, column, definition) {
-  const columns = db.prepare(`PRAGMA table_info(${table})`).all().map(x => x.name);
-  if (!columns.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
-}
-
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-db.exec(`
-CREATE TABLE IF NOT EXISTS users(
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  wethaq_id TEXT UNIQUE NOT NULL,
-  name TEXT NOT NULL,
-  birth_year INTEGER NOT NULL DEFAULT 0,
-  password_hash TEXT,
-  device_key TEXT,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  last_seen TEXT
-);
-CREATE TABLE IF NOT EXISTS contacts(
-  user_id INTEGER NOT NULL,
-  contact_id INTEGER NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY(user_id, contact_id),
-  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY(contact_id) REFERENCES users(id) ON DELETE CASCADE
-);
-CREATE TABLE IF NOT EXISTS messages(
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  sender_id INTEGER NOT NULL,
-  receiver_id INTEGER NOT NULL,
-  body TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'sent',
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY(sender_id) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY(receiver_id) REFERENCES users(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_messages_pair ON messages(sender_id, receiver_id, id);
-CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts(user_id, contact_id);
-CREATE INDEX IF NOT EXISTS idx_users_name ON users(name COLLATE NOCASE);
-CREATE INDEX IF NOT EXISTS idx_users_wethaq_id ON users(wethaq_id);
-`);
-ensureColumn('users', 'birth_year', 'INTEGER NOT NULL DEFAULT 0');
-ensureColumn('users', 'last_seen', 'TEXT');
-ensureColumn('users', 'device_key', 'TEXT');
-
-const AR = {
-  'حاتم':'Hatem','حسين':'Hussin','الحاج':'Al_Haj','رمضان':'Ramadan','عبد':'Abd','الله':'Allah',
-  'محمد':'Mohammad','أحمد':'Ahmad','علي':'Ali','خالد':'Khaled','سارة':'Sara','سما':'Sama','نور':'Nour',
-  'هدى':'Huda','أمان':'Aman','وسام':'Wisam','يامن':'Yamen','هشام':'Hisham','أيمن':'Ayman','حسام':'Hossam'
-};
-const MAP = {'ا':'a','أ':'a','إ':'i','آ':'a','ب':'b','ت':'t','ث':'th','ج':'j','ح':'h','خ':'kh','د':'d','ذ':'dh','ر':'r','ز':'z','س':'s','ش':'sh','ص':'s','ض':'d','ط':'t','ظ':'z','ع':'a','غ':'gh','ف':'f','ق':'q','ك':'k','ل':'l','م':'m','ن':'n','ه':'h','و':'w','ي':'y','ى':'a','ة':'h'};
-
-function transliterateWord(word) {
-  if (AR[word]) return AR[word];
-  let out = '';
-  for (const ch of word) out += MAP[ch] ?? (/[A-Za-z0-9]/.test(ch) ? ch : '');
-  return out ? out[0].toUpperCase() + out.slice(1) : '';
-}
-function makeBaseId(name, birthYear) {
-  const parts = name.replace(/ـ/g, '').trim().split(/[\s،,]+/).filter(Boolean).map(transliterateWord).filter(Boolean);
-  return `${parts.join('_')}${birthYear}`.replace(/[^A-Za-z0-9_]/g, '_');
-}
-function makeWethaqId(name, birthYear) {
-  const base = makeBaseId(name, birthYear) || `Wethaq_User${birthYear}`;
-  let id = base, n = 2;
-  while (db.prepare('SELECT 1 FROM users WHERE wethaq_id=?').get(id)) id = `${base}_${n++}`;
-  return id;
-}
-function isOnline(id) {
-  const set = online.get(Number(id));
-  return !!set && [...set].some(ws => ws.readyState === 1);
-}
-function publicUser(user) {
-  return {
-    id: user.id,
-    wethaq_id: user.wethaq_id,
-    name: user.name,
-    birth_year: user.birth_year || 0,
-    created_at: user.created_at,
-    last_seen: user.last_seen || null,
-    online: isOnline(user.id)
-  };
-}
-function tokenFor(user) {
-  return jwt.sign({ sub: user.id, wethaqId: user.wethaq_id }, JWT_SECRET, { expiresIn: '365d' });
-}
-function auth(req, res, next) {
-  const header = req.headers.authorization || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
-  if (!token) return res.status(401).json({ error: 'unauthorized' });
-  try {
-    req.user = jwt.verify(token, JWT_SECRET);
-    next();
-  } catch {
-    return res.status(401).json({ error: 'invalid_token' });
-  }
-}
-function safeName(value) {
-  return String(value || '').replace(/[<>\u0000-\u001f]/g, '').trim().replace(/\s+/g, ' ');
-}
-function safeMessage(value) {
-  return String(value || '').trim();
-}
-function markSeen(id) {
-  db.prepare('UPDATE users SET last_seen=? WHERE id=?').run(now(), id);
-}
-function broadcast(id, payload) {
-  const set = online.get(Number(id));
-  if (!set) return 0;
-  const raw = JSON.stringify(payload);
-  let sent = 0;
-  for (const ws of set) {
-    if (ws.readyState === 1) { ws.send(raw); sent += 1; }
-  }
-  return sent;
-}
-function identityInput(req, res) {
-  const name = safeName(req.body?.name);
-  const birthYear = Number(req.body?.birthYear);
-  const deviceKey = String(req.body?.deviceKey || '').trim();
-  const currentYear = new Date().getUTCFullYear();
-  const words = name.split(/\s+/).filter(Boolean).length;
-  if (!validText(name, MAX_NAME) || words < 3 || !Number.isInteger(birthYear) || birthYear < 1900 || birthYear > currentYear || deviceKey.length < 24 || deviceKey.length > MAX_DEVICE_KEY) {
-    res.status(400).json({ error: 'invalid_identity' });
-    return null;
-  }
-  return { name, birthYear, deviceKey };
-}
-
-app.get('/', (_req, res) => res.json({ service: 'wethaq', status: 'online', health: '/health' }));
-app.get('/health', (_req, res) => res.json({ ok: true, service: 'wethaq', version: '4.4.0', auth: 'name_birth_year', search: 'public', websocket: '/ws', time: now() }));
-
-app.post('/api/identity', (req, res) => {
-  if (!rateLimit(`identity:${req.ip}`, 20, 900000)) return res.status(429).json({ error: 'rate_limited' });
-  const input = identityInput(req, res);
-  if (!input) return;
-  const { name, birthYear, deviceKey } = input;
-  const base = makeBaseId(name, birthYear);
-  let user = db.prepare('SELECT * FROM users WHERE wethaq_id=?').get(base);
-  if (user) {
-    if (user.device_key && user.device_key !== deviceKey) return res.status(409).json({ error: 'identity_claimed' });
-    db.prepare('UPDATE users SET device_key=?,name=?,birth_year=?,last_seen=? WHERE id=?').run(deviceKey, name, birthYear, now(), user.id);
-  } else {
-    const id = makeWethaqId(name, birthYear);
-    const result = db.prepare('INSERT INTO users(wethaq_id,name,birth_year,password_hash,device_key,last_seen) VALUES(?,?,?,?,?,?)').run(id, name, birthYear, null, deviceKey, now());
-    user = db.prepare('SELECT * FROM users WHERE id=?').get(result.lastInsertRowid);
-  }
-  user = db.prepare('SELECT * FROM users WHERE id=?').get(user.id);
-  return res.status(201).json({ user: publicUser(user), token: tokenFor(user) });
-});
-
-app.post('/api/identity/sync', (req, res) => {
-  if (!rateLimit(`sync:${req.ip}`, 30, 900000)) return res.status(429).json({ error: 'rate_limited' });
-  const input = identityInput(req, res);
-  if (!input) return;
-  const { name, birthYear, deviceKey } = input;
-  const requestedId = String(req.body?.wethaqId || '').trim();
-  let user = requestedId ? db.prepare('SELECT * FROM users WHERE wethaq_id=?').get(requestedId) : null;
-  if (!user) user = db.prepare('SELECT * FROM users WHERE name=? AND birth_year=?').get(name, birthYear);
-  if (!user) {
-    const base = requestedId && /^[A-Za-z0-9_]{3,80}$/.test(requestedId) ? requestedId : makeWethaqId(name, birthYear);
-    const existing = db.prepare('SELECT id FROM users WHERE wethaq_id=?').get(base);
-    const id = existing ? makeWethaqId(name, birthYear) : base;
-    const result = db.prepare('INSERT INTO users(wethaq_id,name,birth_year,password_hash,device_key,last_seen) VALUES(?,?,?,?,?,?)').run(id, name, birthYear, null, deviceKey, now());
-    user = db.prepare('SELECT * FROM users WHERE id=?').get(result.lastInsertRowid);
-  } else {
-    db.prepare('UPDATE users SET name=?,birth_year=?,device_key=?,last_seen=? WHERE id=?').run(name, birthYear, deviceKey, now(), user.id);
-    user = db.prepare('SELECT * FROM users WHERE id=?').get(user.id);
-  }
-  return res.json({ user: publicUser(user), token: tokenFor(user) });
-});
-
-app.post('/api/login', (req, res) => {
-  if (!rateLimit(`login:${req.ip}`, 20, 900000)) return res.status(429).json({ error: 'rate_limited' });
-  const input = identityInput(req, res);
-  if (!input) return;
-  const { name, birthYear, deviceKey } = input;
-  let user = db.prepare('SELECT * FROM users WHERE name=? AND birth_year=?').get(name, birthYear);
-  if (!user) return res.status(404).json({ error: 'user_not_found' });
-  db.prepare('UPDATE users SET device_key=?,last_seen=? WHERE id=?').run(deviceKey, now(), user.id);
-  user = db.prepare('SELECT * FROM users WHERE id=?').get(user.id);
-  return res.json({ user: publicUser(user), token: tokenFor(user) });
-});
-
-app.get('/api/me', auth, (req, res) => {
-  const user = db.prepare('SELECT * FROM users WHERE id=?').get(req.user.sub);
-  if (!user) return res.status(404).json({ error: 'user_not_found' });
-  markSeen(user.id);
-  return res.json({ user: publicUser(user) });
-});
-
-app.get('/api/search', (req, res) => {
-  const q = safeName(req.query.q);
-  if (q.length < 2) return res.json({ users: [] });
-  if (!rateLimit(`search:${req.ip}`, 60, 60000)) return res.status(429).json({ error: 'rate_limited' });
-  const rows = db.prepare(`SELECT id,wethaq_id,name,birth_year,last_seen,created_at FROM users WHERE wethaq_id LIKE ? OR name LIKE ? ORDER BY name COLLATE NOCASE LIMIT 30`).all(`%${q}%`, `%${q}%`);
-  return res.json({ users: rows.map(publicUser) });
-});
-
-app.get('/api/contacts', auth, (req, res) => {
-  const rows = db.prepare(`SELECT u.id,u.wethaq_id,u.name,u.birth_year,u.last_seen,u.created_at FROM contacts c JOIN users u ON u.id=c.contact_id WHERE c.user_id=? ORDER BY u.name COLLATE NOCASE`).all(req.user.sub);
-  return res.json({ contacts: rows.map(publicUser) });
-});
-app.post('/api/contacts', auth, (req, res) => {
-  const id = String(req.body?.wethaqId || '').trim();
-  const contact = db.prepare('SELECT id,wethaq_id,name,birth_year,last_seen,created_at FROM users WHERE wethaq_id=?').get(id);
-  if (!contact) return res.status(404).json({ error: 'user_not_found' });
-  if (contact.id === Number(req.user.sub)) return res.status(400).json({ error: 'cannot_add_self' });
-  db.prepare('INSERT OR IGNORE INTO contacts(user_id,contact_id) VALUES(?,?)').run(req.user.sub, contact.id);
-  return res.status(201).json({ contact: publicUser(contact) });
-});
-
-app.get('/api/messages/inbox', auth, (req, res) => {
-  const rows = db.prepare(`SELECT m.id,m.sender_id,m.receiver_id,m.body,m.status,m.created_at,u.name AS sender_name,u.wethaq_id AS sender_wethaq_id FROM messages m JOIN users u ON u.id=m.sender_id WHERE m.receiver_id=? ORDER BY m.id ASC LIMIT 200`).all(req.user.sub);
-  db.prepare(`UPDATE messages SET status='delivered' WHERE receiver_id=? AND status='sent'`).run(req.user.sub);
-  return res.json({ messages: rows });
-});
-
-app.get('/api/messages/:wethaqId', auth, (req, res) => {
-  const contact = db.prepare('SELECT id,wethaq_id,name,birth_year,last_seen,created_at FROM users WHERE wethaq_id=?').get(req.params.wethaqId);
-  if (!contact) return res.status(404).json({ error: 'user_not_found' });
-  const messages = db.prepare(`SELECT id,sender_id,receiver_id,body,status,created_at FROM messages WHERE (sender_id=? AND receiver_id=?) OR (sender_id=? AND receiver_id=?) ORDER BY id ASC LIMIT 500`).all(req.user.sub, contact.id, contact.id, req.user.sub);
-  db.prepare(`UPDATE messages SET status='read' WHERE sender_id=? AND receiver_id=? AND status<>'read'`).run(contact.id, req.user.sub);
-  return res.json({ contact: publicUser(contact), messages });
-});
-
-app.post('/api/messages', auth, (req, res) => {
-  const to = String(req.body?.to || '').trim();
-  const body = safeMessage(req.body?.body ?? req.body?.text);
-  if (!to || !body || body.length > MAX_MESSAGE || /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(body)) return res.status(400).json({ error: 'invalid_message' });
-  const receiver = db.prepare('SELECT id,wethaq_id,name FROM users WHERE wethaq_id=?').get(to);
-  if (!receiver) return res.status(404).json({ error: 'user_not_found' });
-  if (receiver.id === Number(req.user.sub)) return res.status(400).json({ error: 'cannot_message_self' });
-  const status = isOnline(receiver.id) ? 'delivered' : 'sent';
-  const result = db.prepare('INSERT INTO messages(sender_id,receiver_id,body,status) VALUES(?,?,?,?)').run(req.user.sub, receiver.id, body, status);
-  const message = db.prepare('SELECT id,sender_id,receiver_id,body,status,created_at FROM messages WHERE id=?').get(result.lastInsertRowid);
-  broadcast(receiver.id, { type: 'message', message });
-  return res.status(201).json({ message });
-});
-
-wss.on('connection', (socket, request) => {
-  try {
-    const url = new URL(request.url, 'http://localhost');
-    const token = url.searchParams.get('token') || '';
-    const decoded = jwt.verify(token, JWT_SECRET);
-    const id = Number(decoded.sub);
-    const user = db.prepare('SELECT id FROM users WHERE id=?').get(id);
-    if (!user) return socket.close(1008, 'unauthorized');
-    if (!online.has(id)) online.set(id, new Set());
-    online.get(id).add(socket);
-    markSeen(id);
-    socket.send(JSON.stringify({ type: 'connected', online: true }));
-    const timer = setInterval(() => { if (socket.readyState === 1) socket.ping(); }, 25000);
-    socket.on('close', () => {
-      clearInterval(timer);
-      const set = online.get(id);
-      if (set) {
-        set.delete(socket);
-        if (!set.size) { online.delete(id); markSeen(id); }
-      }
-    });
-    socket.on('error', () => socket.close());
-  } catch {
-    socket.close(1008, 'unauthorized');
-  }
-});
-
-server.listen(PORT, '0.0.0.0', () => console.log(`Wethaq backend listening on ${PORT}`));
+function rateLimit(key, limit, windowMs) { const t=Date.now(); const old=attempts.get(key)||{count:0,at:t}; if(t-old.at>windowMs){attempts.set(key,{count:1,at:t});return true;} old.count++;attempts.set(key,old);return old.count<=limit; }
+function ensureColumn(table,column,definition){const columns=db.prepare(`PRAGMA table_info(${table})`).all().map(x=>x.name);if(!columns.includes(column))db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);}
+db.pragma('journal_mode = WAL');db.pragma('foreign_keys = ON');
+db.exec(`CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,wethaq_id TEXT UNIQUE NOT NULL,name TEXT NOT NULL,birth_year INTEGER NOT NULL DEFAULT 0,password_hash TEXT,device_key TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,last_seen TEXT);
+CREATE TABLE IF NOT EXISTS contacts(user_id INTEGER NOT NULL,contact_id INTEGER NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(user_id,contact_id),FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,FOREIGN KEY(contact_id) REFERENCES users(id) ON DELETE CASCADE);
+CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY AUTOINCREMENT,sender_id INTEGER NOT NULL,receiver_id INTEGER NOT NULL,body TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'sent',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(sender_id) REFERENCES users(id) ON DELETE CASCADE,FOREIGN KEY(receiver_id) REFERENCES users(id) ON DELETE CASCADE);
+CREATE INDEX IF NOT EXISTS idx_messages_pair ON messages(sender_id,receiver_id,id);CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts(user_id,contact_id);CREATE INDEX IF NOT EXISTS idx_users_name ON users(name COLLATE NOCASE);CREATE INDEX IF NOT EXISTS idx_users_wethaq_id ON users(wethaq_id);`);
+ensureColumn('users','birth_year','INTEGER NOT NULL DEFAULT 0');ensureColumn('users','last_seen','TEXT');ensureColumn('users','device_key','TEXT');ensureColumn('messages','message_type',"TEXT NOT NULL DEFAULT 'text'");ensureColumn('messages','mime_type',"TEXT");ensureColumn('messages','audio_data',"TEXT");
+const AR={'حاتم':'Hatem','حسين':'Hussin','الحاج':'Al_Haj','رمضان':'Ramadan','عبد':'Abd','الله':'Allah','محمد':'Mohammad','أحمد':'Ahmad','علي':'Ali','خالد':'Khaled','سارة':'Sara','سما':'Sama','نور':'Nour','هدى':'Huda','أمان':'Aman','وسام':'Wisam','يامن':'Yamen','هشام':'Hisham','أيمن':'Ayman','حسام':'Hossam'};
+const MAP={'ا':'a','أ':'a','إ':'i','آ':'a','ب':'b','ت':'t','ث':'th','ج':'j','ح':'h','خ':'kh','د':'d','ذ':'dh','ر':'r','ز':'z','س':'s','ش':'sh','ص':'s','ض':'d','ط':'t','ظ':'z','ع':'a','غ':'gh','ف':'f','ق':'q','ك':'k','ل':'l','م':'m','ن':'n','ه':'h','و':'w','ي':'y','ى':'a','ة':'h'};
+function transliterateWord(word){if(AR[word])return AR[word];let out='';for(const ch of word)out+=MAP[ch]??(/[A-Za-z0-9]/.test(ch)?ch:'');return out?out[0].toUpperCase()+out.slice(1):'';}
+function makeBaseId(name,birthYear){const parts=name.replace(/ـ/g,'').trim().split(/[\s،,]+/).filter(Boolean).map(transliterateWord).filter(Boolean);return `${parts.join('_')}${birthYear}`.replace(/[^A-Za-z0-9_]/g,'_');}
+function makeWethaqId(name,birthYear){const base=makeBaseId(name,birthYear)||`Wethaq_User${birthYear}`;let id=base,n=2;while(db.prepare('SELECT 1 FROM users WHERE wethaq_id=?').get(id))id=`${base}_${n++}`;return id;}
+function isOnline(id){const set=online.get(Number(id));return !!set&&[...set].some(ws=>ws.readyState===1);}
+function publicUser(user){return{id:user.id,wethaq_id:user.wethaq_id,name:user.name,birth_year:user.birth_year||0,created_at:user.created_at,last_seen:user.last_seen||null,online:isOnline(user.id)};}
+function tokenFor(user){return jwt.sign({sub:user.id,wethaqId:user.wethaq_id},JWT_SECRET,{expiresIn:'365d'});}
+function auth(req,res,next){const header=req.headers.authorization||'';const token=header.startsWith('Bearer ')?header.slice(7):'';if(!token)return res.status(401).json({error:'unauthorized'});try{req.user=jwt.verify(token,JWT_SECRET);next();}catch{return res.status(401).json({error:'invalid_token'});}}
+function safeName(value){return String(value||'').replace(/[<>\u0000-\u001f]/g,'').trim().replace(/\s+/g,' ');}
+function safeMessage(value){return String(value||'').trim();}
+function markSeen(id){db.prepare('UPDATE users SET last_seen=? WHERE id=?').run(now(),id);}
+function broadcast(id,payload){const set=online.get(Number(id));if(!set)return 0;const raw=JSON.stringify(payload);let sent=0;for(const ws of set)if(ws.readyState===1){ws.send(raw);sent++;}return sent;}
+function identityInput(req,res){const name=safeName(req.body?.name);const birthYear=Number(req.body?.birthYear);const deviceKey=String(req.body?.deviceKey||'').trim();const currentYear=new Date().getUTCFullYear();const words=name.split(/\s+/).filter(Boolean).length;if(!validText(name,MAX_NAME)||words<3||!Number.isInteger(birthYear)||birthYear<1900||birthYear>currentYear||deviceKey.length<24||deviceKey.length>MAX_DEVICE_KEY){res.status(400).json({error:'invalid_identity'});return null;}return{name,birthYear,deviceKey};}
+app.get('/',(_req,res)=>res.json({service:'wethaq',status:'online',health:'/health'}));
+app.get('/health',(_req,res)=>res.json({ok:true,service:'wethaq',version:'4.5.0',auth:'name_birth_year',search:'public',websocket:'/ws',audio:true,time:now()}));
+app.post('/api/identity',(req,res)=>{if(!rateLimit(`identity:${req.ip}`,20,900000))return res.status(429).json({error:'rate_limited'});const input=identityInput(req,res);if(!input)return;const{name,birthYear,deviceKey}=input;const base=makeBaseId(name,birthYear);let user=db.prepare('SELECT * FROM users WHERE wethaq_id=?').get(base);if(user){if(user.device_key&&user.device_key!==deviceKey)return res.status(409).json({error:'identity_claimed'});db.prepare('UPDATE users SET device_key=?,name=?,birth_year=?,last_seen=? WHERE id=?').run(deviceKey,name,birthYear,now(),user.id);}else{const id=makeWethaqId(name,birthYear);const result=db.prepare('INSERT INTO users(wethaq_id,name,birth_year,password_hash,device_key,last_seen) VALUES(?,?,?,?,?,?)').run(id,name,birthYear,null,deviceKey,now());user=db.prepare('SELECT * FROM users WHERE id=?').get(result.lastInsertRowid);}user=db.prepare('SELECT * FROM users WHERE id=?').get(user.id);return res.status(201).json({user:publicUser(user),token:tokenFor(user)});});
+app.post('/api/login',(req,res)=>{if(!rateLimit(`login:${req.ip}`,20,900000))return res.status(429).json({error:'rate_limited'});const input=identityInput(req,res);if(!input)return;const{name,birthYear,deviceKey}=input;let user=db.prepare('SELECT * FROM users WHERE name=? AND birth_year=?').get(name,birthYear);if(!user)return res.status(404).json({error:'user_not_found'});db.prepare('UPDATE users SET device_key=?,last_seen=? WHERE id=?').run(deviceKey,now(),user.id);user=db.prepare('SELECT * FROM users WHERE id=?').get(user.id);return res.json({user:publicUser(user),token:tokenFor(user)});});
+app.get('/api/me',auth,(req,res)=>{const user=db.prepare('SELECT * FROM users WHERE id=?').get(req.user.sub);if(!user)return res.status(404).json({error:'user_not_found'});markSeen(user.id);return res.json({user:publicUser(user)});});
+app.get('/api/search',(req,res)=>{const q=safeName(req.query.q);if(q.length<2)return res.json({users:[]});if(!rateLimit(`search:${req.ip}`,60,60000))return res.status(429).json({error:'rate_limited'});const rows=db.prepare(`SELECT id,wethaq_id,name,birth_year,last_seen,created_at FROM users WHERE wethaq_id LIKE ? OR name LIKE ? ORDER BY name COLLATE NOCASE LIMIT 30`).all(`%${q}%`,`%${q}%`);return res.json({users:rows.map(publicUser)});});
+app.get('/api/contacts',auth,(req,res)=>{const rows=db.prepare(`SELECT u.id,u.wethaq_id,u.name,u.birth_year,u.last_seen,u.created_at FROM contacts c JOIN users u ON u.id=c.contact_id WHERE c.user_id=? ORDER BY u.name COLLATE NOCASE`).all(req.user.sub);return res.json({contacts:rows.map(publicUser)});});
+app.post('/api/contacts',auth,(req,res)=>{const id=String(req.body?.wethaqId||'').trim();const contact=db.prepare('SELECT id,wethaq_id,name,birth_year,last_seen,created_at FROM users WHERE wethaq_id=?').get(id);if(!contact)return res.status(404).json({error:'user_not_found'});if(contact.id===Number(req.user.sub))return res.status(400).json({error:'cannot_add_self'});db.prepare('INSERT OR IGNORE INTO contacts(user_id,contact_id) VALUES(?,?)').run(req.user.sub,contact.id);return res.status(201).json({contact:publicUser(contact)});});
+function messageSelect(){return 'm.id,m.sender_id,m.receiver_id,m.body,m.status,m.created_at,m.message_type,m.mime_type,m.audio_data';}
+app.get('/api/messages/inbox',auth,(req,res)=>{const rows=db.prepare(`SELECT ${messageSelect()},u.name AS sender_name,u.wethaq_id AS sender_wethaq_id FROM messages m JOIN users u ON u.id=m.sender_id WHERE m.receiver_id=? ORDER BY m.id ASC LIMIT 200`).all(req.user.sub);db.prepare(`UPDATE messages SET status='delivered' WHERE receiver_id=? AND status='sent'`).run(req.user.sub);return res.json({messages:rows});});
+app.get('/api/messages/:wethaqId',auth,(req,res)=>{const contact=db.prepare('SELECT id,wethaq_id,name,birth_year,last_seen,created_at FROM users WHERE wethaq_id=?').get(req.params.wethaqId);if(!contact)return res.status(404).json({error:'user_not_found'});const messages=db.prepare(`SELECT ${messageSelect()} FROM messages m WHERE (sender_id=? AND receiver_id=?) OR (sender_id=? AND receiver_id=?) ORDER BY id ASC LIMIT 500`).all(req.user.sub,contact.id,contact.id,req.user.sub);db.prepare(`UPDATE messages SET status='read' WHERE sender_id=? AND receiver_id=? AND status<>'read'`).run(contact.id,req.user.sub);return res.json({contact:publicUser(contact),messages});});
+app.post('/api/messages',auth,(req,res)=>{const to=String(req.body?.to||'').trim();const body=safeMessage(req.body?.body??req.body?.text);if(!to||!body||body.length>MAX_MESSAGE||/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(body))return res.status(400).json({error:'invalid_message'});const receiver=db.prepare('SELECT id,wethaq_id,name FROM users WHERE wethaq_id=?').get(to);if(!receiver)return res.status(404).json({error:'user_not_found'});if(receiver.id===Number(req.user.sub))return res.status(400).json({error:'cannot_message_self'});const status=isOnline(receiver.id)?'delivered':'sent';const result=db.prepare("INSERT INTO messages(sender_id,receiver_id,body,status,message_type) VALUES(?,?,?,?, 'text')").run(req.user.sub,receiver.id,body,status);const message=db.prepare(`SELECT ${messageSelect()} FROM messages m WHERE id=?`).get(result.lastInsertRowid);broadcast(receiver.id,{type:'message',message});return res.status(201).json({message});});
+app.post('/api/messages/audio',auth,(req,res)=>{const to=String(req.body?.to||'').trim();const audio=String(req.body?.audioBase64||'').trim();const mime=String(req.body?.mimeType||'audio/mp4').trim();if(!to||!audio||audio.length>MAX_AUDIO_BASE64||!/^[A-Za-z0-9+/=]+$/.test(audio))return res.status(400).json({error:'invalid_audio'});if(!/^audio\/(mp4|mpeg|aac|3gpp|amr|wav|ogg|webm)$/.test(mime))return res.status(400).json({error:'invalid_audio_type'});const receiver=db.prepare('SELECT id,wethaq_id,name FROM users WHERE wethaq_id=?').get(to);if(!receiver)return res.status(404).json({error:'user_not_found'});if(receiver.id===Number(req.user.sub))return res.status(400).json({error:'cannot_message_self'});const status=isOnline(receiver.id)?'delivered':'sent';const result=db.prepare("INSERT INTO messages(sender_id,receiver_id,body,status,message_type,mime_type,audio_data) VALUES(?,?,?,?, 'audio',?,?)").run(req.user.sub,receiver.id,'',status,mime,audio);const message=db.prepare(`SELECT ${messageSelect()} FROM messages m WHERE id=?`).get(result.lastInsertRowid);broadcast(receiver.id,{type:'message',message});return res.status(201).json({message});});
+wss.on('connection',(socket,request)=>{try{const url=new URL(request.url,'http://localhost');const token=url.searchParams.get('token')||'';const decoded=jwt.verify(token,JWT_SECRET);const id=Number(decoded.sub);const user=db.prepare('SELECT id FROM users WHERE id=?').get(id);if(!user)return socket.close(1008,'unauthorized');if(!online.has(id))online.set(id,new Set());online.get(id).add(socket);markSeen(id);socket.send(JSON.stringify({type:'connected',online:true}));const timer=setInterval(()=>{if(socket.readyState===1)socket.ping();},25000);socket.on('close',()=>{clearInterval(timer);const set=online.get(id);if(set){set.delete(socket);if(!set.size){online.delete(id);markSeen(id);}}});socket.on('error',()=>socket.close());}catch{socket.close(1008,'unauthorized');}});
+server.listen(PORT,'0.0.0.0',()=>console.log(`Wethaq backend listening on ${PORT}`));
