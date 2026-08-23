@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'app/**'
+      - 'backend/**'
       - 'settings.gradle'
       - 'build.gradle'
       - '.github/workflows/wethaq-release.yml'
