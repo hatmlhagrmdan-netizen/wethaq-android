@@ -10,6 +10,7 @@ on:
       - 'backend/**'
       - 'settings.gradle'
       - 'build.gradle'
+      - 'gradle.properties'
       - '.github/workflows/wethaq-release.yml'
   workflow_dispatch:
 
