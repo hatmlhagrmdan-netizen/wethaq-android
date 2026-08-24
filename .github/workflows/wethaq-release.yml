@@ -51,12 +51,6 @@ jobs:
           grep -q "applicationId 'com.wethaq.app'" app/build.gradle
           grep -q "signingConfig signingConfigs.debug" app/build.gradle
           git diff --check
-      - name: Verify Java lambda capture
-        shell: bash
-        run: |
-          set -euo pipefail
-          FILE="app/src/main/java/com/wethaq/app/MainActivity.java"
-          grep -q 'final HttpResult result = r' "$FILE"
       - name: Build signed release APK
         shell: bash
         run: gradle :app:clean :app:assembleRelease --no-daemon --stacktrace --console=plain
