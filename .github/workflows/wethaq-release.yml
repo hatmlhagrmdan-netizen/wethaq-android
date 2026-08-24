@@ -51,12 +51,11 @@ jobs:
           grep -q "applicationId 'com.wethaq.app'" app/build.gradle
           grep -q "signingConfig signingConfigs.debug" app/build.gradle
           git diff --check
-      - name: Fix Java lambda capture before release compile
+      - name: Verify Java lambda capture
         shell: bash
         run: |
           set -euo pipefail
           FILE="app/src/main/java/com/wethaq/app/MainActivity.java"
-          sed -i 's/else h.post(()->toast(error(r)));/else { final HttpResult result = r; h.post(() -> toast(error(result))); }/' "$FILE"
           grep -q 'final HttpResult result = r' "$FILE"
       - name: Build signed release APK
         shell: bash
