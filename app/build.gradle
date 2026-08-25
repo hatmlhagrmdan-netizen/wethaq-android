@@ -25,5 +25,5 @@ android {
 
 dependencies {
     implementation 'androidx.core:core:1.15.0'
-    implementation 'org.webrtc:google-webrtc:1.0.32006'
+    implementation 'org.webrtc:google-webrtc:1.0.30039@aar'
 }
