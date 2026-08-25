@@ -40,6 +40,7 @@ jobs:
           test -f app/src/main/AndroidManifest.xml
           test -f app/src/main/java/com/wethaq/app/MainActivity.java
           test -f app/src/main/java/com/wethaq/app/PremiumActivity.java
+          test -f app/src/main/java/com/wethaq/app/VideoCallActivity.java
           test -f app/src/main/res/values/styles.xml
           test ! -f settings.gradle.kts
           test ! -f build.gradle.kts
@@ -54,9 +55,20 @@ jobs:
         run: |
           set -euo pipefail
           FILE="app/src/main/java/com/wethaq/app/MainActivity.java"
-          sed -i 's/else h.post(()->toast(error(r)));/else { final HttpResult result = r; h.post(() -> toast(error(result))); }/' "$FILE"
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/main/java/com/wethaq/app/MainActivity.java')
+          s=p.read_text()
+          old='else h.post(()->toast(error(r)));'
+          new='else { final HttpResult result = r; h.post(() -> toast(error(result))); }'
+          if old in s:
+              s=s.replace(old,new,1)
+          elif 'final HttpResult result = r' not in s:
+              raise SystemExit('Unable to fix lambda capture safely')
+          p.write_text(s)
+          PY
           grep -q 'final HttpResult result = r' "$FILE"
-      - name: Polish complete Android UI and buttons
+      - name: Restore polished Wethaq UI from the #135 design
         shell: bash
         run: |
           set -euo pipefail
@@ -64,32 +76,41 @@ jobs:
           from pathlib import Path
           p=Path('app/src/main/java/com/wethaq/app/MainActivity.java')
           s=p.read_text()
-          s=s.replace('import android.graphics.Typeface;','import android.graphics.Typeface;\nimport android.graphics.drawable.GradientDrawable;')
-          s=s.replace('private boolean hasToken(){return prefs.getString(T,"").length()>10;} private int gold(){return Color.rgb(212,175,55);}', 'private boolean hasToken(){return prefs.getString(T,"").length()>10;} private int gold(){return Color.rgb(212,175,55);} private int dp(int v){return (int)(v*getResources().getDisplayMetrics().density+0.5f);}')
+          s=s.replace('import android.graphics.*;', 'import android.graphics.*;import android.graphics.drawable.GradientDrawable;')
+          if 'import android.graphics.drawable.GradientDrawable;' not in s:
+              raise SystemExit('GradientDrawable import was not installed')
+          if 'private int dp(int v)' not in s:
+              marker='private int gold(){return Color.rgb(212,175,55);}'
+              if marker not in s:
+                  raise SystemExit('gold() marker not found')
+              s=s.replace(marker, marker+'private int dp(int v){return (int)(v*getResources().getDisplayMetrics().density+0.5f);}',1)
           old='private TextView tv(String s,float z,int c){TextView t=new TextView(this);t.setText(s);t.setTextSize(z);t.setTextColor(c);t.setPadding(16,12,16,12);return t;}'
           new='private TextView tv(String s,float z,int c){TextView t=new TextView(this);t.setText(s);t.setTextSize(z);t.setTextColor(c);t.setPadding(dp(14),dp(10),dp(14),dp(10));t.setGravity(Gravity.CENTER_VERTICAL);return t;}'
-          s=s.replace(old,new)
+          if old in s:s=s.replace(old,new,1)
           old='private EditText field(String s){EditText e=new EditText(this);e.setHint(s);e.setHintTextColor(Color.GRAY);e.setTextColor(Color.WHITE);e.setSingleLine(true);e.setPadding(16,10,16,10);e.setBackgroundColor(Color.rgb(25,25,25));return e;}'
           new='private EditText field(String s){EditText e=new EditText(this);e.setHint(s);e.setHintTextColor(Color.rgb(165,165,165));e.setTextColor(Color.WHITE);e.setTextSize(18);e.setSingleLine(true);e.setPadding(dp(16),0,dp(16),0);e.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);GradientDrawable d=new GradientDrawable();d.setColor(Color.rgb(25,25,25));d.setCornerRadius(dp(14));d.setStroke(dp(2),Color.rgb(75,75,75));e.setBackground(d);e.setMinHeight(dp(64));return e;}'
-          s=s.replace(old,new)
-          old='private Button btn(String s){Button b=new Button(this);b.setText(s);b.setTextColor(gold());b.setAllCaps(false);b.setBackgroundColor(Color.rgb(25,25,25));return b;}'
-          new='private Button btn(String s){Button b=new Button(this);b.setText(s);b.setTextColor(Color.WHITE);b.setTextSize(20);b.setAllCaps(false);b.setTypeface(Typeface.DEFAULT,Typeface.BOLD);b.setGravity(Gravity.CENTER);b.setMinHeight(0);b.setMinimumHeight(dp(76));b.setMinWidth(0);b.setMinimumWidth(0);b.setStateListAnimator(null);b.setVisibility(android.view.View.VISIBLE);b.setEnabled(true);b.setClickable(true);b.setFocusable(true);GradientDrawable d=new GradientDrawable();d.setColor(Color.rgb(28,28,28));d.setCornerRadius(dp(16));d.setStroke(dp(3),gold());b.setBackground(d);return b;}'
-          s=s.replace(old,new)
-          old='private void base(String title){root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(12,12,12,12);root.setBackgroundColor(Color.BLACK);TextView top=tv(title,22,gold());top.setTypeface(Typeface.DEFAULT_BOLD);top.setGravity(Gravity.CENTER);root.addView(top,lp(-1,58,8));'
-          new='private void base(String title){root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(16),dp(14),dp(16),dp(16));root.setBackgroundColor(Color.BLACK);TextView top=tv(title,22,gold());top.setTypeface(Typeface.DEFAULT_BOLD);top.setGravity(Gravity.CENTER);root.addView(top,lp(-1,dp(64),8));'
-          s=s.replace(old,new)
-          s=s.replace('private void login(){base("وَثاق");TextView x=', 'private void login(){base("وَثاق");ImageView logo=new ImageView(this);logo.setImageResource(com.wethaq.app.R.drawable.ic_wethaq);logo.setScaleType(ImageView.ScaleType.CENTER_INSIDE);content.addView(logo,lp(-1,dp(150),8));TextView x=')
-          s=s.replace('menu("⌕  البحث",this::searchScreen);', 'menu("⌕  البحث",this::searchScreen);')
-          s=s.replace('b.setTextSize(18);content.addView(b,lp(-1,58,8));', 'b.setTextSize(20);content.addView(b,lp(-1,dp(76),10));')
-          s=s.replace('new LinearLayout.LayoutParams(52,58)', 'new LinearLayout.LayoutParams(dp(60),dp(68))')
-          s=s.replace('new LinearLayout.LayoutParams(0,58,1)', 'new LinearLayout.LayoutParams(0,dp(68),1)')
-          s=s.replace('new LinearLayout.LayoutParams(72,58)', 'new LinearLayout.LayoutParams(dp(84),dp(68))')
-          s=s.replace('new LinearLayout.LayoutParams(-1,55)', 'new LinearLayout.LayoutParams(-1,dp(64))')
+          if old in s:s=s.replace(old,new,1)
+          old='private Button btn(String s){Button b=new Button(this);b.setText(s);b.setTextSize(20);b.setTextColor(Color.WHITE);b.setTypeface(null,1);b.setAllCaps(false);b.setBackgroundColor(Color.rgb(25,25,25));b.setMinHeight(76);b.setMinimumHeight(76);return b;}'
+          new='private Button btn(String s){Button b=new Button(this);b.setText(s);b.setTextColor(Color.WHITE);b.setTextSize(20);b.setAllCaps(false);b.setTypeface(Typeface.DEFAULT,Typeface.BOLD);b.setGravity(Gravity.CENTER);b.setMinHeight(0);b.setMinimumHeight(dp(76));b.setMinWidth(0);b.setMinimumWidth(0);b.setStateListAnimator(null);b.setVisibility(View.VISIBLE);b.setEnabled(true);b.setClickable(true);b.setFocusable(true);GradientDrawable d=new GradientDrawable();d.setColor(Color.rgb(28,28,28));d.setCornerRadius(dp(16));d.setStroke(dp(3),gold());b.setBackground(d);return b;}'
+          if old in s:s=s.replace(old,new,1)
+          else:
+              if 'setMinimumHeight(dp(76))' not in s: raise SystemExit('button definition was not found')
+          old='private void base(String title){root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(12,12,12,12);root.setBackgroundColor(Color.BLACK);TextView top=tv(title,22,gold());top.setGravity(17);top.setTypeface(null,1);root.addView(top,lp(-1,58,8));'
+          new='private void base(String title){root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(16),dp(14),dp(16),dp(16));root.setBackgroundColor(Color.BLACK);TextView top=tv(title,22,gold());top.setGravity(Gravity.CENTER);top.setTypeface(Typeface.DEFAULT_BOLD);root.addView(top,lp(-1,dp(64),8));'
+          if old in s:s=s.replace(old,new,1)
+          old='private void login(){base("وَثاق");TextView x=tv("هوية رقمية آمنة",25,Color.WHITE);'
+          new='private void login(){base("وَثاق");ImageView logo=new ImageView(this);logo.setImageResource(com.wethaq.app.R.drawable.ic_wethaq);logo.setScaleType(ImageView.ScaleType.CENTER_INSIDE);content.addView(logo,lp(-1,dp(150),8));TextView x=tv("هوية رقمية آمنة",25,Color.WHITE);'
+          if old in s:s=s.replace(old,new,1)
           p.write_text(s)
+          required=['setMinimumHeight(dp(76))','setStroke(dp(3),gold())','R.drawable.ic_wethaq','private int dp(int v)']
+          for x in required:
+              if x not in s: raise SystemExit('Missing UI requirement: '+x)
+          if 'setGravity(mine?Gravity.RIGHT:Gravity.LEFT)' not in s:
+              raise SystemExit('Message direction guard missing')
+          if 'startVideoCall();' not in s:
+              raise SystemExit('Video call action missing')
+          print('Wethaq #135 UI restored and verified')
           PY
-          grep -q 'setMinimumHeight(dp(76))' app/src/main/java/com/wethaq/app/MainActivity.java
-          grep -q 'R.drawable.ic_wethaq' app/src/main/java/com/wethaq/app/MainActivity.java
-          grep -q 'setStroke(dp(3),gold())' app/src/main/java/com/wethaq/app/MainActivity.java
           git diff --check
       - name: Build signed release APK
         shell: bash
