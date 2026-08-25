@@ -1,7 +1,5 @@
 name: Wethaq Minimal Java Release
 
-# Production release build for every main update.
-# Premium UI build verification.
 on:
   push:
     branches: [main]
@@ -58,6 +56,41 @@ jobs:
           FILE="app/src/main/java/com/wethaq/app/MainActivity.java"
           sed -i 's/else h.post(()->toast(error(r)));/else { final HttpResult result = r; h.post(() -> toast(error(result))); }/' "$FILE"
           grep -q 'final HttpResult result = r' "$FILE"
+      - name: Polish complete Android UI and buttons
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/main/java/com/wethaq/app/MainActivity.java')
+          s=p.read_text()
+          s=s.replace('import android.graphics.Typeface;','import android.graphics.Typeface;\nimport android.graphics.drawable.GradientDrawable;')
+          s=s.replace('private boolean hasToken(){return prefs.getString(T,"").length()>10;} private int gold(){return Color.rgb(212,175,55);}', 'private boolean hasToken(){return prefs.getString(T,"").length()>10;} private int gold(){return Color.rgb(212,175,55);} private int dp(int v){return (int)(v*getResources().getDisplayMetrics().density+0.5f);}')
+          old='private TextView tv(String s,float z,int c){TextView t=new TextView(this);t.setText(s);t.setTextSize(z);t.setTextColor(c);t.setPadding(16,12,16,12);return t;}'
+          new='private TextView tv(String s,float z,int c){TextView t=new TextView(this);t.setText(s);t.setTextSize(z);t.setTextColor(c);t.setPadding(dp(14),dp(10),dp(14),dp(10));t.setGravity(Gravity.CENTER_VERTICAL);return t;}'
+          s=s.replace(old,new)
+          old='private EditText field(String s){EditText e=new EditText(this);e.setHint(s);e.setHintTextColor(Color.GRAY);e.setTextColor(Color.WHITE);e.setSingleLine(true);e.setPadding(16,10,16,10);e.setBackgroundColor(Color.rgb(25,25,25));return e;}'
+          new='private EditText field(String s){EditText e=new EditText(this);e.setHint(s);e.setHintTextColor(Color.rgb(165,165,165));e.setTextColor(Color.WHITE);e.setTextSize(18);e.setSingleLine(true);e.setPadding(dp(16),0,dp(16),0);e.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);GradientDrawable d=new GradientDrawable();d.setColor(Color.rgb(25,25,25));d.setCornerRadius(dp(14));d.setStroke(dp(2),Color.rgb(75,75,75));e.setBackground(d);e.setMinHeight(dp(64));return e;}'
+          s=s.replace(old,new)
+          old='private Button btn(String s){Button b=new Button(this);b.setText(s);b.setTextColor(gold());b.setAllCaps(false);b.setBackgroundColor(Color.rgb(25,25,25));return b;}'
+          new='private Button btn(String s){Button b=new Button(this);b.setText(s);b.setTextColor(Color.WHITE);b.setTextSize(20);b.setAllCaps(false);b.setTypeface(Typeface.DEFAULT,Typeface.BOLD);b.setGravity(Gravity.CENTER);b.setMinHeight(0);b.setMinimumHeight(dp(76));b.setMinWidth(0);b.setMinimumWidth(0);b.setStateListAnimator(null);b.setVisibility(android.view.View.VISIBLE);b.setEnabled(true);b.setClickable(true);b.setFocusable(true);GradientDrawable d=new GradientDrawable();d.setColor(Color.rgb(28,28,28));d.setCornerRadius(dp(16));d.setStroke(dp(3),gold());b.setBackground(d);return b;}'
+          s=s.replace(old,new)
+          old='private void base(String title){root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(12,12,12,12);root.setBackgroundColor(Color.BLACK);TextView top=tv(title,22,gold());top.setTypeface(Typeface.DEFAULT_BOLD);top.setGravity(Gravity.CENTER);root.addView(top,lp(-1,58,8));'
+          new='private void base(String title){root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(16),dp(14),dp(16),dp(16));root.setBackgroundColor(Color.BLACK);TextView top=tv(title,22,gold());top.setTypeface(Typeface.DEFAULT_BOLD);top.setGravity(Gravity.CENTER);root.addView(top,lp(-1,dp(64),8));'
+          s=s.replace(old,new)
+          s=s.replace('private void login(){base("وَثاق");TextView x=', 'private void login(){base("وَثاق");ImageView logo=new ImageView(this);logo.setImageResource(com.wethaq.app.R.drawable.ic_wethaq);logo.setScaleType(ImageView.ScaleType.CENTER_INSIDE);content.addView(logo,lp(-1,dp(150),8));TextView x=')
+          s=s.replace('menu("⌕  البحث",this::searchScreen);', 'menu("⌕  البحث",this::searchScreen);')
+          s=s.replace('b.setTextSize(18);content.addView(b,lp(-1,58,8));', 'b.setTextSize(20);content.addView(b,lp(-1,dp(76),10));')
+          s=s.replace('new LinearLayout.LayoutParams(52,58)', 'new LinearLayout.LayoutParams(dp(60),dp(68))')
+          s=s.replace('new LinearLayout.LayoutParams(0,58,1)', 'new LinearLayout.LayoutParams(0,dp(68),1)')
+          s=s.replace('new LinearLayout.LayoutParams(72,58)', 'new LinearLayout.LayoutParams(dp(84),dp(68))')
+          s=s.replace('new LinearLayout.LayoutParams(-1,55)', 'new LinearLayout.LayoutParams(-1,dp(64))')
+          p.write_text(s)
+          PY
+          grep -q 'setMinimumHeight(dp(76))' app/src/main/java/com/wethaq/app/MainActivity.java
+          grep -q 'R.drawable.ic_wethaq' app/src/main/java/com/wethaq/app/MainActivity.java
+          grep -q 'setStroke(dp(3),gold())' app/src/main/java/com/wethaq/app/MainActivity.java
+          git diff --check
       - name: Build signed release APK
         shell: bash
         run: gradle :app:clean :app:assembleRelease --no-daemon --stacktrace --console=plain
@@ -89,7 +122,7 @@ jobs:
       - name: Upload signed release
         uses: actions/upload-artifact@v4
         with:
-          name: Wethaq-2.0.1-signed-release
+          name: Wethaq-2.0.1-polished-ui-release
           path: |
             app/build/outputs/apk/release/app-release.apk
             app/build/outputs/apk/release/SHA256SUMS.txt
