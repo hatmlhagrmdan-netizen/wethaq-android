@@ -10,6 +10,7 @@
         <item name="android:colorControlActivated">#D4AF37</item>
         <item name="android:textColorPrimary">#FFFFFF</item>
         <item name="android:textColorSecondary">#FFFFFF</item>
+        <item name="android:textColorHighlight">#D4AF37</item>
         <item name="android:statusBarColor">#050505</item>
         <item name="android:navigationBarColor">#050505</item>
         <item name="android:windowLightStatusBar">false</item>
@@ -29,6 +30,7 @@
         <item name="android:fontFamily">sans-serif</item>
         <item name="android:includeFontPadding">true</item>
         <item name="android:minHeight">76dp</item>
+        <item name="android:minWidth">120dp</item>
         <item name="android:paddingLeft">16dp</item>
         <item name="android:paddingRight">16dp</item>
     </style>
