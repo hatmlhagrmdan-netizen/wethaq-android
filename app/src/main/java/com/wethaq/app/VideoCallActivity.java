@@ -23,7 +23,8 @@ public final class VideoCallActivity extends Activity {
     private String target,token,myId;
     private Handler h=new Handler(Looper.getMainLooper());
     private Runnable poll;
-    private boolean started,cleaned,offerSent;
+    private boolean started,cleaned,offerSent,remoteDescriptionSet;
+    private final List<IceCandidate> pendingCandidates=new ArrayList<>();
 
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
@@ -63,7 +64,7 @@ public final class VideoCallActivity extends Activity {
     private boolean isInitiator(){return myId!=null&&target!=null&&myId.compareTo(target)<0;}
 
     private void createPeer(){
-        PeerConnection.RTCConfiguration cfg=new PeerConnection.RTCConfiguration(Collections.singletonList(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer()));
+        PeerConnection.RTCConfiguration cfg=new PeerConnection.RTCConfiguration(Arrays.asList(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),PeerConnection.IceServer.builder("turn:openrelay.metered.ca:80").setUsername("openrelayproject").setPassword("openrelayproject").createIceServer(),PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443?transport=tcp").setUsername("openrelayproject").setPassword("openrelayproject").createIceServer()));
         peer=factory.createPeerConnection(cfg,new PeerConnection.Observer(){
             public void onSignalingChange(PeerConnection.SignalingState s){}
             public void onIceConnectionChange(PeerConnection.IceConnectionState s){}
@@ -116,11 +117,11 @@ public final class VideoCallActivity extends Activity {
         JSONObject o=new JSONObject(payload);
         if("offer".equals(type)&&!isInitiator()){
             SessionDescription d=new SessionDescription(SessionDescription.Type.OFFER,o.getString("sdp"));
-            peer.setRemoteDescription(new SimpleSdp(){public void onSetSuccess(){peer.createAnswer(new SdpObserver(){public void onCreateSuccess(SessionDescription a){peer.setLocalDescription(this,a);sendSignal("answer",sdpJson(a));}public void onSetSuccess(){}public void onCreateFailure(String s){}public void onSetFailure(String s){}},new MediaConstraints());}},d);
+            peer.setRemoteDescription(new SimpleSdp(){public void onSetSuccess(){remoteDescriptionSet=true;for(IceCandidate c:pendingCandidates)peer.addIceCandidate(c);pendingCandidates.clear();peer.createAnswer(new SdpObserver(){public void onCreateSuccess(SessionDescription a){peer.setLocalDescription(this,a);sendSignal("answer",sdpJson(a));}public void onSetSuccess(){}public void onCreateFailure(String s){}public void onSetFailure(String s){}},new MediaConstraints());}},d);
         }else if("answer".equals(type)&&isInitiator()){
-            peer.setRemoteDescription(new SimpleSdp(),new SessionDescription(SessionDescription.Type.ANSWER,o.getString("sdp")));
+            peer.setRemoteDescription(new SimpleSdp(){public void onSetSuccess(){remoteDescriptionSet=true;for(IceCandidate c:pendingCandidates)peer.addIceCandidate(c);pendingCandidates.clear();}},new SessionDescription(SessionDescription.Type.ANSWER,o.getString("sdp")));
         }else if("ice".equals(type)){
-            peer.addIceCandidate(new IceCandidate(o.getString("sdpMid"),o.getInt("sdpMLineIndex"),o.getString("candidate")));
+            IceCandidate ic=new IceCandidate(o.getString("sdpMid"),o.getInt("sdpMLineIndex"),o.getString("candidate"));if(remoteDescriptionSet)peer.addIceCandidate(ic);else pendingCandidates.add(ic);
         }else if("end".equals(type))endCall();
     }catch(Exception ignored){}});}
 
