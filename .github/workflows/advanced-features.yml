@@ -22,6 +22,7 @@ jobs:
           python3 scripts/media_repair.py
           python3 scripts/ui_repair.py
           python3 scripts/video_repair.py
+          python3 scripts/contact_repair.py
           python3 -m py_compile scripts/*.py
 
       - name: Set up Java 17
