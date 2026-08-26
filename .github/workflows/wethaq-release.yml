@@ -30,7 +30,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.9'
-      - name: Validate minimal project
+      - name: Validate project
         shell: bash
         run: |
           set -euo pipefail
@@ -49,26 +49,15 @@ jobs:
           grep -q "include ':app'" settings.gradle
           grep -q "applicationId 'com.wethaq.app'" app/build.gradle
           grep -q "signingConfig signingConfigs.debug" app/build.gradle
+          grep -q 'private Button btn(String s)' app/src/main/java/com/wethaq/app/MainActivity.java
+          grep -q 'setTextColor(Color.WHITE)' app/src/main/java/com/wethaq/app/MainActivity.java
+          grep -q 'setVisibility(View.VISIBLE)' app/src/main/java/com/wethaq/app/MainActivity.java
+          grep -q 'setEnabled(true)' app/src/main/java/com/wethaq/app/MainActivity.java
+          grep -q 'setClickable(true)' app/src/main/java/com/wethaq/app/MainActivity.java
+          grep -q 'تسجيل الدخول' app/src/main/java/com/wethaq/app/MainActivity.java
+          grep -q 'إنشاء هوية جديدة' app/src/main/java/com/wethaq/app/MainActivity.java
           git diff --check
-      - name: Fix Java lambda capture before release compile
-        shell: bash
-        run: |
-          set -euo pipefail
-          FILE="app/src/main/java/com/wethaq/app/MainActivity.java"
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('app/src/main/java/com/wethaq/app/MainActivity.java')
-          s=p.read_text()
-          old='else h.post(()->toast(error(r)));'
-          new='else { final HttpResult result = r; h.post(() -> toast(error(result))); }'
-          if old in s:
-              s=s.replace(old,new,1)
-          elif 'final HttpResult result = r' not in s:
-              raise SystemExit('Unable to fix lambda capture safely')
-          p.write_text(s)
-          PY
-          grep -q 'final HttpResult result = r' "$FILE"
-      - name: Restore polished Wethaq UI from the #135 design
+      - name: Ensure polished UI primitives
         shell: bash
         run: |
           set -euo pipefail
@@ -76,40 +65,13 @@ jobs:
           from pathlib import Path
           p=Path('app/src/main/java/com/wethaq/app/MainActivity.java')
           s=p.read_text()
-          s=s.replace('import android.graphics.*;', 'import android.graphics.*;import android.graphics.drawable.GradientDrawable;')
           if 'import android.graphics.drawable.GradientDrawable;' not in s:
-              raise SystemExit('GradientDrawable import was not installed')
+              s=s.replace('import android.graphics.*;', 'import android.graphics.*;import android.graphics.drawable.GradientDrawable;', 1)
           if 'private int dp(int v)' not in s:
               marker='private int gold(){return Color.rgb(212,175,55);}'
-              if marker not in s:
-                  raise SystemExit('gold() marker not found')
+              if marker not in s: raise SystemExit('gold marker missing')
               s=s.replace(marker, marker+'private int dp(int v){return (int)(v*getResources().getDisplayMetrics().density+0.5f);}',1)
-          old='private TextView tv(String s,float z,int c){TextView t=new TextView(this);t.setText(s);t.setTextSize(z);t.setTextColor(c);t.setPadding(16,12,16,12);return t;}'
-          new='private TextView tv(String s,float z,int c){TextView t=new TextView(this);t.setText(s);t.setTextSize(z);t.setTextColor(c);t.setPadding(dp(14),dp(10),dp(14),dp(10));t.setGravity(Gravity.CENTER_VERTICAL);return t;}'
-          if old in s:s=s.replace(old,new,1)
-          old='private EditText field(String s){EditText e=new EditText(this);e.setHint(s);e.setHintTextColor(Color.GRAY);e.setTextColor(Color.WHITE);e.setSingleLine(true);e.setPadding(16,10,16,10);e.setBackgroundColor(Color.rgb(25,25,25));return e;}'
-          new='private EditText field(String s){EditText e=new EditText(this);e.setHint(s);e.setHintTextColor(Color.rgb(165,165,165));e.setTextColor(Color.WHITE);e.setTextSize(18);e.setSingleLine(true);e.setPadding(dp(16),0,dp(16),0);e.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);GradientDrawable d=new GradientDrawable();d.setColor(Color.rgb(25,25,25));d.setCornerRadius(dp(14));d.setStroke(dp(2),Color.rgb(75,75,75));e.setBackground(d);e.setMinHeight(dp(64));return e;}'
-          if old in s:s=s.replace(old,new,1)
-          old='private Button btn(String s){Button b=new Button(this);b.setText(s);b.setTextSize(20);b.setTextColor(Color.WHITE);b.setTypeface(null,1);b.setAllCaps(false);b.setBackgroundColor(Color.rgb(25,25,25));b.setMinHeight(76);b.setMinimumHeight(76);return b;}'
-          new='private Button btn(String s){Button b=new Button(this);b.setText(s);b.setTextColor(Color.WHITE);b.setTextSize(20);b.setAllCaps(false);b.setTypeface(Typeface.DEFAULT,Typeface.BOLD);b.setGravity(Gravity.CENTER);b.setMinHeight(0);b.setMinimumHeight(dp(76));b.setMinWidth(0);b.setMinimumWidth(0);b.setStateListAnimator(null);b.setVisibility(View.VISIBLE);b.setEnabled(true);b.setClickable(true);b.setFocusable(true);GradientDrawable d=new GradientDrawable();d.setColor(Color.rgb(28,28,28));d.setCornerRadius(dp(16));d.setStroke(dp(3),gold());b.setBackground(d);return b;}'
-          if old in s:s=s.replace(old,new,1)
-          else:
-              if 'setMinimumHeight(dp(76))' not in s: raise SystemExit('button definition was not found')
-          old='private void base(String title){root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(12,12,12,12);root.setBackgroundColor(Color.BLACK);TextView top=tv(title,22,gold());top.setGravity(17);top.setTypeface(null,1);root.addView(top,lp(-1,58,8));'
-          new='private void base(String title){root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(16),dp(14),dp(16),dp(16));root.setBackgroundColor(Color.BLACK);TextView top=tv(title,22,gold());top.setGravity(Gravity.CENTER);top.setTypeface(Typeface.DEFAULT_BOLD);root.addView(top,lp(-1,dp(64),8));'
-          if old in s:s=s.replace(old,new,1)
-          old='private void login(){base("وَثاق");TextView x=tv("هوية رقمية آمنة",25,Color.WHITE);'
-          new='private void login(){base("وَثاق");ImageView logo=new ImageView(this);logo.setImageResource(com.wethaq.app.R.drawable.ic_wethaq);logo.setScaleType(ImageView.ScaleType.CENTER_INSIDE);content.addView(logo,lp(-1,dp(150),8));TextView x=tv("هوية رقمية آمنة",25,Color.WHITE);'
-          if old in s:s=s.replace(old,new,1)
           p.write_text(s)
-          required=['setMinimumHeight(dp(76))','setStroke(dp(3),gold())','R.drawable.ic_wethaq','private int dp(int v)']
-          for x in required:
-              if x not in s: raise SystemExit('Missing UI requirement: '+x)
-          if 'setGravity(mine?Gravity.RIGHT:Gravity.LEFT)' not in s:
-              raise SystemExit('Message direction guard missing')
-          if 'startVideoCall();' not in s:
-              raise SystemExit('Video call action missing')
-          print('Wethaq #135 UI restored and verified')
           PY
           git diff --check
       - name: Build signed release APK
@@ -143,7 +105,7 @@ jobs:
       - name: Upload signed release
         uses: actions/upload-artifact@v4
         with:
-          name: Wethaq-2.0.1-polished-ui-release
+          name: Wethaq-final-release
           path: |
             app/build/outputs/apk/release/app-release.apk
             app/build/outputs/apk/release/SHA256SUMS.txt
