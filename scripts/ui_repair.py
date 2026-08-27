@@ -21,11 +21,8 @@ def replace_method(src, name, replacement):
     if end<0:return src
     return src[:start]+replacement+src[end:]
 
-send_method='''private void send(){
-if(activeId==null)return;
-if(pendingImageData!=null||pendingAudioData!=null){final String image=pendingImageData,audio=pendingAudioData,mime=pendingMime;final int type=pendingMediaType;io.execute(()->{try{JSONObject q=new JSONObject();q.put("to",activeId);String path;if(type==1){path="/api/messages/image";q.put("imageBase64",image);q.put("mimeType",mime);}else{path="/api/messages/audio";q.put("audioBase64",audio);q.put("mimeType",mime);}HttpResult r=request("POST",path,q.toString(),auth());h.post(()->{if(r.code>=200&&r.code<300){pendingImageData=null;pendingAudioData=null;pendingMime=null;pendingMediaType=0;input.setText("");input.setHint("اكتب رسالة…");input.setCompoundDrawables(null,null,null,null);loadMessages();}else toast(error(r));});}catch(Exception e){h.post(()->toast("فشل إرسال الوسائط"));}});return;}
-String text=input==null?"":input.getText().toString().trim();if(text.isEmpty())return;io.execute(()->{try{JSONObject q=new JSONObject();q.put("to",activeId);q.put("body",text);HttpResult r=request("POST","/api/messages",q.toString(),auth());h.post(()->{if(r.code>=200&&r.code<300){input.setText("");loadMessages();}else toast(error(r));});}catch(Exception e){h.post(()->toast("فشل الإرسال"));}});}'''
-s=replace_method(s,'send',send_method)
+# Do not replace MainActivity.send() here: media_repair.py installs the real
+# image/audio draft send path and it must remain intact.
 
 start=s.find('private void sendComplaint()')
 if start>=0:
