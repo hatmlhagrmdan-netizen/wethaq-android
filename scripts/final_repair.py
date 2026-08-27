@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 p=Path('app/src/main/java/com/wethaq/app/MainActivity.java')
 s=p.read_text(encoding='utf-8')
@@ -6,6 +7,19 @@ s=p.read_text(encoding='utf-8')
 s=s.replace('menu("▣  المحفوظات",this::archiveScreen);','')
 # Make the login controls explicitly interactive and front-most.
 s=s.replace('content.addView(c,lp(-1,76,14));content.addView(tv("المؤسس:', 'content.addView(c,lp(-1,76,14));l.bringToFront();c.bringToFront();l.setEnabled(true);c.setEnabled(true);content.addView(tv("المؤسس:')
+# Repair the malformed send-method injection before javac sees the file.
+# The previous repair pass could append a second send body and close the class early.
+clean_send='''private void send(){
+ String text=input==null?"":input.getText().toString().trim();
+ if(text.isEmpty()||activeId==null)return;
+ io.execute(()->{try{
+  JSONObject q=new JSONObject();q.put("to",activeId);q.put("body",text);
+  HttpResult r=request("POST","/api/messages",q.toString(),auth());
+  h.post(()->{if(r.code>=200&&r.code<300){input.setText("");loadMessages();}else toast(error(r));});
+ }catch(Exception e){h.post(()->toast("فشل الإرسال"));}});
+}
+'''
+s=re.sub(r'private void send\(\)\{.*?(?=\s*private void settingsScreen\(\))', clean_send, s, count=1, flags=re.S)
 p.write_text(s,encoding='utf-8')
 
 p=Path('backend/server.js')
