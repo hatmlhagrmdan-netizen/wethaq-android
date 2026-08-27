@@ -2,6 +2,10 @@ from pathlib import Path
 p=Path('app/src/main/java/com/wethaq/app/MainActivity.java')
 s=p.read_text(encoding='utf-8')
 
+# Ensure the image preview dependency is imported in the generated Android source.
+if 'import android.graphics.drawable.BitmapDrawable;' not in s:
+    s=s.replace('import android.graphics.*;', 'import android.graphics.*;import android.graphics.drawable.BitmapDrawable;', 1)
+
 def replace_method(src, name, replacement):
     marker='private void '+name+'()'
     start=src.find(marker)
@@ -13,8 +17,7 @@ def replace_method(src, name, replacement):
         if src[i]=='{': depth+=1
         elif src[i]=='}':
             depth-=1
-            if depth==0:
-                end=i+1; break
+            if depth==0: end=i+1; break
     if end<0:return src
     return src[:start]+replacement+src[end:]
 
