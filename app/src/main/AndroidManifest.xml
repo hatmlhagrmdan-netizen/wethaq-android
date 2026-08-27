@@ -5,22 +5,17 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
-    <application
-        android:allowBackup="false"
-        android:label="وَثاق"
-        android:supportsRtl="true"
-        android:theme="@style/WethaqTheme">
+    <application android:allowBackup="false" android:label="وَثاق — تواصل آمن" android:icon="@drawable/ic_wethaq" android:roundIcon="@drawable/ic_wethaq" android:supportsRtl="true" android:theme="@style/WethaqTheme">
         <activity android:name=".VideoCallActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".AdminActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".PremiumActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".ProfessionalConversationActivity" android:exported="false" android:screenOrientation="portrait" />
-        <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="portrait">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
+        <activity android:name=".FinalMainActivity" android:exported="true" android:screenOrientation="portrait">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
+        <activity android:name=".MainActivity" android:exported="false" android:screenOrientation="portrait" />
     </application>
 </manifest>
