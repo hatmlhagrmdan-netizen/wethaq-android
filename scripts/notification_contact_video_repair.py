@@ -1,24 +1,79 @@
 from pathlib import Path
+import re
 
-p=Path('app/src/main/java/com/wethaq/app/MainActivity.java')
-s=p.read_text(encoding='utf-8')
-needle='Button save=btn("حفظ جهة الاتصال");'
-if needle in s and 'Button chat=btn("مراسلة");' not in s:
-    s=s.replace(needle, needle+'Button chat=btn("مراسلة");list.addView(chat,lp(-1,76,8));chat.setOnClickListener(v->{click();saveContact(id,n);conversation(id,n);});',1)
-s=s.replace('if(r.code>=200&&r.code<300){input.setText("");loadMessages();}', 'if(r.code>=200&&r.code<300){addLocalContact(activeId,activeName);input.setText("");loadMessages();}', 1)
-if 'private void startInboxDelivery()' not in s:
-    marker=' @Override public void onCreate(Bundle b)'
-    method=''' private long lastDeliveredInboxId=0;\n private void startInboxDelivery(){if(!hasToken())return;Runnable r=new Runnable(){public void run(){if(!hasToken())return;io.execute(()->{try{HttpResult x=request("GET","/api/messages/inbox",null,auth());if(x.code==200){JSONArray a=new JSONObject(x.body).optJSONArray("messages");if(a!=null){for(int i=0;i<a.length();i++){JSONObject m=a.optJSONObject(i);if(m==null)continue;long id=m.optLong("id");if(id<=lastDeliveredInboxId)continue;String sender=m.optString("sender_name","مستخدم");String body=m.optString("body","");addLocalContact(m.optString("sender_wethaq_id"),sender);if(lastDeliveredInboxId>0)h.post(()->notifyIncoming(sender+"\\n"+(body.isEmpty()?"رسالة جديدة":body)));lastDeliveredInboxId=Math.max(lastDeliveredInboxId,id);}}}}catch(Exception ignored){}});h.postDelayed(this,2000);}};h.post(r);}\n'''
-    s=s.replace(marker,method+marker,1)
-# The first startPolling() is the authenticated home entry. Do not depend on formatting/newlines.
-s=s.replace('startPolling();','startPolling();startInboxDelivery();',1)
-p.write_text(s,encoding='utf-8')
+MAIN=Path('app/src/main/java/com/wethaq/app/MainActivity.java')
+VIDEO=Path('app/src/main/java/com/wethaq/app/VideoCallActivity.java')
 
-p=Path('app/src/main/java/com/wethaq/app/VideoCallActivity.java')
-s=p.read_text(encoding='utf-8')
-if 'private final java.util.HashSet<Long> seenSignals' not in s:
-    s=s.replace('private final List<IceCandidate> pendingCandidates=new ArrayList<>();','private final List<IceCandidate> pendingCandidates=new ArrayList<>();\n    private final java.util.HashSet<Long> seenSignals=new java.util.HashSet<>();')
-s=s.replace('JSONObject x=a.getJSONObject(i);handle(x.optString("type"),x.optString("payload"));','JSONObject x=a.getJSONObject(i);long sid=x.optLong("id",0);if(sid!=0&&!seenSignals.add(sid))continue;handle(x.optString("type"),x.optString("payload"));')
-s=s.replace('if(target!=null&&!cleaned)sendSignal("end","{}");','if(target!=null)sendSignal("end","{}");')
-p.write_text(s,encoding='utf-8')
+def method(src, signature, body):
+    start=src.find(signature)
+    if start<0:
+        raise SystemExit('missing method: '+signature)
+    brace=src.find('{', start)
+    depth=0
+    end=-1
+    for i in range(brace, len(src)):
+        if src[i]=='{': depth+=1
+        elif src[i]=='}':
+            depth-=1
+            if depth==0:
+                end=i+1; break
+    if end<0: raise SystemExit('unterminated method: '+signature)
+    return src[:start]+body+src[end:]
+
+s=MAIN.read_text(encoding='utf-8')
+# State for a real audio draft: recording -> preview -> explicit send/delete.
+if 'private File audioDraft;' not in s:
+    s=s.replace('private MediaRecorder recorder;private boolean recording;private long lastInboxId;', 'private MediaRecorder recorder;private boolean recording;private long lastInboxId;private File audioDraft;private LinearLayout audioDraftBar;')
+
+s=method(s, 'private void login()', '''private void login(){base("وَثاق — تواصل آمن");TextView x=tv("تسجيل الدخول إلى هويتك",25,Color.WHITE);x.setGravity(Gravity.CENTER);content.addView(x,lp(-1,-2,18));EditText n=field("الاسم الثلاثي"),y=field("سنة الميلاد");y.setInputType(InputType.TYPE_CLASS_NUMBER);content.addView(n,lp(-1,64,10));content.addView(y,lp(-1,64,14));Button l=btn("تسجيل الدخول"),c=btn("إنشاء هوية جديدة");content.addView(l,lp(-1,76,10));content.addView(c,lp(-1,76,14));content.addView(tv("المؤسس: حاتم حسين الحاج رمضان",14,gold()));l.setOnClickListener(v->{click();l.setEnabled(false);auth(n.getText().toString().trim(),y.getText().toString().trim(),false,l);});c.setOnClickListener(v->{click();c.setEnabled(false);auth(n.getText().toString().trim(),y.getText().toString().trim(),true,c);});}''')
+
+# Keep the button enabled after validation/network errors.
+s=method(s, 'private void auth(String n,String y,boolean create)', '''private void auth(String n,String y,boolean create){auth(n,y,create,null);} private void auth(String n,String y,boolean create,Button source){if(n.split("\\\\s+").length<3||!y.matches("\\\\d{4}")){if(source)source.setEnabled(true);toast("أدخل الاسم الثلاثي وسنة الميلاد");return;}io.execute(()->{try{JSONObject q=new JSONObject();q.put("name",n);q.put("birthYear",Integer.parseInt(y));q.put("deviceKey",deviceKey());HttpResult r=request("POST",create?"/api/identity":"/api/login",q.toString(),null);if(r.code>=200&&r.code<300){JSONObject o=new JSONObject(r.body),u=o.getJSONObject("user");prefs.edit().putString(T,o.getString("token")).putString(ID,u.optString("wethaq_id")).putString("db_user_id",u.optString("id")).putString(NAME,u.optString("name",n)).putString(YEAR,String.valueOf(u.optInt("birth_year",Integer.parseInt(y)))).apply();h.post(this::home);}else{final HttpResult result=r;h.post(()->{if(source)source.setEnabled(true);toast(error(result));});}}catch(Exception e){h.post(()->{if(source)source.setEnabled(true);toast("تعذر الاتصال بالخادم");});}});}''')
+
+# Search result now opens chat directly and persists the peer locally on first contact.
+s=method(s, 'private void search(String q,LinearLayout list)', '''private void search(String q,LinearLayout list){if(q.length()<2){toast("أدخل حرفين على الأقل");return;}io.execute(()->{try{HttpResult r=request("GET","/api/search?q="+URLEncoder.encode(q,"UTF-8"),null,null);if(r.code==200){JSONArray a=new JSONObject(r.body).optJSONArray("users");h.post(()->{list.removeAllViews();if(a==null||a.length()==0){list.addView(tv("لا توجد نتائج",16,Color.GRAY));return;}for(int i=0;i<a.length();i++){JSONObject u=a.optJSONObject(i);if(u==null)continue;String id=u.optString("wethaq_id"),n=u.optString("name");TextView who=tv("👤 "+n+"\\n"+id,18,Color.WHITE);list.addView(who,lp(-1,-2,4));Button chat=btn("💬 مراسلة مباشرة");Button save=btn("حفظ جهة الاتصال");list.addView(chat,lp(-1,76,6));list.addView(save,lp(-1,76,8));chat.setOnClickListener(v->{click();addLocalContact(id,n);conversation(id,n);});save.setOnClickListener(v->{click();addLocalContact(id,n);toast("تم حفظ جهة الاتصال ✓");});}});}else{final HttpResult result=r;h.post(()->toast(error(result)));}}catch(Exception e){h.post(()->toast("فشل البحث"));}});}''')
+
+# Conversation has both audio/video calls and a real audio draft preview.
+s=method(s, 'private void conversation(String id,String n)', '''private void conversation(String id,String n){stopPolling();activeId=id;activeName=n;addLocalContact(id,n);base(n);LinearLayout calls=new LinearLayout(this);calls.setOrientation(LinearLayout.HORIZONTAL);Button audioCall=btn("📞 مكالمة صوتية"),videoCall=btn("📹 مكالمة فيديو");calls.addView(audioCall,new LinearLayout.LayoutParams(0,76,1));calls.addView(videoCall,new LinearLayout.LayoutParams(0,76,1));content.addView(calls,lp(-1,76,6));audioCall.setOnClickListener(v->{click();startAudioCall();});videoCall.setOnClickListener(v->{click();startVideoCall();});messages=new LinearLayout(this);messages.setOrientation(LinearLayout.VERTICAL);ScrollView sc=new ScrollView(this);sc.setFillViewport(true);sc.addView(messages);content.addView(sc,new LinearLayout.LayoutParams(-1,0,1));LinearLayout bar=new LinearLayout(this);Button mic=btn("🎙"),gallery=btn("▧"),send=btn("إرسال");input=field("اكتب رسالة…");bar.addView(mic,new LinearLayout.LayoutParams(dp(64),dp(76)));bar.addView(gallery,new LinearLayout.LayoutParams(dp(64),dp(76)));bar.addView(input,new LinearLayout.LayoutParams(0,dp(76),1));bar.addView(send,new LinearLayout.LayoutParams(dp(88),dp(76)));root.addView(bar);audioDraftBar=new LinearLayout(this);audioDraftBar.setOrientation(LinearLayout.HORIZONTAL);audioDraftBar.setVisibility(View.GONE);Button play=btn("▶ معاينة"),sendAudio=btn("إرسال الصوت"),delete=btn("حذف");audioDraftBar.addView(play,new LinearLayout.LayoutParams(0,70,1));audioDraftBar.addView(sendAudio,new LinearLayout.LayoutParams(0,70,1));audioDraftBar.addView(delete,new LinearLayout.LayoutParams(0,70,1));root.addView(audioDraftBar,lp(-1,70,4));play.setOnClickListener(v->{if(audioDraft!=null)playAudioFile(audioDraft);});sendAudio.setOnClickListener(v->{sendAudioDraft();});delete.setOnClickListener(v->{clearAudioDraft();});Button back=btn("‹ جهات الاتصال");root.addView(back,new LinearLayout.LayoutParams(-1,dp(76)));back.setOnClickListener(v->{click();clearAudioDraft();contactsScreen();});send.setOnClickListener(v->{click();send();});mic.setOnClickListener(v->{click();if(recording)stopRecording(false);else if(audioDraft!=null)toast("أرسل أو احذف المسودة أولًا");else startRecording();});gallery.setOnClickListener(v->{click();pickImage();});loadMessages();startPolling();}''')
+
+# Automatic local contact persistence is independent of manual saving.
+if 'private void addLocalContact(String id,String n)' not in s:
+    marker='private void saveContact(String id,String n)'
+    helper='''private void addLocalContact(String id,String n){if(id==null||id.trim().isEmpty())return;try{JSONArray a=contacts();for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o!=null&&id.equals(o.optString("wethaq_id")))return;}JSONObject o=new JSONObject();o.put("wethaq_id",id);o.put("name",n==null?"مستخدم":n);a.put(o);prefs.edit().putString(CONTACTS,a.toString()).apply();}catch(Exception ignored){}}\n '''
+    s=s.replace(marker,helper+marker,1)
+
+# Replace recording implementation with explicit draft lifecycle.
+s=method(s, 'private void startRecording()', '''private void startRecording(){if(Build.VERSION.SDK_INT>=23&&checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},701);return;}try{audioDraft=new File(getCacheDir(),"wethaq_audio_"+System.currentTimeMillis()+".m4a");recorder=new MediaRecorder();recorder.setAudioSource(MediaRecorder.AudioSource.MIC);recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);recorder.setAudioEncodingBitRate(64000);recorder.setAudioSamplingRate(44100);recorder.setOutputFile(audioDraft.getAbsolutePath());recorder.prepare();recorder.start();recording=true;toast("جارٍ التسجيل… اضغط 🎙 لإيقاف التسجيل وتجهيز المسودة");}catch(Exception e){if(recorder!=null){try{recorder.release();}catch(Exception ignored){}}recorder=null;recording=false;audioDraft=null;toast("تعذر تشغيل الميكروفون");}}''')
+s=method(s, 'private void stopRecording(boolean send)', '''private void stopRecording(boolean send){if(recorder!=null){try{recorder.stop();}catch(Exception ignored){}try{recorder.release();}catch(Exception ignored){}recorder=null;}recording=false;if(audioDraft!=null&&audioDraft.exists()&&audioDraft.length()>0){if(audioDraftBar!=null)audioDraftBar.setVisibility(View.VISIBLE);toast("تم تجهيز التسجيل كمسودة — اضغط إرسال الصوت");}else{audioDraft=null;if(audioDraftBar!=null)audioDraftBar.setVisibility(View.GONE);}}''')
+
+if 'private void sendAudioDraft()' not in s:
+    marker='private byte[] readFile(File f)throws Exception'
+    helper='''private void sendAudioDraft(){if(audioDraft==null||!audioDraft.exists()||activeId==null){toast("لا توجد مسودة صوتية");return;}File f=audioDraft;io.execute(()->{try{String data=Base64.getEncoder().encodeToString(readFile(f));JSONObject q=new JSONObject();q.put("to",activeId);q.put("audioBase64",data);q.put("mimeType","audio/mp4");HttpResult r=request("POST","/api/messages/audio",q.toString(),auth());h.post(()->{if(r.code>=200&&r.code<300){addLocalContact(activeId,activeName);clearAudioDraft();loadMessages();toast("تم إرسال الرسالة الصوتية ✓");}else toast("فشل إرسال الصوت: "+error(r));});}catch(Exception e){h.post(()->toast("فشل تجهيز الصوت للإرسال"));}});}\n private void clearAudioDraft(){if(audioDraft!=null){try{if(audioDraft.exists())audioDraft.delete();}catch(Exception ignored){}}audioDraft=null;if(audioDraftBar!=null)audioDraftBar.setVisibility(View.GONE);}\n private void playAudioFile(File f){try{MediaPlayer p=new MediaPlayer();p.setDataSource(f.getAbsolutePath());p.setOnCompletionListener(x->{x.release();});p.prepare();p.start();}catch(Exception e){toast("تعذر تشغيل المعاينة");}}\n '''
+    s=s.replace(marker,helper+marker,1)
+
+# Fix notification text and contact creation for incoming messages.
+s=s.replace('String body=m.optString("body");h.post(()->{toneIncoming();notifyIncoming(body.isEmpty()?"وسائط جديدة":body);});','String body=m.optString("body"),sender=m.optString("sender_name","مستخدم");addLocalContact(m.optString("sender_wethaq_id"),sender);h.post(()->{toneIncoming();notifyIncoming(sender+"\\n"+(body.isEmpty()?"وسائط جديدة":body));});')
+
+# Calls: keep existing video method and add an audio-only mode.
+s=s.replace('private void startVideoCall(){Intent i=new Intent(this,VideoCallActivity.class);i.putExtra("target",activeId);i.putExtra("name",activeName);startActivity(i);}', 'private void startVideoCall(){startCall(false);} private void startAudioCall(){startCall(true);} private void startCall(boolean audioOnly){if(activeId==null){toast("اختر جهة اتصال أولاً");return;}Intent i=new Intent(this,VideoCallActivity.class);i.putExtra("target",activeId);i.putExtra("name",activeName);i.putExtra("audioOnly",audioOnly);startActivity(i);}')
+
+MAIN.write_text(s,encoding='utf-8')
+
+# WebRTC activity: support audio-only and require only the permissions needed by the selected call.
+v=VIDEO.read_text(encoding='utf-8')
+if 'private boolean audioOnly;' not in v:
+    v=v.replace('private boolean started,cleaned,offerSent,remoteDescriptionSet;', 'private boolean started,cleaned,offerSent,remoteDescriptionSet;\n    private boolean audioOnly;')
+v=v.replace('myId=getSharedPreferences("wethaq",MODE_PRIVATE).getString("wethaq_id","");', 'myId=getSharedPreferences("wethaq",MODE_PRIVATE).getString("wethaq_id","");\n        audioOnly=getIntent().getBooleanExtra("audioOnly",false);')
+old='if(Build.VERSION.SDK_INT>=23 && (checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED || checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED)){\n            requestPermissions(new String[]{Manifest.permission.CAMERA,Manifest.permission.RECORD_AUDIO},500);\n        }else startCall();'
+new='if(Build.VERSION.SDK_INT>=23){boolean mic=checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED;boolean cam=checkSelfPermission(Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED;if((audioOnly&&!mic)||(!audioOnly&&(!mic||!cam))){requestPermissions(audioOnly?new String[]{Manifest.permission.RECORD_AUDIO}:new String[]{Manifest.permission.CAMERA,Manifest.permission.RECORD_AUDIO},500);}else startCall();}else startCall();'
+v=v.replace(old,new)
+v=v.replace('f.addView(remoteView,new FrameLayout.LayoutParams(-1,-1));\n        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(300,400,Gravity.RIGHT|Gravity.TOP);lp.setMargins(0,30,20,0);f.addView(localView,lp);', 'if(!audioOnly){f.addView(remoteView,new FrameLayout.LayoutParams(-1,-1));FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(300,400,Gravity.RIGHT|Gravity.TOP);lp.setMargins(0,30,20,0);f.addView(localView,lp);}else{TextView t=new TextView(this);t.setText("📞 مكالمة صوتية\\n"+getIntent().getStringExtra("name"));t.setTextColor(Color.WHITE);t.setTextSize(26);t.setGravity(Gravity.CENTER);f.addView(t,new FrameLayout.LayoutParams(-1,-1));}')
+
+v=method(v,'private void startLocal()', '''private void startLocal(){AudioSource as=factory.createAudioSource(new MediaConstraints());AudioTrack at=factory.createAudioTrack("audio",as);MediaStream ms=factory.createLocalMediaStream("wethaq_stream");ms.addTrack(at);if(!audioOnly){VideoCapturer cap=createCapturer();if(cap==null)throw new IllegalStateException("camera");VideoSource vs=factory.createVideoSource(cap.isScreencast());cap.initialize(SurfaceTextureHelper.create("WethaqCapture",egl.getEglBaseContext()),this,new CapturerObserver(){public void onCapturerStarted(boolean b){}public void onCaptureFormatChosen(int w,int h,int f){}public void onFrameCaptured(VideoFrame f){}public void onCapturerStopped(){}});try{cap.startCapture(640,480,24);}catch(Exception ignored){}VideoTrack vt=factory.createVideoTrack("camera",vs);vt.addSink(localView);ms.addTrack(vt);}peer.addStream(ms);}''')
+# Do not require camera capture in factory setup for audio-only.
+v=v.replace('factory=PeerConnectionFactory.builder().setVideoEncoderFactory(new DefaultVideoEncoderFactory(egl.getEglBaseContext(),true,true)).setVideoDecoderFactory(new DefaultVideoDecoderFactory(egl.getEglBaseContext())).createPeerConnectionFactory();', 'factory=PeerConnectionFactory.builder().setVideoEncoderFactory(new DefaultVideoEncoderFactory(egl.getEglBaseContext(),true,true)).setVideoDecoderFactory(new DefaultVideoDecoderFactory(egl.getEglBaseContext())).createPeerConnectionFactory();')
+oldperm='if(r==500&&g.length>=2&&g[0]==PackageManager.PERMISSION_GRANTED&&g[1]==PackageManager.PERMISSION_GRANTED)startCall();else finish();'
+newperm='if(r==500){if(audioOnly&&g.length>=1&&g[0]==PackageManager.PERMISSION_GRANTED)startCall();else if(!audioOnly&&g.length>=2&&g[0]==PackageManager.PERMISSION_GRANTED&&g[1]==PackageManager.PERMISSION_GRANTED)startCall();else finish();}'
+v=v.replace(oldperm,newperm)
+VIDEO.write_text(v,encoding='utf-8')
 print('OK')
