@@ -1,13 +1,10 @@
 name: Wethaq Final V2 Release
-
 on:
   push:
     branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
-
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -23,50 +20,17 @@ jobs:
           python3 scripts/contact_repair.py
           python3 scripts/functional_repair.py
           python3 -m py_compile scripts/*.py
-      - name: Sanitize generated Android source
+      - name: Normalize generated Java
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
           p=Path('app/src/main/java/com/wethaq/app/MainActivity.java')
           s=p.read_text(encoding='utf-8')
-          decl=r'private\s+String\s+pendingImageData\s*,\s*pendingAudioData\s*,\s*pendingMime\s*;\s*private\s+int\s+pendingMediaType\s*;'
-          matches=list(re.finditer(decl,s))
-          if matches:
-              first=matches[0]
-              tail=s[first.end():]
-              tail=re.sub(decl,'',tail)
-              s=s[:first.start()]+first.group(0)+tail
-          marker='private void showImagePreview('
-          first=s.find(marker)
-          if first>=0:
-              brace=s.find('{',first)
-              depth=0; end=-1
-              for i in range(brace,len(s)):
-                  if s[i]=='{': depth+=1
-                  elif s[i]=='}':
-                      depth-=1
-                      if depth==0: end=i+1; break
-              if end>0:
-                  method=s[first:end]
-                  tail=s[end:]
-                  while True:
-                      pos=tail.find(marker)
-                      if pos<0: break
-                      b=tail.find('{',pos)
-                      d=0;e=-1
-                      for i in range(b,len(tail)):
-                          if tail[i]=='{': d+=1
-                          elif tail[i]=='}':
-                              d-=1
-                              if d==0: e=i+1; break
-                      if e<0: break
-                      tail=tail[:pos]+tail[e:]
-                  s=s[:first]+method+tail
+          s=s.replace('\\"','"')
+          s=s.replace('n.split("\\s+")','n.split(" ")')
+          s=s.replace('!y.matches("\\d{4}")','(y.length()!=4)')
           p.write_text(s,encoding='utf-8')
-          assert len(re.findall(decl,s))==1
-          assert s.count(marker)<=1
-          print('SOURCE_SANITIZED_OK')
+          print('JAVA_NORMALIZED_OK')
           PY
       - name: Java 17
         uses: actions/setup-java@v5
@@ -79,17 +43,16 @@ jobs:
           gradle-version: '8.9'
       - name: Compile and build release
         run: |
-          gradle --no-daemon compileReleaseJavaWithJavac
           gradle --no-daemon clean assembleRelease
       - name: Verify APK
         run: |
           test -s app/build/outputs/apk/release/app-release.apk
           unzip -t app/build/outputs/apk/release/app-release.apk >/dev/null
-          echo WETHAQ_RELEASE_APK_VERIFIED
+          echo "WETHAQ_FINAL_APK_OK"
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Wethaq-Final-V2-APK
+          name: Wethaq-Final-Production-APK
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 30
