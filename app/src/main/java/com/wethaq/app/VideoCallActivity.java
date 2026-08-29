@@ -34,7 +34,7 @@ public final class VideoCallActivity extends Activity {
         super.onCreate(b);
         target=getIntent().getStringExtra("target");
         token=getSharedPreferences("wethaq",MODE_PRIVATE).getString("token","");
-        myId=getSharedPreferences("wethaq",MODE_PRIVATE).getString("wethaq_id","");audioOnly=getIntent().getBooleanExtra("audioOnly",false);audioOnly=getIntent().getBooleanExtra("audioOnly",false);audioOnly=getIntent().getBooleanExtra("audioOnly",false);audioOnly=getIntent().getBooleanExtra("audioOnly",false);audioOnly=getIntent().getBooleanExtra("audioOnly",false);audioOnly=getIntent().getBooleanExtra("audioOnly",false);audioOnly=getIntent().getBooleanExtra("audioOnly",false);
+        myId=getSharedPreferences("wethaq",MODE_PRIVATE).getString("wethaq_id","");audioOnly=getIntent().getBooleanExtra("audioOnly",false);audioOnly=getIntent().getBooleanExtra("audioOnly",false);audioOnly=getIntent().getBooleanExtra("audioOnly",false);audioOnly=getIntent().getBooleanExtra("audioOnly",false);audioOnly=getIntent().getBooleanExtra("audioOnly",false);audioOnly=getIntent().getBooleanExtra("audioOnly",false);audioOnly=getIntent().getBooleanExtra("audioOnly",false);audioOnly=getIntent().getBooleanExtra("audioOnly",false);
         setContentView(makeUi());
         if(target==null||target.trim().isEmpty()||token.isEmpty()){toast("تعذر بدء المكالمة: هوية الطرف الآخر غير موجودة");finish();return;}
         if(Build.VERSION.SDK_INT>=23){ boolean mic=checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED; boolean cam=audioOnly||checkSelfPermission(Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED; if(!mic||!cam){ if(audioOnly)requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},500); else requestPermissions(new String[]{Manifest.permission.CAMERA,Manifest.permission.RECORD_AUDIO},500); } else startCall(); } else startCall();
@@ -54,7 +54,7 @@ public final class VideoCallActivity extends Activity {
     private void startCall(){
         try{
             egl=EglBase.create();
-            if(!audioOnly){if(!audioOnly){if(!audioOnly){if(!audioOnly){if(!audioOnly){if(!audioOnly){localView.init(egl.getEglBaseContext(),null);remoteView.init(egl.getEglBaseContext(),null);localView.setMirror(true);}}}}}}
+            if(!audioOnly){if(!audioOnly){if(!audioOnly){if(!audioOnly){if(!audioOnly){if(!audioOnly){if(!audioOnly){localView.init(egl.getEglBaseContext(),null);remoteView.init(egl.getEglBaseContext(),null);localView.setMirror(true);}}}}}}}
             PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(this).createInitializationOptions());
             factory=PeerConnectionFactory.builder()
                 .setVideoEncoderFactory(new DefaultVideoEncoderFactory(egl.getEglBaseContext(),true,true))
