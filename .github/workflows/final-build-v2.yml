@@ -26,16 +26,24 @@ jobs:
           from pathlib import Path
           p=Path('app/src/main/java/com/wethaq/app/MainActivity.java')
           s=p.read_text(encoding='utf-8')
-          s=s.replace('\\"','"')
           s=s.replace('n.split("\\s+")','n.split(" ")')
           s=s.replace('!y.matches("\\d{4}")','(y.length()!=4)')
-          # Final defensive normalization for the auth lambda.
-          s=s.replace('n=n.trim();y=y.trim();','final String fn=n.trim(),fy=y.trim();',1)
-          s=s.replace('q.put("name",n);q.put("birthYear",Integer.parseInt(y));','q.put("name",fn);q.put("birthYear",Integer.parseInt(fy));',1)
-          s=s.replace('u.optString("name",n)).put(YEAR,y)','u.optString("name",fn)).put(YEAR,fy)',1)
+          # The repair scripts may emit stale fn/fy identifiers. Keep auth scoped
+          # to the method parameters n/y so the checked-in source compiles as-is.
+          s=s.replace('q.put("name",fn);q.put("birthYear",Integer.parseInt(fy));','q.put("name",n);q.put("birthYear",Integer.parseInt(y));')
+          s=s.replace('u.optString("name",fn)).put(YEAR,fy)','u.optString("name",n)).put(YEAR,y)')
+          s=s.replace('final String fn=n.trim(),fy=y.trim();','n=n.trim();y=y.trim();')
+          s=s.replace('q.put("name",fn);','q.put("name",n);')
+          s=s.replace('Integer.parseInt(fy)','Integer.parseInt(y)')
+          s=s.replace('u.optString("name",fn)','u.optString("name",n)')
+          s=s.replace('.put(YEAR,fy)','.put(YEAR,y)')
           p.write_text(s,encoding='utf-8')
+          text=p.read_text(encoding='utf-8')
+          if 'q.put("name",fn)' in text or 'Integer.parseInt(fy)' in text or 'optString("name",fn)' in text or '.put(YEAR,fy)' in text:
+              raise SystemExit('STALE_AUTH_IDENTIFIERS_REMAIN')
           print('JAVA_NORMALIZED_OK')
           PY
+          grep -nE 'q\.put\("name",fn\)|Integer\.parseInt\(fy\)|optString\("name",fn\)|put\(YEAR,fy\)' app/src/main/java/com/wethaq/app/MainActivity.java && exit 1 || true
       - name: Java 17
         uses: actions/setup-java@v5
         with:
