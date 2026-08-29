@@ -22,6 +22,23 @@ jobs:
           python3 scripts/video_repair.py
           python3 scripts/contact_repair.py
           python3 -m py_compile scripts/*.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('app/src/main/java/com/wethaq/app/MainActivity.java')
+          s=p.read_text(encoding='utf-8')
+          # Normalize repeated media fields introduced by older repair passes.
+          field='private String pendingImageData,pendingAudioData,pendingMime;private int pendingMediaType;'
+          s=re.sub(r'(?:private String pendingImageData,pendingAudioData,pendingMime;private int pendingMediaType;)+',field,s)
+          # Keep only one identical showImagePreview implementation.
+          method='private void showImagePreview(String data){try{byte[] z=Base64.getDecoder().decode(data);Bitmap bm=BitmapFactory.decodeByteArray(z,0,z.length);if(input!=null){input.setCompoundDrawablesWithIntrinsicBounds(new BitmapDrawable(getResources(),bm),null,null,null);input.setHint("الصورة جاهزة للإرسال — اضغط إرسال");}}catch(Exception ignored){}}'
+          first=s.find(method)
+          if first>=0:
+              tail=s[first+len(method):]
+              s=s[:first]+method+tail.replace(method,'')
+          p.write_text(s,encoding='utf-8')
+          print('SOURCE_SANITIZED')
+          PY
       - name: Java 17
         uses: actions/setup-java@v5
         with:
