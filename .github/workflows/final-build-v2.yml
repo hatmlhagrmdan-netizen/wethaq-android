@@ -24,26 +24,52 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
           p=Path('app/src/main/java/com/wethaq/app/MainActivity.java')
           s=p.read_text(encoding='utf-8')
+          # Repair scripts can rewrite auth() with stale fn/fy names. Normalize
+          # the whole method header/body variables without mutating lambda captures.
           s=s.replace('n.split("\\s+")','n.split(" ")')
           s=s.replace('!y.matches("\\d{4}")','(y.length()!=4)')
-          # The repair scripts may emit stale fn/fy identifiers. Keep auth scoped
-          # to the method parameters n/y so the checked-in source compiles as-is.
           s=s.replace('q.put("name",fn);q.put("birthYear",Integer.parseInt(fy));','q.put("name",n);q.put("birthYear",Integer.parseInt(y));')
           s=s.replace('u.optString("name",fn)).put(YEAR,fy)','u.optString("name",n)).put(YEAR,y)')
-          s=s.replace('final String fn=n.trim(),fy=y.trim();','n=n.trim();y=y.trim();')
-          s=s.replace('q.put("name",fn);','q.put("name",n);')
-          s=s.replace('Integer.parseInt(fy)','Integer.parseInt(y)')
-          s=s.replace('u.optString("name",fn)','u.optString("name",n)')
-          s=s.replace('.put(YEAR,fy)','.put(YEAR,y)')
+          s=s.replace('final String fn=n.trim(),fy=y.trim();','final String name=n.trim(),year=y.trim();')
+          s=s.replace('final String fn=n,fy=y;','final String name=n,year=y;')
+          # If a repair script emitted mutable parameter normalization, use final locals.
+          s=s.replace('private void auth(String n,String y,boolean create){n=n.trim();y=y.trim();', 'private void auth(String n,String y,boolean create){final String name=n.trim(),year=y.trim();')
+          # Normalize references only inside auth's declaration/body patterns.
+          start=s.find('private void auth(')
+          if start < 0: raise SystemExit('AUTH_METHOD_NOT_FOUND')
+          end=s.find('\n private void ', start+1)
+          if end < 0: end=s.find('\n}', start)
+          auth=s[start:end]
+          auth=auth.replace('q.put("name",fn);','q.put("name",name);')
+          auth=auth.replace('q.put("name",n);','q.put("name",name);')
+          auth=auth.replace('Integer.parseInt(fy)','Integer.parseInt(year)')
+          auth=auth.replace('Integer.parseInt(y)','Integer.parseInt(year)')
+          auth=auth.replace('u.optString("name",fn)','u.optString("name",name)')
+          auth=auth.replace('u.optString("name",n)','u.optString("name",name)')
+          auth=auth.replace('.put(YEAR,fy)','.put(YEAR,year)')
+          auth=auth.replace('.put(YEAR,y)','.put(YEAR,year)')
+          s=s[:start]+auth+s[end:]
           p.write_text(s,encoding='utf-8')
           text=p.read_text(encoding='utf-8')
-          if 'q.put("name",fn)' in text or 'Integer.parseInt(fy)' in text or 'optString("name",fn)' in text or '.put(YEAR,fy)' in text:
+          if any(x in text for x in ['q.put("name",fn)','Integer.parseInt(fy)','optString("name",fn)','.put(YEAR,fy)']):
               raise SystemExit('STALE_AUTH_IDENTIFIERS_REMAIN')
           print('JAVA_NORMALIZED_OK')
           PY
-          grep -nE 'q\.put\("name",fn\)|Integer\.parseInt\(fy\)|optString\("name",fn\)|put\(YEAR,fy\)' app/src/main/java/com/wethaq/app/MainActivity.java && exit 1 || true
+      - name: Static Java sanity checks
+        run: |
+          test -f app/src/main/java/com/wethaq/app/MainActivity.java
+          ! grep -nE 'q\.put\("name",fn\)|Integer\.parseInt\(fy\)|optString\("name",fn\)|put\(YEAR,fy\)' app/src/main/java/com/wethaq/app/MainActivity.java
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('app/src/main/java/com/wethaq/app/MainActivity.java').read_text()
+          required=['private void auth(','private void home(','private void searchScreen(','private void contactsScreen(','private void conversation(','private void send()','private HttpResult request(']
+          missing=[x for x in required if x not in s]
+          if missing: raise SystemExit('MISSING_METHODS:'+','.join(missing))
+          print('JAVA_SANITY_OK')
+          PY
       - name: Java 17
         uses: actions/setup-java@v5
         with:
