@@ -69,7 +69,7 @@ public final class VideoCallActivity extends Activity {
         super.onCreate(state);
         target=getIntent().getStringExtra("target");
         token=getSharedPreferences("wethaq",MODE_PRIVATE).getString("token","");
-        myId=getSharedPreferences("wethaq",MODE_PRIVATE).getString("wethaq_id","");audioOnly=getIntent().getBooleanExtra("audioOnly",false);audioOnly=getIntent().getBooleanExtra("audioOnly",false);audioOnly=getIntent().getBooleanExtra("audioOnly",false);
+        myId=getSharedPreferences("wethaq",MODE_PRIVATE).getString("wethaq_id","");audioOnly=getIntent().getBooleanExtra("audioOnly",false);audioOnly=getIntent().getBooleanExtra("audioOnly",false);audioOnly=getIntent().getBooleanExtra("audioOnly",false);audioOnly=getIntent().getBooleanExtra("audioOnly",false);
         audioOnly=getIntent().getBooleanExtra("audioOnly",false);
         signalSince=Long.toString(System.currentTimeMillis());
         setContentView(makeUi());
@@ -99,7 +99,7 @@ public final class VideoCallActivity extends Activity {
     private void startCall(){
         try{
             PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(this).createInitializationOptions());
-            if(!audioOnly){egl=EglBase.create();if(!audioOnly){if(!audioOnly){localView.init(egl.getEglBaseContext(),null);remoteView.init(egl.getEglBaseContext(),null);localView.setMirror(true);}}}
+            if(!audioOnly){egl=EglBase.create();if(!audioOnly){if(!audioOnly){if(!audioOnly){localView.init(egl.getEglBaseContext(),null);remoteView.init(egl.getEglBaseContext(),null);localView.setMirror(true);}}}}
             PeerConnectionFactory.Builder builder=PeerConnectionFactory.builder();
             if(!audioOnly)builder.setVideoEncoderFactory(new DefaultVideoEncoderFactory(egl.getEglBaseContext(),true,true)).setVideoDecoderFactory(new DefaultVideoDecoderFactory(egl.getEglBaseContext()));
             factory=builder.createPeerConnectionFactory();createPeer();startLocal();
