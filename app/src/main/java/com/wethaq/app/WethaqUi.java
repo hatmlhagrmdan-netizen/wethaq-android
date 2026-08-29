@@ -2,6 +2,7 @@ package com.wethaq.app;
 
 import android.app.Activity;import android.app.Application;import android.graphics.*;import android.graphics.drawable.*;import android.view.*;import android.widget.*;import org.json.*;import java.io.*;import java.net.*;import java.nio.charset.StandardCharsets;
 
+/** Wethaq 3D UI: shared visual layer for buttons, avatars and RTL user rows. */
 public final class WethaqUi{
  private static final int GOLD=Color.rgb(212,175,55),DARK=Color.rgb(28,28,32),PRESSED=Color.rgb(55,45,24);private static final String API="https://wethaq-backend-production.up.railway.app";
  private WethaqUi(){}
