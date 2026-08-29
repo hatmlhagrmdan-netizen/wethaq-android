@@ -29,6 +29,10 @@ jobs:
           s=s.replace('\\"','"')
           s=s.replace('n.split("\\s+")','n.split(" ")')
           s=s.replace('!y.matches("\\d{4}")','(y.length()!=4)')
+          # Final defensive normalization for the auth lambda.
+          s=s.replace('n=n.trim();y=y.trim();','final String fn=n.trim(),fy=y.trim();',1)
+          s=s.replace('q.put("name",n);q.put("birthYear",Integer.parseInt(y));','q.put("name",fn);q.put("birthYear",Integer.parseInt(fy));',1)
+          s=s.replace('u.optString("name",n)).put(YEAR,y)','u.optString("name",fn)).put(YEAR,fy)',1)
           p.write_text(s,encoding='utf-8')
           print('JAVA_NORMALIZED_OK')
           PY
