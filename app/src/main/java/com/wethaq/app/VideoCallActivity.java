@@ -69,7 +69,7 @@ public final class VideoCallActivity extends Activity {
         super.onCreate(state);
         target=getIntent().getStringExtra("target");
         token=getSharedPreferences("wethaq",MODE_PRIVATE).getString("token","");
-        myId=getSharedPreferences("wethaq",MODE_PRIVATE).getString("wethaq_id","");
+        myId=getSharedPreferences("wethaq",MODE_PRIVATE).getString("wethaq_id","");audioOnly=getIntent().getBooleanExtra("audioOnly",false);audioOnly=getIntent().getBooleanExtra("audioOnly",false);
         audioOnly=getIntent().getBooleanExtra("audioOnly",false);
         signalSince=Long.toString(System.currentTimeMillis());
         setContentView(makeUi());
@@ -99,7 +99,7 @@ public final class VideoCallActivity extends Activity {
     private void startCall(){
         try{
             PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(this).createInitializationOptions());
-            if(!audioOnly){egl=EglBase.create();localView.init(egl.getEglBaseContext(),null);remoteView.init(egl.getEglBaseContext(),null);localView.setMirror(true);}
+            if(!audioOnly){egl=EglBase.create();if(!audioOnly){localView.init(egl.getEglBaseContext(),null);remoteView.init(egl.getEglBaseContext(),null);localView.setMirror(true);}}
             PeerConnectionFactory.Builder builder=PeerConnectionFactory.builder();
             if(!audioOnly)builder.setVideoEncoderFactory(new DefaultVideoEncoderFactory(egl.getEglBaseContext(),true,true)).setVideoDecoderFactory(new DefaultVideoDecoderFactory(egl.getEglBaseContext()));
             factory=builder.createPeerConnectionFactory();createPeer();startLocal();
@@ -125,10 +125,7 @@ public final class VideoCallActivity extends Activity {
         });
         if(peer==null)throw new IllegalStateException("peer");
     }
-    private void startLocal(){
-        audioSource=factory.createAudioSource(new MediaConstraints());AudioTrack at=factory.createAudioTrack("wethaq_audio",audioSource);List<String> ids=Collections.singletonList("wethaq_stream");peer.addTrack(at,ids);
-        if(!audioOnly){capturer=createCapturer();if(capturer==null)throw new IllegalStateException("camera");videoSource=factory.createVideoSource(false);capturer.initialize(SurfaceTextureHelper.create("WethaqCapture",egl.getEglBaseContext()),this,new CapturerObserver(){public void onCapturerStarted(boolean b){}public void onCaptureFormatChosen(int w,int h,int f){}public void onFrameCaptured(VideoFrame f){}public void onCapturerStopped(){}});capturer.startCapture(640,480,24);VideoTrack vt=factory.createVideoTrack("wethaq_video",videoSource);vt.addSink(localView);peer.addTrack(vt,ids);}
-    }
+    private void startLocal(){audioSource=factory.createAudioSource(new MediaConstraints());AudioTrack at=factory.createAudioTrack("wethaq_audio",audioSource);List<String> ids=Collections.singletonList("wethaq_stream");peer.addTrack(at,ids);if(!audioOnly){capturer=createCapturer();if(capturer==null)throw new IllegalStateException("camera");videoSource=factory.createVideoSource(false);capturer.initialize(SurfaceTextureHelper.create("WethaqCapture",egl.getEglBaseContext()),this,new CapturerObserver(){public void onCapturerStarted(boolean b){}public void onCaptureFormatChosen(int w,int h,int f){}public void onFrameCaptured(VideoFrame f){}public void onCapturerStopped(){}});capturer.startCapture(640,480,24);VideoTrack vt=factory.createVideoTrack("wethaq_video",videoSource);vt.addSink(localView);peer.addTrack(vt,ids);}}
     private CameraVideoCapturer createCapturer(){Camera2Enumerator e=new Camera2Enumerator(this);for(String n:e.getDeviceNames())if(e.isFrontFacing(n))return e.createCapturer(n,null);for(String n:e.getDeviceNames())return e.createCapturer(n,null);return null;}
     private void sendOffer(){if(offerSent||peer==null)return;offerSent=true;peer.createOffer(new SdpObserver(){public void onCreateSuccess(SessionDescription d){peer.setLocalDescription(new SimpleSdp(){public void onSetSuccess(){sendSignal("offer",sdpJson(d));}public void onSetFailure(String s){offerSent=false;}},d);}public void onSetSuccess(){}public void onCreateFailure(String s){offerSent=false;}public void onSetFailure(String s){}},new MediaConstraints());}
     private void pollSignals(){new Thread(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(API+"/api/calls/signals/"+URLEncoder.encode(target,"UTF-8")).openConnection();c.setRequestProperty("Authorization","Bearer "+token);c.setConnectTimeout(5000);c.setReadTimeout(5000);if(c.getResponseCode()!=200){c.disconnect();return;}InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[4096];int n;while((n=in.read(b))!=-1)out.write(b,0,n);in.close();c.disconnect();JSONArray a=new JSONObject(new String(out.toByteArray(),StandardCharsets.UTF_8)).optJSONArray("signals");if(a==null)return;List<JSONObject> list=new ArrayList<>();for(int i=0;i<a.length();i++){JSONObject x=a.optJSONObject(i);if(x!=null)list.add(x);}Collections.sort(list,Comparator.comparingLong(x->x.optLong("id",0)));for(JSONObject x:list){String id=x.optString("id","");String created=x.optString("created_at","");if(!created.isEmpty()&&!signalSince.isEmpty()&&created.compareTo(signalSince)<0)continue;String key=id.isEmpty()?created+x.optString("type")+x.optString("payload"):id;if(!seenSignals.add(key))continue;if(x.optString("sender_id","").equals(myId))continue;handle(x.optString("type"),x.optString("payload"));}}catch(Exception ignored){}}).start();}
