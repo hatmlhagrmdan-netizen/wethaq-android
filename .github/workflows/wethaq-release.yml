@@ -1,4 +1,4 @@
-name: Wethaq Minimal Java Release
+name: Wethaq Final Release
 
 on:
   push:
@@ -30,7 +30,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.9'
-      - name: Validate project
+      - name: Validate final source
         shell: bash
         run: |
           set -euo pipefail
@@ -39,70 +39,42 @@ jobs:
           test -f app/build.gradle
           test -f app/src/main/AndroidManifest.xml
           test -f app/src/main/java/com/wethaq/app/MainActivity.java
-          test -f app/src/main/java/com/wethaq/app/PremiumActivity.java
           test -f app/src/main/java/com/wethaq/app/VideoCallActivity.java
-          test -f app/src/main/res/values/styles.xml
-          test ! -f settings.gradle.kts
-          test ! -f build.gradle.kts
-          test ! -f app/build.gradle.kts
-          ! find app -type f -name '*.kt' | grep -q .
-          grep -q "include ':app'" settings.gradle
-          grep -q "applicationId 'com.wethaq.app'" app/build.gradle
-          grep -q "signingConfig signingConfigs.debug" app/build.gradle
+          test -f app/src/main/java/com/wethaq/app/WethaqMessageService.java
+          test -f app/src/main/java/com/wethaq/app/WethaqBootReceiver.java
           grep -q 'private Button btn(String s)' app/src/main/java/com/wethaq/app/MainActivity.java
-          grep -q 'setTextColor(Color.WHITE)' app/src/main/java/com/wethaq/app/MainActivity.java
-          grep -q 'setVisibility(View.VISIBLE)' app/src/main/java/com/wethaq/app/MainActivity.java
-          grep -q 'setEnabled(true)' app/src/main/java/com/wethaq/app/MainActivity.java
-          grep -q 'setClickable(true)' app/src/main/java/com/wethaq/app/MainActivity.java
-          grep -q 'تسجيل الدخول' app/src/main/java/com/wethaq/app/MainActivity.java
-          grep -q 'إنشاء هوية جديدة' app/src/main/java/com/wethaq/app/MainActivity.java
+          grep -q 'setElevation' app/src/main/java/com/wethaq/app/MainActivity.java
+          grep -q 'incomingOffer' app/src/main/java/com/wethaq/app/VideoCallActivity.java
+          grep -q 'showIncomingCall(id,name,audioOnly,payload)' app/src/main/java/com/wethaq/app/WethaqMessageService.java
+          grep -q 'notification_target' app/src/main/java/com/wethaq/app/WethaqMessageService.java
+          ! grep -q 'final String fn=n,fy=y' app/src/main/java/com/wethaq/app/MainActivity.java
+          ! grep -q 'q.put("name",fn)' app/src/main/java/com/wethaq/app/MainActivity.java
+          ! grep -q 'Integer.parseInt(fy)' app/src/main/java/com/wethaq/app/MainActivity.java
+          ! find app -type f -name '*.kt' | grep -q .
           git diff --check
-      - name: Ensure polished UI primitives
+      - name: Backend smoke configuration check
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('app/src/main/java/com/wethaq/app/MainActivity.java')
-          s=p.read_text()
-          if 'import android.graphics.drawable.GradientDrawable;' not in s:
-              s=s.replace('import android.graphics.*;', 'import android.graphics.*;import android.graphics.drawable.GradientDrawable;', 1)
-          if 'private int dp(int v)' not in s:
-              marker='private int gold(){return Color.rgb(212,175,55);}'
-              if marker not in s: raise SystemExit('gold marker missing')
-              s=s.replace(marker, marker+'private int dp(int v){return (int)(v*getResources().getDisplayMetrics().density+0.5f);}',1)
-          p.write_text(s)
-          PY
-          git diff --check
-      - name: Build signed release APK
+          test -f backend/package.json
+          test -f backend/server.js
+          grep -q 'wss' app/src/main/java/com/wethaq/app/WethaqMessageService.java
+          grep -q '/api/calls/signal' app/src/main/java/com/wethaq/app/VideoCallActivity.java
+      - name: Build release APK
         shell: bash
         run: gradle :app:clean :app:assembleRelease --no-daemon --stacktrace --console=plain
-      - name: Locate and inspect signed APK
-        id: apk
+      - name: Verify APK
         shell: bash
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/release/app-release.apk"
-          test -f "$APK"
           test -s "$APK"
-          echo "path=$APK" >> "$GITHUB_OUTPUT"
-          ls -lh "$APK"
-      - name: Verify APK archive
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK="${{ steps.apk.outputs.path }}"
           unzip -t "$APK" >/dev/null
           sha256sum "$APK" | tee app/build/outputs/apk/release/SHA256SUMS.txt
-      - name: Verify APK signature
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK="${{ steps.apk.outputs.path }}"
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
           test -x "$APKSIGNER"
           "$APKSIGNER" verify --verbose "$APK"
-      - name: Upload signed release
+      - name: Publish final APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: Wethaq-final-release
