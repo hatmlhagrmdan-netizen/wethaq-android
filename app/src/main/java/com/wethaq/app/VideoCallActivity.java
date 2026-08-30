@@ -52,7 +52,7 @@ public final class VideoCallActivity extends Activity {
         super.onCreate(state);
         target=getIntent().getStringExtra("target");
         token=getSharedPreferences("wethaq",MODE_PRIVATE).getString("token","");
-        myId=getSharedPreferences("wethaq",MODE_PRIVATE).getString("wethaq_id","");
+        myId=getSharedPreferences("wethaq",MODE_PRIVATE).getString("wethaq_id","");audioOnly=getIntent().getBooleanExtra("audioOnly",false);
         audioOnly=getIntent().getBooleanExtra("audioOnly",false);
         incomingOffer=getIntent().getStringExtra("incomingOffer");
         setContentView(makeUi());
@@ -87,7 +87,7 @@ public final class VideoCallActivity extends Activity {
     private void startCall(){
         try{
             PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(this).createInitializationOptions());
-            if(!audioOnly){egl=EglBase.create();localView.init(egl.getEglBaseContext(),null);remoteView.init(egl.getEglBaseContext(),null);localView.setMirror(true);}
+            if(!audioOnly){egl=EglBase.create();if(!audioOnly){localView.init(egl.getEglBaseContext(),null);remoteView.init(egl.getEglBaseContext(),null);localView.setMirror(true);}}
             audioManager=(AudioManager)getSystemService(Context.AUDIO_SERVICE);
             if(audioManager!=null){previousSpeaker=audioManager.isSpeakerphoneOn();audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);audioManager.setSpeakerphoneOn(true);}
             PeerConnectionFactory.Builder builder=PeerConnectionFactory.builder();
@@ -129,17 +129,19 @@ public final class VideoCallActivity extends Activity {
     }
 
     private void startLocal(){
-        List<String> ids=Collections.singletonList("wethaq_stream");
         audioSource=factory.createAudioSource(new MediaConstraints());
-        localAudioTrack=factory.createAudioTrack("wethaq_audio",audioSource);localAudioTrack.setEnabled(true);peer.addTrack(localAudioTrack,ids);
-        if(!audioOnly){
-            capturer=createCapturer();if(capturer==null)throw new IllegalStateException("camera unavailable");
-            videoSource=factory.createVideoSource(false);
-            SurfaceTextureHelper helper=SurfaceTextureHelper.create("WethaqCapture",egl.getEglBaseContext());
-            capturer.initialize(helper,this,videoSource.getCapturerObserver());
-            localVideoTrack=factory.createVideoTrack("wethaq_video",videoSource);localVideoTrack.setEnabled(true);localVideoTrack.addSink(localView);peer.addTrack(localVideoTrack,ids);
-            capturer.startCapture(640,480,24);
-        }
+        AudioTrack at=factory.createAudioTrack("wethaq_audio",audioSource);
+        List<String> streamIds=Collections.singletonList("wethaq_stream");
+        peer.addTrack(at,streamIds);
+        if(audioOnly)return;
+        capturer=createCapturer();
+        if(capturer==null)throw new IllegalStateException("camera");
+        videoSource=factory.createVideoSource(false);
+        capturer.initialize(SurfaceTextureHelper.create("WethaqCapture",egl.getEglBaseContext()),this,new CapturerObserver(){public void onCapturerStarted(boolean b){}public void onCaptureFormatChosen(int w,int h,int f){}public void onFrameCaptured(VideoFrame f){}public void onCapturerStopped(){}});
+        capturer.startCapture(640,480,24);
+        VideoTrack vt=factory.createVideoTrack("wethaq_video",videoSource);
+        vt.addSink(localView);
+        peer.addTrack(vt,streamIds);
     }
 
     private CameraVideoCapturer createCapturer(){Camera2Enumerator e=new Camera2Enumerator(this);for(String n:e.getDeviceNames())if(e.isFrontFacing(n))return e.createCapturer(n,null);for(String n:e.getDeviceNames())return e.createCapturer(n,null);return null;}
