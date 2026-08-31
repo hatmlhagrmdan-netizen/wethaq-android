@@ -17,11 +17,39 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Record source SHA
+        run: |
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" | tee source-sha.txt
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+
       - name: Java 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Node 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Backend smoke test
+        working-directory: backend
+        env:
+          PORT: 3100
+          NODE_ENV: test
+          DB_PATH: ${{ github.workspace }}/backend/wethaq-smoke.db
+          JWT_SECRET: ci-only-smoke-secret
+        run: |
+          npm install --no-audit --no-fund
+          node server.js > ../backend-smoke-server.log 2>&1 &
+          PID=$!
+          trap 'kill $PID 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:3100/health >/dev/null && break; sleep 1; done
+          curl -fsS http://127.0.0.1:3100/health >/dev/null
+          npm run test:smoke
 
       - name: Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
@@ -33,7 +61,8 @@ jobs:
           test -f app/src/main/java/com/wethaq/app/MainActivity.java
           test -f app/src/main/AndroidManifest.xml
           test -f app/build.gradle
-          ! grep -RIn --exclude-dir=.git --exclude-dir=build --exclude='*.md' -E 'localhost|127\.0\.0\.1' app backend
+          test -f app/src/main/java/com/wethaq/app/WethaqBootReceiver.java
+          ! grep -RIn --exclude-dir=.git --exclude-dir=build --exclude='*.md' -E 'localhost|127\.0\.0\.1' app
           ! grep -n 'Base64.getDecoder().decode(m.optString("audio_data"))' app/src/main/java/com/wethaq/app/MainActivity.java
           ! find . -type f -path '*/__pycache__/*' -print -quit | grep -q .
           echo "SOURCE_SANITY_OK"
@@ -43,17 +72,21 @@ jobs:
           echo "Building committed source: $(git rev-parse HEAD)"
           gradle --no-daemon clean assembleRelease
 
-      - name: Verify APK
+      - name: Verify APK provenance and integrity
         run: |
           test -s app/build/outputs/apk/release/app-release.apk
           unzip -t app/build/outputs/apk/release/app-release.apk >/dev/null
-          sha256sum app/build/outputs/apk/release/app-release.apk
+          sha256sum app/build/outputs/apk/release/app-release.apk | tee apk-sha256.txt
+          test "$(cat source-sha.txt | cut -d= -f2)" = "${GITHUB_SHA}"
           echo "WETHAQ_FINAL_APK_OK"
 
-      - name: Upload APK
+      - name: Upload APK and provenance
         uses: actions/upload-artifact@v4
         with:
           name: Wethaq-Final-Production-APK
-          path: app/build/outputs/apk/release/app-release.apk
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            source-sha.txt
+            apk-sha256.txt
           if-no-files-found: error
           retention-days: 30
