@@ -14,6 +14,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -82,22 +83,22 @@ public final class VideoCallActivity extends Activity {
         }
         status=new TextView(this);status.setText("جاري الاتصال…");status.setTextColor(Color.WHITE);status.setTextSize(18);status.setGravity(Gravity.CENTER);root.addView(status,new FrameLayout.LayoutParams(-1,dp(64),Gravity.TOP));
 
-        FrameLayout controls=new FrameLayout(this);
+        LinearLayout controls=new LinearLayout(this);controls.setOrientation(LinearLayout.HORIZONTAL);controls.setGravity(Gravity.CENTER);controls.setPadding(dp(4),0,dp(4),0);
         FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams(-1,dp(72),Gravity.BOTTOM);cp.setMargins(dp(12),0,dp(12),dp(112));root.addView(controls,cp);
         speakerButton=controlButton("🔊 السماعة");muteButton=controlButton("🎤 كتم");
-        controls.addView(speakerButton,buttonParams(0,3));
-        controls.addView(muteButton,buttonParams(1,3));
+        controls.addView(speakerButton,buttonParams());
+        controls.addView(muteButton,buttonParams());
         speakerButton.setOnClickListener(v->toggleSpeaker());
         muteButton.setOnClickListener(v->toggleMute());
         if(!audioOnly){
-            cameraButton=controlButton("📹 الكاميرا");controls.addView(cameraButton,buttonParams(2,3));cameraButton.setOnClickListener(v->toggleCamera());
+            cameraButton=controlButton("📹 الكاميرا");controls.addView(cameraButton,buttonParams());cameraButton.setOnClickListener(v->toggleCamera());
         }
         Button end=controlButton("☎ إنهاء المكالمة");end.setTextSize(18);FrameLayout.LayoutParams ep=new FrameLayout.LayoutParams(-1,dp(64),Gravity.BOTTOM);ep.setMargins(dp(16),0,dp(16),dp(24));root.addView(end,ep);end.setOnClickListener(v->endCall());
         return root;
     }
 
     private Button controlButton(String text){Button b=new Button(this);b.setText(text);b.setTextSize(14);b.setAllCaps(false);return b;}
-    private FrameLayout.LayoutParams buttonParams(int index,int count){FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(0,dp(64));p.leftMargin=dp(3);p.rightMargin=dp(3);p.weight=0;return p;}
+    private LinearLayout.LayoutParams buttonParams(){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(64),1f);p.setMargins(dp(3),0,dp(3),0);return p;}
 
     private int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
 
