@@ -46,8 +46,10 @@ public final class VideoCallActivity extends Activity {
     private boolean previousSpeaker;
     private String target,token,myId,incomingOffer;
     private boolean audioOnly,cleaned,offerSent,remoteDescriptionSet;
+    private boolean muted=false,speakerOn=true,cameraOn=true;
     private Runnable poll;
     private TextView status;
+    private Button speakerButton,muteButton,cameraButton;
 
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
@@ -79,18 +81,44 @@ public final class VideoCallActivity extends Activity {
             TextView call=new TextView(this);call.setText("📞\nمكالمة صوتية\n"+String.valueOf(getIntent().getStringExtra("name")));call.setTextColor(Color.WHITE);call.setTextSize(25);call.setGravity(Gravity.CENTER);root.addView(call,new FrameLayout.LayoutParams(-1,-1));
         }
         status=new TextView(this);status.setText("جاري الاتصال…");status.setTextColor(Color.WHITE);status.setTextSize(18);status.setGravity(Gravity.CENTER);root.addView(status,new FrameLayout.LayoutParams(-1,dp(64),Gravity.TOP));
-        Button end=new Button(this);end.setText("إنهاء المكالمة");end.setTextSize(19);FrameLayout.LayoutParams ep=new FrameLayout.LayoutParams(-1,dp(72),Gravity.BOTTOM);ep.setMargins(dp(16),0,dp(16),dp(24));root.addView(end,ep);end.setOnClickListener(v->endCall());
+
+        FrameLayout controls=new FrameLayout(this);
+        FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams(-1,dp(72),Gravity.BOTTOM);cp.setMargins(dp(12),0,dp(12),dp(112));root.addView(controls,cp);
+        speakerButton=controlButton("🔊 السماعة");muteButton=controlButton("🎤 كتم");
+        controls.addView(speakerButton,buttonParams(0,3));
+        controls.addView(muteButton,buttonParams(1,3));
+        speakerButton.setOnClickListener(v->toggleSpeaker());
+        muteButton.setOnClickListener(v->toggleMute());
+        if(!audioOnly){
+            cameraButton=controlButton("📹 الكاميرا");controls.addView(cameraButton,buttonParams(2,3));cameraButton.setOnClickListener(v->toggleCamera());
+        }
+        Button end=controlButton("☎ إنهاء المكالمة");end.setTextSize(18);FrameLayout.LayoutParams ep=new FrameLayout.LayoutParams(-1,dp(64),Gravity.BOTTOM);ep.setMargins(dp(16),0,dp(16),dp(24));root.addView(end,ep);end.setOnClickListener(v->endCall());
         return root;
     }
 
+    private Button controlButton(String text){Button b=new Button(this);b.setText(text);b.setTextSize(14);b.setAllCaps(false);return b;}
+    private FrameLayout.LayoutParams buttonParams(int index,int count){FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(0,dp(64));p.leftMargin=dp(3);p.rightMargin=dp(3);p.weight=0;return p;}
+
     private int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
+
+    private void toggleSpeaker(){
+        if(audioManager==null)return;
+        speakerOn=!speakerOn;audioManager.setSpeakerphoneOn(speakerOn);speakerButton.setText(speakerOn?"🔊 السماعة: تشغيل":"🔈 السماعة: إيقاف");
+    }
+    private void toggleMute(){
+        muted=!muted;if(localAudioTrack!=null)localAudioTrack.setEnabled(!muted);muteButton.setText(muted?"🎤 مكتوم":"🎤 كتم");
+    }
+    private void toggleCamera(){
+        if(audioOnly||localVideoTrack==null)return;
+        cameraOn=!cameraOn;localVideoTrack.setEnabled(cameraOn);cameraButton.setText(cameraOn?"📹 الكاميرا: تشغيل":"📷 الكاميرا: إيقاف");
+    }
 
     private void startCall(){
         try{
             PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(this).createInitializationOptions());
             if(!audioOnly){egl=EglBase.create();localView.init(egl.getEglBaseContext(),null);remoteView.init(egl.getEglBaseContext(),null);localView.setMirror(true);}
             audioManager=(AudioManager)getSystemService(Context.AUDIO_SERVICE);
-            if(audioManager!=null){previousSpeaker=audioManager.isSpeakerphoneOn();audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);audioManager.setSpeakerphoneOn(true);}
+            if(audioManager!=null){previousSpeaker=audioManager.isSpeakerphoneOn();audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);audioManager.setSpeakerphoneOn(true);speakerOn=true;}
             PeerConnectionFactory.Builder builder=PeerConnectionFactory.builder();
             if(!audioOnly)builder.setVideoEncoderFactory(new DefaultVideoEncoderFactory(egl.getEglBaseContext(),true,true)).setVideoDecoderFactory(new DefaultVideoDecoderFactory(egl.getEglBaseContext()));
             factory=builder.createPeerConnectionFactory();createPeer();startLocal();
