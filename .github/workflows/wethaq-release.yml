@@ -51,7 +51,29 @@ jobs:
           ! grep -q 'q.put("name",fn)' app/src/main/java/com/wethaq/app/MainActivity.java
           ! grep -q 'Integer.parseInt(fy)' app/src/main/java/com/wethaq/app/MainActivity.java
           ! find app -type f -name '*.kt' | grep -q .
+          if grep -RIn --exclude='*.md' --exclude='.env.example' -E '(password|secret|api[_-]?key|private[_-]?key)[[:space:]]*[:=][[:space:]]*["'"'][^"'"']{12,}["'"']' app backend .github 2>/dev/null; then
+            echo 'Potential hard-coded secret detected'
+            exit 1
+          fi
           git diff --check
+      - name: Backend smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd backend
+          npm install --no-audit --no-fund
+          DB_FILE="$RUNNER_TEMP/wethaq-smoke.db"
+          PORT=3100 DB_PATH="$DB_FILE" JWT_SECRET='wethaq-ci-test-secret-change-me' OWNER_WETHAQ_ID='Hatem_Hussin_Al_Haj_Ramadan1995' node server.js > "$RUNNER_TEMP/wethaq-backend.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3100/health >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3100/health >/dev/null
+          PORT=3100 node smoke-test.mjs
+          kill "$SERVER_PID" 2>/dev/null || true
+          wait "$SERVER_PID" 2>/dev/null || true
       - name: Backend smoke configuration check
         shell: bash
         run: |
