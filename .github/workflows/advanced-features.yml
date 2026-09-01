@@ -29,6 +29,7 @@ jobs:
           python3 scripts/admin_ui_repair.py
           python3 scripts/spec_compliance_repair.py
           python3 scripts/final_hardening_repair.py
+          python3 scripts/runtime_performance_repair.py
           python3 -m py_compile scripts/*.py
 
       - name: Normalize generated Java before compile
@@ -58,10 +59,14 @@ jobs:
           grep -q 'personal_code_hash' backend/server.js
           grep -q '/api/public/administration' backend/server.js
           grep -q '/api/admin/audit-log' backend/server.js
+          grep -q '/api/profile/personal-code/verify' backend/server.js
+          grep -q 'personalCodeHash' backend/server.js
           grep -q 'PublicAdministrationActivity' app/src/main/AndroidManifest.xml
           grep -q 'android:name=".AdminActivity" android:exported="false"' app/src/main/AndroidManifest.xml
           grep -q 'founderOnly' backend/server.js
           grep -q 'roleCanBan' backend/server.js
+          grep -q 'pollInFlight' app/src/main/java/com/wethaq/app/VideoCallActivity.java
+          grep -q 'callIo' app/src/main/java/com/wethaq/app/VideoCallActivity.java
           node --check backend/server.js
           python3 scripts/security_regression.py
           python3 scripts/final_release_guard.py
@@ -70,9 +75,9 @@ jobs:
         run: |
           git config user.name "Wethaq Build Bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/VideoCallActivity.java app/src/main/java/com/wethaq/app/AdminActivity.java app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java app/src/main/AndroidManifest.xml backend/server.js scripts/loading_repair.py scripts/admin_ui_repair.py scripts/spec_compliance_repair.py scripts/final_hardening_repair.py scripts/security_regression.py scripts/final_release_guard.py
+          git add app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/VideoCallActivity.java app/src/main/java/com/wethaq/app/AdminActivity.java app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java app/src/main/java/com/wethaq/app/WethaqUi.java app/src/main/java/com/wethaq/app/WethaqApp.java app/src/main/AndroidManifest.xml backend/server.js scripts/loading_repair.py scripts/admin_ui_repair.py scripts/spec_compliance_repair.py scripts/final_hardening_repair.py scripts/security_regression.py scripts/final_release_guard.py scripts/runtime_performance_repair.py
           if ! git diff --cached --quiet; then
-            git commit -m "fix: finalize Wethaq security feature compliance and release guards [skip ci]"
+            git commit -m "fix: improve runtime performance calls and admin login security [skip ci]"
             git push
           fi
 
