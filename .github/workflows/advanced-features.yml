@@ -30,6 +30,7 @@ jobs:
           python3 scripts/spec_compliance_repair.py
           python3 scripts/final_hardening_repair.py
           python3 scripts/runtime_performance_repair.py
+          python3 scripts/compile_compat_repair.py
           python3 -m py_compile scripts/*.py
 
       - name: Normalize generated Java before compile
@@ -43,6 +44,7 @@ jobs:
           s=s.replace('Integer.parseInt(fy)', 'Integer.parseInt(y)')
           p.write_text(s,encoding='utf-8')
           PY
+          python3 scripts/compile_compat_repair.py
           ! grep -q '\bfn\b\|\bfy\b' app/src/main/java/com/wethaq/app/MainActivity.java
 
       - name: Validate production, security and specification wiring
@@ -75,9 +77,9 @@ jobs:
         run: |
           git config user.name "Wethaq Build Bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/VideoCallActivity.java app/src/main/java/com/wethaq/app/AdminActivity.java app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java app/src/main/java/com/wethaq/app/WethaqUi.java app/src/main/java/com/wethaq/app/WethaqApp.java app/src/main/AndroidManifest.xml backend/server.js scripts/loading_repair.py scripts/admin_ui_repair.py scripts/spec_compliance_repair.py scripts/final_hardening_repair.py scripts/security_regression.py scripts/final_release_guard.py scripts/runtime_performance_repair.py
+          git add app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/VideoCallActivity.java app/src/main/java/com/wethaq/app/AdminActivity.java app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java app/src/main/java/com/wethaq/app/WethaqUi.java app/src/main/java/com/wethaq/app/WethaqApp.java app/src/main/AndroidManifest.xml backend/server.js scripts/loading_repair.py scripts/admin_ui_repair.py scripts/spec_compliance_repair.py scripts/final_hardening_repair.py scripts/security_regression.py scripts/final_release_guard.py scripts/runtime_performance_repair.py scripts/compile_compat_repair.py .github/workflows/advanced-features.yml
           if ! git diff --cached --quiet; then
-            git commit -m "fix: improve runtime performance calls and admin login security [skip ci]"
+            git commit -m "fix: normalize release source and preserve runtime repairs [skip ci]"
             git push
           fi
 
