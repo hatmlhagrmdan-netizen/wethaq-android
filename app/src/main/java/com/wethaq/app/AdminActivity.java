@@ -3,7 +3,7 @@ package com.wethaq.app;
 import android.app.*;import android.os.*;import android.graphics.*;import android.graphics.drawable.GradientDrawable;import android.view.*;import android.widget.*;import java.io.*;import java.net.*;import java.nio.charset.StandardCharsets;import org.json.*;
 
 public final class AdminActivity extends Activity{
- private static final String API="https://wethaq-backend-production.up.railway.app";private LinearLayout root,body;private EditText target,minutes,reason;private String token,role="";private boolean verified;private TextView connectionStatus;private TextView connectionStatus;
+ private static final String API="https://wethaq-backend-production.up.railway.app";private LinearLayout root,body;private EditText target,minutes,reason;private String token,role="";private boolean verified;private TextView connectionStatus;
  private int gold(){return Color.rgb(212,175,55);}private int dp(int v){return(int)(v*getResources().getDisplayMetrics().density+.5f);}
  private Button b(String s){Button x=new Button(this);x.setText(s);x.setTextColor(Color.WHITE);x.setTextSize(17);x.setAllCaps(false);x.setTypeface(Typeface.DEFAULT,Typeface.BOLD);GradientDrawable d=new GradientDrawable();d.setColor(Color.rgb(28,28,28));d.setCornerRadius(dp(14));d.setStroke(dp(2),gold());x.setBackground(d);x.setMinHeight(dp(64));x.setPadding(dp(8),0,dp(8),0);return x;}
  private EditText f(String h){EditText e=new EditText(this);e.setHint(h);e.setHintTextColor(Color.LTGRAY);e.setTextColor(Color.WHITE);e.setTextSize(17);e.setSingleLine(true);e.setPadding(dp(12),0,dp(12),0);GradientDrawable d=new GradientDrawable();d.setColor(Color.rgb(25,25,25));d.setCornerRadius(dp(12));d.setStroke(dp(2),Color.DKGRAY);e.setBackground(d);e.setMinHeight(dp(60));return e;}
