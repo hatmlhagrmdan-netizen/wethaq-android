@@ -38,11 +38,10 @@ public final class WethaqApp extends Application implements Application.Activity
     private void refresh(Activity a){
         a.getWindow().setStatusBarColor(android.graphics.Color.rgb(8,8,10));
         a.getWindow().setNavigationBarColor(android.graphics.Color.rgb(8,8,10));
-        a.getWindow().getDecorView().postDelayed(()->WethaqUi.apply(this,a),120);
-        a.getWindow().getDecorView().postDelayed(()->WethaqUi.apply(this,a),500);
+        a.getWindow().getDecorView().post(()->WethaqUi.apply(this,a));
     }
     @Override public void onActivityCreated(Activity a,Bundle b){refresh(a);}
-    @Override public void onActivityResumed(Activity a){refresh(a);}
+    @Override public void onActivityResumed(Activity a){}
     @Override public void onActivityStarted(Activity a){}
     @Override public void onActivityPaused(Activity a){}
     @Override public void onActivityStopped(Activity a){}
