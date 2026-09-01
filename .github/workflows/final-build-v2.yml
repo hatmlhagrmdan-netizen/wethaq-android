@@ -35,6 +35,11 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package.json
 
+      - name: Apply runtime-safe repairs in build workspace
+        run: |
+          python3 scripts/runtime_performance_repair.py
+          python3 -m py_compile scripts/runtime_performance_repair.py
+
       - name: Backend smoke test
         working-directory: backend
         env:
@@ -70,8 +75,11 @@ jobs:
           grep -q 'android:name=".PublicAdministrationActivity" android:exported="false"' app/src/main/AndroidManifest.xml
           grep -q 'founderOnly' backend/server.js
           grep -q 'roleCanBan' backend/server.js
+          grep -q 'pollInFlight' app/src/main/java/com/wethaq/app/VideoCallActivity.java
+          grep -q 'callIo' app/src/main/java/com/wethaq/app/VideoCallActivity.java
+          grep -q 'personalCodeHash' backend/server.js
+          grep -q '/api/profile/personal-code/verify' backend/server.js
           grep -q '/api/admin/audit-log' backend/server.js
-          grep -q '/api/profile/personal-code' backend/server.js
           node --check backend/server.js
           echo "SOURCE_SANITY_OK"
 
