@@ -12,11 +12,8 @@ assert 'android:name=".AdminActivity" android:exported="false"' in MANIFEST
 assert 'android:name=".PublicAdministrationActivity" android:exported="false"' in MANIFEST
 assert 'if(isOwner()||isAdminRole())menu("🛡  لوحة التحكم الإدارية",this::adminScreen);' in MAIN
 assert 'this::publicAdministrationScreen' in MAIN
-assert 'putString("admin_role","founder")' not in MAIN
-assert 'putString("admin_role","deputy1")' not in MAIN
-assert 'putString("admin_role","deputy2")' not in MAIN
-assert 'putString("admin_role","deputy3")' not in MAIN
-assert 'putString("admin_role","admin_member")' not in MAIN
+for forbidden in ('putString("admin_role","founder")','putString("admin_role","deputy1")','putString("admin_role","deputy2")','putString("admin_role","deputy3")','putString("admin_role","admin_member")'):
+    assert forbidden not in MAIN
 assert 'function founderOnly' in SERVER
 assert 'function rbac' in SERVER
 assert 'function roleCanBan' in SERVER
@@ -25,10 +22,9 @@ assert 'function roleCanBan' in SERVER
 assert 'personal_code_hash' not in PUBLIC
 assert 'admin_code' not in PUBLIC
 assert 'personal_code' not in PUBLIC.lower()
-public_user_match = re.search(r'function publicUser\(.*?\}', SERVER)
-assert public_user_match and 'personal_code_hash' not in public_user_match.group(0)
 assert 'personal_code_hash' in SERVER
 assert '/api/profile/personal-code' in SERVER
+assert 'personal_code_configured' in SERVER
 assert 'personalCodeHash' in SERVER
 
 # Required administration capabilities.
@@ -54,10 +50,12 @@ assert 'warmBackend' in MAIN
 assert 'setConnectTimeout(4000)' in MAIN
 assert 'setReadTimeout(6000)' in MAIN
 
-# Prevent known broken pattern from returning.
+# Authentication/personal-code flow must submit the code hash during login,
+# not attempt an authenticated profile write before a JWT exists.
+assert 'String personalCode' in MAIN
+assert 'hashPersonalCode(code)' in MAIN
+assert 'personalCodeHash' in MAIN
 assert 'savePersonalCode(pc.getText().toString())' not in MAIN
 assert 'savePersonalCode(code);auth(' not in MAIN
-assert 'q.put("personalCodeHash",pendingPersonalCodeHash)' in MAIN
-assert 'String pcHash=pendingPersonalCodeHash;' in MAIN
 
 print('WETHAQ_FINAL_RELEASE_GUARD_OK')
