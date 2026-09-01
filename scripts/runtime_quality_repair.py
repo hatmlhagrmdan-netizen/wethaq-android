@@ -35,10 +35,13 @@ new_destroy='@Override protected void onDestroy(){if(!cleaned)endCall();else if(
 if old_destroy in s:
     s = s.replace(old_destroy, new_destroy, 1)
 
-# Keep the quality repair idempotent and require the key runtime invariants.
+# The production source currently uses separate read/write executors (pollIo/signalIo).
+# Accept that design, while keeping backward compatibility with the earlier callIo name.
 VIDEO.write_text(s, encoding='utf-8')
 check = VIDEO.read_text(encoding='utf-8')
-for needle in ('callIo','pollInFlight','sendEndSignal','@Override protected void onDestroy(){if(!cleaned)endCall()'):
+if not ('callIo' in check or ('pollIo' in check and 'signalIo' in check)):
+    raise SystemExit('missing runtime quality invariant: call executors')
+for needle in ('pollInFlight','sendEndSignal','@Override protected void onDestroy(){if(!cleaned)endCall()'):
     if needle not in check:
         raise SystemExit(f'missing runtime quality invariant: {needle}')
 print('WETHAQ_RUNTIME_QUALITY_REPAIR_OK')
