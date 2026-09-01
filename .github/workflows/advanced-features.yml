@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Apply final repairs
         run: |
@@ -68,7 +68,8 @@ jobs:
           grep -q 'founderOnly' backend/server.js
           grep -q 'roleCanBan' backend/server.js
           grep -q 'pollInFlight' app/src/main/java/com/wethaq/app/VideoCallActivity.java
-          grep -q 'callIo' app/src/main/java/com/wethaq/app/VideoCallActivity.java
+          grep -Eq 'callIo|pollIo' app/src/main/java/com/wethaq/app/VideoCallActivity.java
+          grep -q 'signalIo' app/src/main/java/com/wethaq/app/VideoCallActivity.java
           grep -q 'sendEndSignal' app/src/main/java/com/wethaq/app/VideoCallActivity.java
           node --check backend/server.js
           python3 scripts/security_regression.py
@@ -98,7 +99,7 @@ jobs:
           cache-dependency-path: backend/package.json
 
       - name: Set up Gradle 8.9
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.9'
 
