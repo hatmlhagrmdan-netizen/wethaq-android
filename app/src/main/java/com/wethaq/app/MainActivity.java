@@ -6,7 +6,8 @@ public final class MainActivity extends Activity{
  private static final String API="https://wethaq-backend-production.up.railway.app",P="wethaq",T="token",ID="wethaq_id",NAME="name",YEAR="birth_year",CONTACTS="saved_contacts";
  private final ExecutorService io=Executors.newSingleThreadExecutor();private final Handler h=new Handler(Looper.getMainLooper());private SharedPreferences prefs;private LinearLayout root,content,messages;private EditText input;private String activeId,activeName;private Runnable poller;private MediaRecorder recorder;private boolean recording;private long lastInboxId;private String pendingImageData,pendingAudioData,pendingMime;private int pendingMediaType;private ProgressDialog progress;
  private int gold(){return Color.rgb(212,175,55);}private int dp(int v){return (int)(v*getResources().getDisplayMetrics().density+.5f);}private boolean hasToken(){return prefs.getString(T,"").length()>10;}
- @Override public void onCreate(Bundle b){super.onCreate(b);prefs=getSharedPreferences(P,MODE_PRIVATE);createChannel();if(hasToken())home();else login();}
+ @Override public void onCreate(Bundle b){super.onCreate(b);prefs=getSharedPreferences(P,MODE_PRIVATE);createChannel();warmBackend();if(hasToken())home();else login();}
+ private void warmBackend(){io.execute(()->{HttpURLConnection c=null;try{c=(HttpURLConnection)new URL(API+"/health").openConnection();c.setRequestMethod("GET");c.setConnectTimeout(4000);c.setReadTimeout(6000);c.setUseCaches(false);c.getResponseCode();}catch(Exception ignored){}finally{if(c!=null)c.disconnect();}});}
  @Override protected void onDestroy(){stopPolling();stopRecording(false);dismissProgress();io.shutdownNow();super.onDestroy();}
  private TextView tv(String s,float z,int c){TextView t=new TextView(this);t.setText(s);t.setTextSize(z);t.setTextColor(c);t.setPadding(dp(14),dp(10),dp(14),dp(10));t.setGravity(Gravity.CENTER_VERTICAL);return t;}
  private EditText field(String s){EditText e=new EditText(this);e.setHint(s);e.setHintTextColor(Color.LTGRAY);e.setTextColor(Color.WHITE);e.setTextSize(18);e.setSingleLine(true);e.setPadding(dp(16),0,dp(16),0);e.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);GradientDrawable d=new GradientDrawable();d.setColor(Color.rgb(25,25,25));d.setCornerRadius(dp(14));d.setStroke(dp(2),Color.rgb(90,90,90));e.setBackground(d);e.setMinHeight(dp(64));return e;}
@@ -37,6 +38,8 @@ public final class MainActivity extends Activity{
  String text=input==null?"":input.getText().toString().trim();if(text.isEmpty())return;io.execute(()->{try{JSONObject q=new JSONObject();q.put("to",target);q.put("body",text);HttpResult r=request("POST","/api/messages",q.toString(),auth());h.post(()->{if(r.code>=200&&r.code<300){input.setText("");loadMessages();}else toast(error(r));});}catch(Exception e){h.post(()->toast("فشل الإرسال"));}});
 }
  private void clearComposerMedia(){if(input!=null){input.setCompoundDrawables(null,null,null,null);input.setHint("اكتب رسالة…");input.setText("");}}
+
+ 
 
  
 
