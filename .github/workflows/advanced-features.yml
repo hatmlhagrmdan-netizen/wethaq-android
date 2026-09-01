@@ -43,7 +43,7 @@ jobs:
           PY
           ! grep -q '\bfn\b\|\bfy\b' app/src/main/java/com/wethaq/app/MainActivity.java
 
-      - name: Validate production and specification wiring
+      - name: Validate production, security and specification wiring
         run: |
           grep -q 'pendingAudioData' app/src/main/java/com/wethaq/app/MainActivity.java
           grep -q 'pendingImageData' app/src/main/java/com/wethaq/app/MainActivity.java
@@ -58,15 +58,19 @@ jobs:
           grep -q '/api/public/administration' backend/server.js
           grep -q '/api/admin/audit-log' backend/server.js
           grep -q 'PublicAdministrationActivity' app/src/main/AndroidManifest.xml
+          grep -q 'android:name=".AdminActivity" android:exported="false"' app/src/main/AndroidManifest.xml
+          grep -q 'founderOnly' backend/server.js
+          grep -q 'roleCanBan' backend/server.js
           node --check backend/server.js
+          python3 scripts/security_regression.py
 
       - name: Persist repaired source
         run: |
           git config user.name "Wethaq Build Bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/VideoCallActivity.java app/src/main/java/com/wethaq/app/AdminActivity.java app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java app/src/main/AndroidManifest.xml scripts/loading_repair.py scripts/admin_ui_repair.py scripts/spec_compliance_repair.py
+          git add app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/VideoCallActivity.java app/src/main/java/com/wethaq/app/AdminActivity.java app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java app/src/main/AndroidManifest.xml backend/server.js scripts/loading_repair.py scripts/admin_ui_repair.py scripts/spec_compliance_repair.py scripts/security_regression.py
           if ! git diff --cached --quiet; then
-            git commit -m "fix: persist Wethaq specification compliance repairs [skip ci]"
+            git commit -m "fix: persist Wethaq security and specification compliance repairs [skip ci]"
             git push
           fi
 
@@ -75,6 +79,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package.json
 
       - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
@@ -88,20 +99,33 @@ jobs:
           test -d app
           gradle --version
 
-      - name: Build release APK
+      - name: Backend smoke test
+        run: |
+          cd backend
+          npm install --no-audit --no-fund
+          PORT=3100 NODE_ENV=test DB_PATH="$PWD/wethaq-smoke.db" JWT_SECRET=ci-only-smoke-secret node server.js > ../backend-smoke-server.log 2>&1 &
+          PID=$!
+          trap 'kill $PID 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:3100/health >/dev/null && break; sleep 1; done
+          curl -fsS http://127.0.0.1:3100/health >/dev/null
+          npm run test:smoke
+
+      - name: Build release
         run: gradle clean assembleRelease --no-daemon --stacktrace
 
-      - name: Verify APK
+      - name: Verify APK provenance and integrity
         run: |
           test -s app/build/outputs/apk/release/app-release.apk
           unzip -t app/build/outputs/apk/release/app-release.apk >/dev/null
-          ls -lh app/build/outputs/apk/release/app-release.apk
-          echo "WETHAQ_FINAL_RELEASE_APK_OK"
+          sha256sum app/build/outputs/apk/release/app-release.apk | tee apk-sha256.txt
+          echo "WETHAQ_FINAL_APK_OK"
 
-      - name: Publish APK artifact
+      - name: Upload APK and provenance
         uses: actions/upload-artifact@v4
         with:
-          name: Wethaq-release-APK-Final
-          path: app/build/outputs/apk/release/app-release.apk
+          name: Wethaq-Final-Production-APK
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            apk-sha256.txt
           if-no-files-found: error
           retention-days: 30
