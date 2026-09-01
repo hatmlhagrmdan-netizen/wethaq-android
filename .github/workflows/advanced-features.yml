@@ -29,8 +29,8 @@ jobs:
           python3 scripts/admin_ui_repair.py
           python3 scripts/spec_compliance_repair.py
           python3 scripts/final_hardening_repair.py
-          python3 scripts/runtime_performance_repair.py
           python3 scripts/compile_compat_repair.py
+          python3 scripts/runtime_quality_repair.py
           python3 -m py_compile scripts/*.py
 
       - name: Normalize generated Java before compile
@@ -69,6 +69,7 @@ jobs:
           grep -q 'roleCanBan' backend/server.js
           grep -q 'pollInFlight' app/src/main/java/com/wethaq/app/VideoCallActivity.java
           grep -q 'callIo' app/src/main/java/com/wethaq/app/VideoCallActivity.java
+          grep -q 'sendEndSignal' app/src/main/java/com/wethaq/app/VideoCallActivity.java
           node --check backend/server.js
           python3 scripts/security_regression.py
           python3 scripts/final_release_guard.py
@@ -77,9 +78,9 @@ jobs:
         run: |
           git config user.name "Wethaq Build Bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/VideoCallActivity.java app/src/main/java/com/wethaq/app/AdminActivity.java app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java app/src/main/java/com/wethaq/app/WethaqUi.java app/src/main/java/com/wethaq/app/WethaqApp.java app/src/main/AndroidManifest.xml backend/server.js scripts/loading_repair.py scripts/admin_ui_repair.py scripts/spec_compliance_repair.py scripts/final_hardening_repair.py scripts/security_regression.py scripts/final_release_guard.py scripts/runtime_performance_repair.py scripts/compile_compat_repair.py .github/workflows/advanced-features.yml
+          git add app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/VideoCallActivity.java app/src/main/java/com/wethaq/app/AdminActivity.java app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java app/src/main/java/com/wethaq/app/WethaqUi.java app/src/main/java/com/wethaq/app/WethaqApp.java app/src/main/AndroidManifest.xml backend/server.js scripts/loading_repair.py scripts/admin_ui_repair.py scripts/spec_compliance_repair.py scripts/final_hardening_repair.py scripts/security_regression.py scripts/final_release_guard.py scripts/runtime_performance_repair.py scripts/compile_compat_repair.py scripts/runtime_quality_repair.py .github/workflows/advanced-features.yml
           if ! git diff --cached --quiet; then
-            git commit -m "fix: normalize release source and preserve runtime repairs [skip ci]"
+            git commit -m "fix: harden runtime lifecycle and make release repairs deterministic [skip ci]"
             git push
           fi
 
@@ -112,7 +113,7 @@ jobs:
         run: |
           cd backend
           npm install --no-audit --no-fund
-          PORT=3100 NODE_ENV=test DB_PATH="$PWD/wethaq-smoke.db" JWT_SECRET=ci-only-smoke-secret node server.js > ../backend-smoke-server.log 2>&1 &
+          PORT=3100 NODE_ENV=test DB_PATH="$PWD/wethaq-smoke.db" JWT_SECRET=ci-only-smoke-secret OWNER_WETHAQ_ID=Hatem_Hussin_Al_Haj_Ramadan1995 node server.js > ../backend-smoke-server.log 2>&1 &
           PID=$!
           trap 'kill $PID 2>/dev/null || true' EXIT
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:3100/health >/dev/null && break; sleep 1; done
