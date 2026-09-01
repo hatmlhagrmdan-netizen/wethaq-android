@@ -25,6 +25,7 @@ jobs:
           python3 scripts/contact_repair.py
           python3 scripts/notification_contact_video_repair.py
           python3 scripts/production_feature_repair.py
+          python3 scripts/loading_repair.py
           python3 -m py_compile scripts/*.py
 
       - name: Normalize generated Java before compile
@@ -49,13 +50,14 @@ jobs:
           grep -q 'audioBase64' app/src/main/java/com/wethaq/app/MainActivity.java
           grep -q 'imageBase64' app/src/main/java/com/wethaq/app/MainActivity.java
           grep -q 'audioOnly' app/src/main/java/com/wethaq/app/VideoCallActivity.java
+          grep -q 'warmBackend' app/src/main/java/com/wethaq/app/MainActivity.java
           node --check backend/server.js
 
       - name: Persist repaired Android source
         run: |
           git config user.name "Wethaq Build Bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/VideoCallActivity.java
+          git add app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/VideoCallActivity.java scripts/loading_repair.py
           if ! git diff --cached --quiet; then
             git commit -m "fix: persist Wethaq production feature repairs [skip ci]"
             git push
