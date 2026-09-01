@@ -27,6 +27,7 @@ jobs:
           python3 scripts/production_feature_repair.py
           python3 scripts/loading_repair.py
           python3 scripts/admin_ui_repair.py
+          python3 scripts/spec_compliance_repair.py
           python3 -m py_compile scripts/*.py
 
       - name: Normalize generated Java before compile
@@ -42,7 +43,7 @@ jobs:
           PY
           ! grep -q '\bfn\b\|\bfy\b' app/src/main/java/com/wethaq/app/MainActivity.java
 
-      - name: Validate production feature wiring
+      - name: Validate production and specification wiring
         run: |
           grep -q 'pendingAudioData' app/src/main/java/com/wethaq/app/MainActivity.java
           grep -q 'pendingImageData' app/src/main/java/com/wethaq/app/MainActivity.java
@@ -52,16 +53,20 @@ jobs:
           grep -q 'imageBase64' app/src/main/java/com/wethaq/app/MainActivity.java
           grep -q 'audioOnly' app/src/main/java/com/wethaq/app/VideoCallActivity.java
           grep -q 'warmBackend' app/src/main/java/com/wethaq/app/MainActivity.java
-          grep -q 'setBusy(boolean busy)' app/src/main/java/com/wethaq/app/AdminActivity.java
+          grep -q 'private void setBusy(boolean busy)' app/src/main/java/com/wethaq/app/AdminActivity.java
+          grep -q 'personal_code_hash' backend/server.js
+          grep -q '/api/public/administration' backend/server.js
+          grep -q '/api/admin/audit-log' backend/server.js
+          grep -q 'PublicAdministrationActivity' app/src/main/AndroidManifest.xml
           node --check backend/server.js
 
-      - name: Persist repaired Android source
+      - name: Persist repaired source
         run: |
           git config user.name "Wethaq Build Bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/VideoCallActivity.java app/src/main/java/com/wethaq/app/AdminActivity.java scripts/loading_repair.py scripts/admin_ui_repair.py
+          git add app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/VideoCallActivity.java app/src/main/java/com/wethaq/app/AdminActivity.java app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java app/src/main/AndroidManifest.xml scripts/loading_repair.py scripts/admin_ui_repair.py scripts/spec_compliance_repair.py
           if ! git diff --cached --quiet; then
-            git commit -m "fix: persist Wethaq production feature repairs [skip ci]"
+            git commit -m "fix: persist Wethaq specification compliance repairs [skip ci]"
             git push
           fi
 
