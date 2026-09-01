@@ -51,10 +51,11 @@ jobs:
           curl -fsS http://127.0.0.1:3100/health >/dev/null
           npm run test:smoke
 
-      - name: Gradle 8.9
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
+      - name: Final source security and feature guard
+        run: |
+          python3 -m py_compile scripts/final_release_guard.py scripts/security_regression.py scripts/final_hardening_repair.py
+          python3 scripts/security_regression.py
+          python3 scripts/final_release_guard.py
 
       - name: Static source validation
         run: |
@@ -65,6 +66,13 @@ jobs:
           ! grep -RIn --exclude-dir=.git --exclude-dir=build --exclude='*.md' -E 'localhost|127\.0\.0\.1' app
           ! grep -n 'Base64.getDecoder().decode(m.optString("audio_data"))' app/src/main/java/com/wethaq/app/MainActivity.java
           ! find . -type f -path '*/__pycache__/*' -print -quit | grep -q .
+          grep -q 'android:name=".AdminActivity" android:exported="false"' app/src/main/AndroidManifest.xml
+          grep -q 'android:name=".PublicAdministrationActivity" android:exported="false"' app/src/main/AndroidManifest.xml
+          grep -q 'founderOnly' backend/server.js
+          grep -q 'roleCanBan' backend/server.js
+          grep -q '/api/admin/audit-log' backend/server.js
+          grep -q '/api/profile/personal-code' backend/server.js
+          node --check backend/server.js
           echo "SOURCE_SANITY_OK"
 
       - name: Compile and build release
