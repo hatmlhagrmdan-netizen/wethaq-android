@@ -180,10 +180,23 @@ public final class VideoCallActivity extends Activity {
     private String sdpJson(SessionDescription d){try{return new JSONObject().put("sdp",d.description).toString();}catch(Exception e){return "{}";}}
     private String candidateJson(IceCandidate c){try{return new JSONObject().put("candidate",c.sdp).put("sdpMid",c.sdpMid).put("sdpMLineIndex",c.sdpMLineIndex).toString();}catch(Exception e){return "{}";}}
     private void sendSignal(String type,String payload){if(cleaned&&!("end".equals(type)))return;signalIo.execute(()->{try{JSONObject q=new JSONObject().put("to",target).put("type",type).put("payload",payload);HttpURLConnection c=(HttpURLConnection)new URL(API+"/api/calls/signal").openConnection();c.setRequestMethod("POST");c.setDoOutput(true);c.setConnectTimeout(5000);c.setReadTimeout(5000);c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","application/json");try(OutputStream o=c.getOutputStream()){o.write(q.toString().getBytes(StandardCharsets.UTF_8));}c.getResponseCode();c.disconnect();}catch(Exception ignored){}});}
+    private void sendEndSignal(){
+        if(target==null||token.isEmpty())return;
+        HttpURLConnection c=null;
+        try{
+            JSONObject q=new JSONObject().put("to",target).put("type","end").put("payload","{}");
+            c=(HttpURLConnection)new URL(API+"/api/calls/signal").openConnection();
+            c.setRequestMethod("POST");c.setDoOutput(true);c.setConnectTimeout(2500);c.setReadTimeout(2500);
+            c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","application/json");
+            try(OutputStream o=c.getOutputStream()){o.write(q.toString().getBytes(StandardCharsets.UTF_8));}
+            c.getResponseCode();
+        }catch(Exception ignored){}
+        finally{if(c!=null)c.disconnect();}
+    }
     private void fail(String text){if(status!=null)status.setText(text);else toast(text);handler.postDelayed(this::endCall,1800);}
-    private void endCall(){if(cleaned)return;cleaned=true;if(poll!=null)handler.removeCallbacks(poll);if(target!=null&&!token.isEmpty())sendSignal("end","{}");try{if(capturer!=null)capturer.stopCapture();}catch(Exception ignored){}try{if(peer!=null)peer.close();}catch(Exception ignored){}try{if(factory!=null)factory.dispose();}catch(Exception ignored){}try{if(videoSource!=null)videoSource.dispose();}catch(Exception ignored){}try{if(audioSource!=null)audioSource.dispose();}catch(Exception ignored){}try{if(localView!=null)localView.release();if(remoteView!=null)remoteView.release();if(egl!=null)egl.release();}catch(Exception ignored){}pollIo.shutdownNow();signalIo.shutdown();if(audioManager!=null){audioManager.setSpeakerphoneOn(previousSpeaker);audioManager.setMode(AudioManager.MODE_NORMAL);}finish();}
+    private void endCall(){if(cleaned)return;cleaned=true;if(poll!=null)handler.removeCallbacks(poll);sendEndSignal();try{if(capturer!=null)capturer.stopCapture();}catch(Exception ignored){}try{if(peer!=null)peer.close();}catch(Exception ignored){}try{if(factory!=null)factory.dispose();}catch(Exception ignored){}try{if(videoSource!=null)videoSource.dispose();}catch(Exception ignored){}try{if(audioSource!=null)audioSource.dispose();}catch(Exception ignored){}try{if(localView!=null)localView.release();if(remoteView!=null)remoteView.release();if(egl!=null)egl.release();}catch(Exception ignored){}pollIo.shutdownNow();signalIo.shutdown();if(audioManager!=null){audioManager.setSpeakerphoneOn(previousSpeaker);audioManager.setMode(AudioManager.MODE_NORMAL);}finish();}
     private void toast(String s){android.widget.Toast.makeText(this,s,android.widget.Toast.LENGTH_LONG).show();}
     @Override public void onRequestPermissionsResult(int r,String[] p,int[] g){super.onRequestPermissionsResult(r,p,g);if(r==PERM_CALL){boolean ok=audioOnly?(g.length>0&&g[0]==PackageManager.PERMISSION_GRANTED): (g.length>=2&&g[0]==PackageManager.PERMISSION_GRANTED&&g[1]==PackageManager.PERMISSION_GRANTED);if(ok)startCall();else{toast(audioOnly?"يجب السماح بالميكروفون للمكالمة":"يجب السماح بالميكروفون والكاميرا للمكالمة");finish();}}}
-    @Override protected void onDestroy(){if(!cleaned)endCall();super.onDestroy();}
+    @Override protected void onDestroy(){if(!cleaned)endCall();else if(poll!=null)handler.removeCallbacks(poll);super.onDestroy();}
     private abstract static class SimpleSdp implements SdpObserver{public void onCreateSuccess(SessionDescription d){}public void onSetSuccess(){}public void onCreateFailure(String s){}public void onSetFailure(String s){} }
 }
