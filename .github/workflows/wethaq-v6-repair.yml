@@ -45,14 +45,13 @@ jobs:
                       if d==0:return st,i+1
               return None
 
-          # MainActivity
           p='app/src/main/java/com/wethaq/app/MainActivity.java';s=R(p)
           s=s.replace('private final ExecutorService io=Executors.newSingleThreadExecutor();','private final ExecutorService io=Executors.newFixedThreadPool(4);',1)
           if 'addAdminPricingNotice();' not in s:
               s=s.replace('content.addView(me,lp(-1,-2,12));menu("⌕  البحث",this::searchScreen);','content.addView(me,lp(-1,-2,12));addAdminPricingNotice();menu("⌕  البحث",this::searchScreen);',1)
           if 'private void addAdminPricingNotice()' not in s:
               anchor='private void publicAdministrationScreen(){startActivity(new Intent(this,PublicAdministrationActivity.class));}'
-              s=s.replace(anchor,anchor+'''\n private void addAdminPricingNotice(){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(dp(14),dp(12),dp(14),dp(12));GradientDrawable g=new GradientDrawable();g.setColor(Color.rgb(28,24,12));g.setCornerRadius(dp(16));g.setStroke(dp(2),gold());c.setBackground(g);TextView t=tv("💼 المناصب الإدارية مدفوعة",18,Color.WHITE);t.setGravity(Gravity.RIGHT);t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);c.addView(t);TextView b=tv("المناصب الإدارية في وَثاق مدفوعة لمدة سنة واحدة.\\nللحصول على منصب إداري، يرجى التواصل مع المدير العام ومؤسس وَثاق.",15,gold());b.setGravity(Gravity.RIGHT);c.addView(b);content.addView(c,lp(-1,-2,14));}''',1)
+              s=s.replace(anchor,anchor+'\n private void addAdminPricingNotice(){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(dp(14),dp(12),dp(14),dp(12));GradientDrawable g=new GradientDrawable();g.setColor(Color.rgb(28,24,12));g.setCornerRadius(dp(16));g.setStroke(dp(2),gold());c.setBackground(g);TextView t=tv("💼 المناصب الإدارية مدفوعة",18,Color.WHITE);t.setGravity(Gravity.RIGHT);t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);c.addView(t);TextView b=tv("المناصب الإدارية في وَثاق مدفوعة لمدة سنة واحدة.\\nللحصول على منصب إداري، يرجى التواصل مع المدير العام ومؤسس وَثاق.",15,gold());b.setGravity(Gravity.RIGHT);c.addView(b);content.addView(c,lp(-1,-2,14));}',1)
           span=method_span(s,'private void conversation(String id,String n)')
           if not span: raise SystemExit('conversation not found')
           st,en=span
@@ -60,7 +59,6 @@ jobs:
           s=s[:st]+conv+s[en:]
           W(p,s)
 
-          # PublicAdministrationActivity
           p='app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java';s=R(p)
           span=method_span(s,'private void show(String raw)')
           if not span: raise SystemExit('public admin show not found')
@@ -69,30 +67,25 @@ jobs:
           s=s[:st]+show+s[en:]
           W(p,s)
 
-          # AdminActivity: inject one target panel before moderation controls. Render it on every admin role.
           p='app/src/main/java/com/wethaq/app/AdminActivity.java';s=R(p)
           if 'private void addModerationTargetCard()' not in s:
               anchor='private void addModerationControls(){'
               if anchor not in s: raise SystemExit('moderation method not found')
               method='''private void addModerationTargetCard(){LinearLayout box=card("🎯 إدارة مستخدم محدد");box.addView(heading("اكتب الاسم الكامل أو معرف وَثاق. تُطبق العملية حسب رتبتك الإدارية، واسم المؤسس محمي من الحظر والتنبيه."),lp(-1,-2,4));target=f("اسم المستخدم أو معرف وَثاق");minutes=f("مدة الحظر بالدقائق — 0 = نهائي");reason=f("سبب الحظر أو التنبيه");box.addView(target,lp(-1,60,6));box.addView(minutes,lp(-1,60,6));box.addView(reason,lp(-1,60,6));}\n '''
               s=s.replace(anchor,method+anchor,1)
-          # Existing target creation in render is removed so the card owns these fields.
           s=re.sub(r'target=f\("معرف وَثاق للمستخدم"\);minutes=f\("مدة الحظر بالدقائق — 0 = نهائي"\);reason=f\("السبب"\);','',s,count=1)
-          # Add panel immediately before role-specific controls.
           if 'addModerationTargetCard();' not in s:
               s=s.replace('if("founder".equals(role)){addFounderControls();addFounderModerationControls();}else if("deputy1".equals(role)||"deputy2".equals(role)||"deputy3".equals(role))addModerationControls();','if("founder".equals(role)){addFounderControls();}addModerationTargetCard();if("founder".equals(role)||"deputy1".equals(role)||"deputy2".equals(role)||"deputy3".equals(role)||"admin_member".equals(role))addModerationControls();',1)
           s=s.replace('private void addModerationControls(){Button ban=b("🚫 حظر حسب الصلاحية"),alert=b("⚠️ إرسال تنبيه");','private void addModerationControls(){Button ban=b("🚫 حظر حسب الصلاحية"),alert=b("⚠️ إرسال تنبيه");if("admin_member".equals(role))ban.setEnabled(false);',1)
           W(p,s)
 
-          # Backend: expiry/name resolution and protection.
           p='backend/server.js';s=R(p)
           old="CREATE TABLE IF NOT EXISTS admin_roles(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL UNIQUE,role TEXT NOT NULL,admin_code_hash TEXT,created_by INTEGER,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);"
           new="CREATE TABLE IF NOT EXISTS admin_roles(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL UNIQUE,role TEXT NOT NULL,admin_code_hash TEXT,created_by INTEGER,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,expires_at TEXT,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);"
           s=s.replace(old,new,1)
           if "ensureColumn('admin_roles','expires_at','TEXT');" not in s:s=s.replace('CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);','CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);ensureColumn(\'admin_roles\',\'expires_at\',\'TEXT\');',1)
           role='function roleOf(userId){if(!userId)return null;const owner=db.prepare(\'SELECT id FROM users WHERE wethaq_id=?\').get(OWNER_WETHAQ_ID);if(owner&&Number(userId)===Number(owner.id))return ROLE_FOUNDER;const row=db.prepare(\'SELECT role,expires_at FROM admin_roles WHERE user_id=?\').get(Number(userId));if(!row)return null;if(row.expires_at&&new Date(row.expires_at)<=new Date())return null;return row.role||null}'
-          if 'const row=db.prepare(\'SELECT role,expires_at FROM admin_roles WHERE user_id=?\')' not in s:
-              s=re.sub(r"function roleOf\(userId\)\{.*?\}",role,s,count=1)
+          if 'const row=db.prepare(\'SELECT role,expires_at FROM admin_roles WHERE user_id=?\')' not in s:s=re.sub(r"function roleOf\(userId\)\{.*?\}",role,s,count=1)
           if 'function resolveUser(value)' not in s:s=s.replace("function findUser(id){return db.prepare('SELECT id,wethaq_id,name,birth_year FROM users WHERE wethaq_id=?').get(String(id||'').trim())}","function findUser(id){return db.prepare('SELECT id,wethaq_id,name,birth_year FROM users WHERE wethaq_id=?').get(String(id||'').trim())}\nfunction resolveUser(value){const q=String(value||'').trim();if(!q)return null;return findUser(q)||db.prepare('SELECT id,wethaq_id,name,birth_year FROM users WHERE name=? COLLATE NOCASE').get(q)}",1)
           s=s.replace("const rows=db.prepare('SELECT ar.role,u.id,u.wethaq_id,u.name,u.birth_year FROM admin_roles ar JOIN users u ON u.id=ar.user_id ORDER BY ar.id').all();","const rows=db.prepare('SELECT ar.role,ar.expires_at,u.id,u.wethaq_id,u.name,u.birth_year FROM admin_roles ar JOIN users u ON u.id=ar.user_id ORDER BY ar.id').all();",1)
           s=s.replace("const target=findUser(req.body?.wethaqId),role=String(req.body?.role||'');","const target=resolveUser(req.body?.wethaqId||req.body?.target),role=String(req.body?.role||'');",1)
@@ -108,7 +101,6 @@ jobs:
           s=s.replace(verify,verify2,1)
           W(p,s)
 
-          # Call notification actions.
           p='app/src/main/java/com/wethaq/app/WethaqMessageService.java';s=R(p)
           if 'addAction(new NotificationCompat.Action.Builder' not in s:
               span=method_span(s,'private void showIncomingCall(')
@@ -121,7 +113,6 @@ jobs:
           mp='app/src/main/AndroidManifest.xml';m=R(mp)
           if 'IncomingCallActionReceiver' not in m:W(mp,m.replace('</application>','<receiver android:name=".IncomingCallActionReceiver" android:exported="false"/>\n</application>'))
 
-          # VideoCallActivity
           p='app/src/main/java/com/wethaq/app/VideoCallActivity.java';s=R(p)
           if 'AudioDeviceInfo' not in s:s=s.replace('import android.media.AudioManager;','import android.media.AudioManager;import android.media.AudioDeviceInfo;import android.media.AudioFocusRequest;',1)
           if 'AudioFocusRequest audioFocusRequest' not in s:s=s.replace('private AudioManager audioManager;','private AudioManager audioManager;private AudioFocusRequest audioFocusRequest;',1)
@@ -142,7 +133,7 @@ jobs:
         working-directory: backend
         shell: bash
         run: |
-          npm ci
+          npm install
           export DB_PATH="$RUNNER_TEMP/wethaq-v6.db"
           export JWT_SECRET="wethaq-v6-secret"
           export OWNER_WETHAQ_ID="Hatem_Hussin_Al_Haj_Ramadan1995"
