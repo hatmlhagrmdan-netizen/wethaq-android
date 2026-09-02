@@ -30,7 +30,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.9'
-      - name: Validate final source
+      - name: Validate final source and provenance
         shell: bash
         run: |
           set -euo pipefail
@@ -57,6 +57,7 @@ jobs:
             echo 'Potential hard-coded secret detected'
             exit 1
           fi
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git diff --check
       - name: Backend smoke test
         shell: bash
