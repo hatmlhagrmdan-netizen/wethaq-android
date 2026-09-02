@@ -132,6 +132,8 @@ jobs:
           WETHAQ_KEY_PASSWORD: wethaq-ci-store-pass
         run: |
           set -euo pipefail
+          mkdir -p app/src/main/assets
+          printf '%s' "$FINAL_SOURCE_SHA" > app/src/main/assets/wethaq_source_sha.txt
           gradle --no-daemon --stacktrace clean test lintVitalRelease assembleRelease
 
       - name: APK integrity and source binding verification
@@ -141,6 +143,7 @@ jobs:
           APK=app/build/outputs/apk/release/app-release.apk
           test -s "$APK"
           unzip -t "$APK" >/dev/null
+          test "$(unzip -p "$APK" assets/wethaq_source_sha.txt)" = "$FINAL_SOURCE_SHA"
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
           test -x "$APKSIGNER"
@@ -150,8 +153,8 @@ jobs:
           SHA256="$(sha256sum "$APK" | awk '{print $1}')"
           APK_SIZE="$(stat -c '%s' "$APK")"
           printf 'SOURCE_SHA=%s\nAPK_SHA256=%s\nAPK_SIZE_BYTES=%s\nAPK=%s\n' "$FINAL_SOURCE_SHA" "$SHA256" "$APK_SIZE" "$APK" | tee release-verification.txt
-          git status --porcelain
-          test -z "$(git status --porcelain)"
+          rm -f app/src/main/assets/wethaq_source_sha.txt
+          test -z "$(git status --porcelain --untracked-files=no)"
           test "$(git rev-parse HEAD)" = "$FINAL_SOURCE_SHA"
 
       - name: Upload verified Production Candidate
