@@ -31,24 +31,24 @@ jobs:
           awk '/^          python3 <<'"'"'PY'"'"'/{go=1;next}/^          PY$/{go=0}go{sub(/^          /,"",$0);print}' .github/workflows/wethaq-v6-repair.yml > /tmp/repair.py
           python3 -m py_compile /tmp/repair.py
           python3 /tmp/repair.py
-      - name: Correct sqlite migration deterministically
+      - name: Normalize admin sqlite migration
         run: |
           set -euxo pipefail
           python3 <<'PY'
 from pathlib import Path
+import re
 p=Path('backend/server.js')
 s=p.read_text(encoding='utf-8')
-needle="ensureColumn('admin_roles','expires_at','TEXT');"
-idx=s.find(needle)
-if idx < 0:
-    raise SystemExit('MIGRATION_CALL_NOT_FOUND')
-end_sql=s.find('`);', idx)
-if end_sql >= 0 and idx < end_sql:
-    s=s[:idx]+s[idx+len(needle):]
-    end_sql=s.find('`);')
-    if end_sql < 0:
-        raise SystemExit('SQL_END_NOT_FOUND')
-    s=s[:end_sql+3]+needle+s[end_sql+3:]
+pat=re.compile(r"db\.exec\(`CREATE TABLE IF NOT EXISTS admin_roles\(.*?CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles\(role\);.*?`\);", re.S)
+m=pat.search(s)
+if not m:
+    raise SystemExit('ADMIN_ROLES_SCHEMA_BLOCK_NOT_FOUND')
+replacement="db.exec(`CREATE TABLE IF NOT EXISTS admin_roles(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL UNIQUE,role TEXT NOT NULL,admin_code_hash TEXT,created_by INTEGER,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,expires_at TEXT,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);`);ensureColumn('admin_roles','expires_at','TEXT');"
+s=s[:m.start()]+replacement+s[m.end():]
+pat2=re.compile(r"function roleOf\(userId\)\{.*?\}",re.S)
+role="function roleOf(userId){if(!userId)return null;const owner=db.prepare('SELECT id FROM users WHERE wethaq_id=?').get(OWNER_WETHAQ_ID);if(owner&&Number(userId)===Number(owner.id))return ROLE_FOUNDER;const row=db.prepare('SELECT role,expires_at FROM admin_roles WHERE user_id=?').get(Number(userId));if(!row)return null;if(row.expires_at&&new Date(row.expires_at)<=new Date())return null;return row.role||null}"
+s,n=pat2.subn(role,s,count=1)
+if n!=1: raise SystemExit('ROLE_OF_REPAIR_FAILED')
 p.write_text(s,encoding='utf-8')
 PY
           node --check backend/server.js
