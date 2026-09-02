@@ -9,6 +9,10 @@ permissions:
   contents: write
   actions: read
 
+concurrency:
+  group: wethaq-production-candidate
+  cancel-in-progress: false
+
 jobs:
   production-gate:
     if: github.actor != 'github-actions[bot]'
@@ -67,18 +71,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet; then
-            echo 'No source repair changes were required.'
-          else
+          if ! git diff --quiet; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             git add app/build.gradle app/src/main/java/com/wethaq/app/WethaqMessageService.java app/src/main/java/com/wethaq/app/VideoCallActivity.java app/src/main/java/com/wethaq/app/AdminActivity.java backend/server.js scripts/*.py backend/final-acceptance.mjs .github/workflows/production-candidate-gate.yml .github/workflows/final-build-v2.yml
             git commit -m 'fix: close mandatory feature and release verification gaps'
-            git push origin HEAD:main
+            for attempt in 1 2 3 4 5; do
+              git fetch origin main
+              git rebase origin/main && git push origin HEAD:main && break
+              if [ "$attempt" = 5 ]; then echo 'Could not serialize repaired source onto main.'; exit 1; fi
+              git rebase --abort 2>/dev/null || true
+              sleep $((attempt * 2))
+            done
           fi
           git fetch origin main
+          git reset --hard origin/main
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
           echo "FINAL_SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "FINAL_SOURCE_SHA=$(git rev-parse HEAD)"
 
       - name: Backend dependency install
         working-directory: backend
@@ -169,6 +179,17 @@ jobs:
           rm -f app/src/main/assets/wethaq_source_sha.txt
           test -z "$(git status --porcelain --untracked-files=no)"
           test "$(git rev-parse HEAD)" = "$FINAL_SOURCE_SHA"
+          echo 'WETHAQ_COMMIT_BUILD_MATCH_OK'
+
+      - name: Final verification gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s release-verification.txt
+          grep -q "SOURCE_SHA=$FINAL_SOURCE_SHA" release-verification.txt
+          grep -q '^APK_SHA256=[0-9a-f]\{64\}$' release-verification.txt
+          grep -q '^APK_SIZE_BYTES=[0-9][0-9]*$' release-verification.txt
+          echo 'WETHAQ_FINAL_VERIFICATION_OK'
 
       - name: Upload verified Production Candidate
         uses: actions/upload-artifact@v4
