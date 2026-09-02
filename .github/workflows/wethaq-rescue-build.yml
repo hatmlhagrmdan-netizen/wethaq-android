@@ -1,4 +1,4 @@
-name: Wethaq Stable Rescue Build
+name: Wethaq Stable Rescue Build — Certification 2
 
 on:
   push:
