@@ -1,8 +1,6 @@
 name: Wethaq Final V2 Release
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
