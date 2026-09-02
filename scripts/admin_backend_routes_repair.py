@@ -8,8 +8,8 @@ if ('/api/admin/role' in s and '/api/admin/rbac/ban' in s and '/api/admin/alert'
     print('WETHAQ_ADMIN_BACKEND_ROUTES_ALREADY_OK')
     raise SystemExit(0)
 
-routes = r'''
-\n// Wethaq administrative API contract — kept server-side and role-authorized.
+routes = '''
+// Wethaq administrative API contract — kept server-side and role-authorized.
 app.get('/api/public/administration',(_req,res)=>{const s=adminStructure();res.json({founder:s.founder?{wethaq_id:s.founder.wethaq_id,name:s.founder.name,birth_year:s.founder.birth_year,role:s.founder.role,role_label:s.founder.role_label}:null,deputies:Object.fromEntries(Object.entries(s.deputies).map(([k,v])=>[k,v?{wethaq_id:v.wethaq_id,name:v.name,birth_year:v.birth_year,role:v.role,role_label:roleLabel(v.role)}:null])),members:s.members.map(v=>({wethaq_id:v.wethaq_id,name:v.name,birth_year:v.birth_year,role:v.role,role_label:roleLabel(v.role)}))});});
 app.get('/api/admin/role',auth,(req,res)=>{const role=roleOf(req.user?.sub);if(!role)return res.status(403).json({error:'admin_forbidden'});res.json({role,role_label:roleLabel(role)});});
 app.get('/api/admin/structure',auth,founderOnly,(req,res)=>res.json(adminStructure()));
