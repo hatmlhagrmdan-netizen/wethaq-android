@@ -46,7 +46,7 @@ jobs:
           node server.js > "$RUNNER_TEMP/wethaq-v8-server.log" 2>&1 & PID=$!
           trap 'kill $PID 2>/dev/null || true' EXIT
           python3 - <<'PY'
-          import json,time,urllib.request
+          import json,time,urllib.request,os
           for _ in range(60):
             try:
               with urllib.request.urlopen('http://127.0.0.1:3199/health',timeout=1) as r:
@@ -55,7 +55,9 @@ jobs:
             except Exception:pass
             time.sleep(.25)
           else:
-            print(open('/runner/_temp/wethaq-v8-server.log').read());raise SystemExit('HEALTH_GATE_FAILED')
+            p=os.path.join(os.environ.get('RUNNER_TEMP','/tmp'),'wethaq-v8-server.log')
+            print(open(p).read() if os.path.exists(p) else 'backend log unavailable')
+            raise SystemExit('HEALTH_GATE_FAILED')
           PY
           node smoke-test.mjs
       - name: Build Release
