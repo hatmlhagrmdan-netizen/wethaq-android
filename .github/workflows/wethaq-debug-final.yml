@@ -1,0 +1,79 @@
+name: Wethaq Final Diagnostic
+on:
+  push:
+    branches: [wethaq-v9-final]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Show repository state
+        run: |
+          git status --short
+          git rev-parse HEAD
+          test -f .github/workflows/wethaq-v6-repair.yml
+      - name: Extract and apply source repair script
+        shell: bash
+        run: |
+          set -euxo pipefail
+          awk '/^          python3 <<'"'"'PY'"'"'/{go=1;next}/^          PY$/{go=0}go{sub(/^          /,"",$0);print}' .github/workflows/wethaq-v6-repair.yml > /tmp/repair.py
+          python3 -m py_compile /tmp/repair.py
+          python3 /tmp/repair.py
+      - name: Source gates
+        run: |
+          set -euxo pipefail
+          git diff --check
+          node --check backend/server.js
+          grep -R 'المناصب الإدارية مدفوعة' app/src/main/java >/dev/null
+          grep -R 'expires_at\|resolveUser\|addModerationTargetCard\|applyAudioRoute' app/src/main/java backend/server.js >/dev/null
+      - name: Backend diagnostics
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euxo pipefail
+          npm install --no-audit --no-fund
+          export DB_PATH="$RUNNER_TEMP/wethaq-final.db"
+          export JWT_SECRET="wethaq-final-secret"
+          export OWNER_WETHAQ_ID="Hatem_Hussin_Al_Haj_Ramadan1995"
+          export PORT=3199
+          LOG="$RUNNER_TEMP/backend.log"
+          node server.js > "$LOG" 2>&1 & PID=$!
+          for _ in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:3199/health >/tmp/health.json 2>/tmp/curl.err; then
+              cat /tmp/health.json
+              kill "$PID" 2>/dev/null || true
+              exit 0
+            fi
+            if ! kill -0 "$PID" 2>/dev/null; then
+              echo 'PROCESS_EXITED'
+              cat "$LOG" || true
+              exit 1
+            fi
+            sleep .5
+          done
+          echo 'HEALTH_TIMEOUT'
+          cat "$LOG" || true
+          cat /tmp/curl.err || true
+          exit 1
+      - name: Build compile gate
+        run: ./gradlew --no-daemon assembleDebug
+      - name: Persist only verified source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name 'wethaq-ci'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/AdminActivity.java app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java app/src/main/java/com/wethaq/app/WethaqMessageService.java app/src/main/java/com/wethaq/app/IncomingCallActionReceiver.java app/src/main/java/com/wethaq/app/VideoCallActivity.java app/src/main/AndroidManifest.xml backend/server.js
+          if git diff --cached --quiet; then echo NO_SOURCE_DELTA; else git commit -m 'feat: apply verified Wethaq v1 repairs' && git push origin HEAD:wethaq-v9-final; fi
