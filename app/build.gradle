@@ -14,11 +14,25 @@ android {
         versionName '1.0.0'
     }
 
+    signingConfigs {
+        release {
+            def ks = System.getenv('WETHAQ_KEYSTORE_PATH')
+            if (ks != null && new File(ks).exists()) {
+                storeFile file(ks)
+                storePassword System.getenv('WETHAQ_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('WETHAQ_KEY_ALIAS')
+                keyPassword System.getenv('WETHAQ_KEY_PASSWORD')
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
             shrinkResources false
-            signingConfig signingConfigs.debug
+            if (System.getenv('WETHAQ_KEYSTORE_PATH') != null) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
