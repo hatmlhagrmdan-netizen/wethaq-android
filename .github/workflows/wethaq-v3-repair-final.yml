@@ -22,20 +22,17 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-
       - name: Java 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-
       - name: Node 22
         uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: backend/package.json
-
       - name: Normalize source and validate contracts
         shell: bash
         run: |
@@ -50,39 +47,33 @@ jobs:
           python3 scripts/final_release_guard.py
           find . -type d -name __pycache__ -prune -exec rm -rf {} +
           git diff --check
-
       - name: Guarantee admin alert HTTP contract
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import re
-          p=Path('backend/server.js')
-          s=p.read_text(encoding='utf-8')
-          marker="app.post('/api/admin/alert'"
-          start=s.find(marker)
+          p=Path('backend/server.js'); s=p.read_text(encoding='utf-8')
+          marker="app.post('/api/admin/alert'"; start=s.find(marker)
           if start < 0: raise SystemExit('ADMIN_ALERT_ROUTE_NOT_FOUND')
-          nxt=s.find("app.",start+len(marker))
-          end=len(s) if nxt < 0 else nxt
+          end=s.find("app.get('/api/admin/complaints/rbac'",start)
+          if end < 0: raise SystemExit('ADMIN_ALERT_END_NOT_FOUND')
           route=s[start:end]
           if 'res.status(201).json({ok:true})' not in route:
-              pos=route.rfind('res.json({ok:true})')
+              needle='res.json({ok:true})'; pos=route.rfind(needle)
               if pos < 0: raise SystemExit('ADMIN_ALERT_SUCCESS_NOT_FOUND')
-              route=route[:pos]+'res.status(201).json({ok:true})'+route[pos+len('res.json({ok:true})'):]
-              s=s[:start]+route+s[end:]
-              p.write_text(s,encoding='utf-8')
+              route=route[:pos]+'res.status(201).json({ok:true})'+route[pos+len(needle):]
+              p.write_text(s[:start]+route+s[end:],encoding='utf-8')
           print('WETHAQ_ADMIN_ALERT_STATUS_OK')
           PY
           node --check backend/server.js
-
       - name: Persist repaired source
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app backend scripts .github/workflows/wethaq-v3-repair-final.yml
+          git add app backend scripts .github/workflows
           if ! git diff --cached --quiet; then
             git commit -m 'fix: normalize Wethaq canonical release source [skip ci]'
             git push origin HEAD:main
@@ -90,7 +81,6 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
           echo "FINAL_SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-
       - name: Final source feature gate
         shell: bash
         run: |
@@ -100,7 +90,6 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=no)"
           test "$(git rev-parse HEAD)" = "$FINAL_SOURCE_SHA"
           echo WETHAQ_FEATURES_GATE_OK
-
       - name: Backend smoke and full acceptance
         working-directory: backend
         env:
@@ -120,12 +109,11 @@ jobs:
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:3100/health >/dev/null; then break; fi
             if ! kill -0 "$PID" 2>/dev/null; then cat ../backend-final-gate.log; exit 1; fi
+            [ "$i" = 60 ] && { cat ../backend-final-gate.log; exit 1; }
             sleep 1
           done
-          curl -fsS http://127.0.0.1:3100/health
           npm run test:smoke
           node final-acceptance.mjs
-
       - name: Create isolated CI signing identity
         shell: bash
         run: |
@@ -136,7 +124,6 @@ jobs:
             -keypass 'wethaq-ci-store-pass' \
             -alias wethaq-ci -keyalg RSA -keysize 2048 -validity 3650 \
             -dname 'CN=Wethaq CI Release, OU=CI, O=Wethaq, L=NA, ST=NA, C=US' >/dev/null
-
       - name: Clean test lint and release build
         env:
           WETHAQ_KEYSTORE_PATH: ${{ runner.temp }}/wethaq-ci-release.jks
@@ -148,12 +135,7 @@ jobs:
           set -euo pipefail
           mkdir -p app/src/main/assets
           printf '%s' "$FINAL_SOURCE_SHA" > app/src/main/assets/wethaq_source_sha.txt
-          if [ -x ./gradlew ]; then
-            ./gradlew --no-daemon --stacktrace clean test lintVitalRelease assembleRelease
-          else
-            gradle --no-daemon --stacktrace clean test lintVitalRelease assembleRelease
-          fi
-
+          if [ -x ./gradlew ]; then ./gradlew --no-daemon --stacktrace clean test lintVitalRelease assembleRelease; else gradle --no-daemon --stacktrace clean test lintVitalRelease assembleRelease; fi
       - name: APK integrity and exact commit-build match
         shell: bash
         run: |
@@ -175,7 +157,6 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=no)"
           test "$(git rev-parse HEAD)" = "$FINAL_SOURCE_SHA"
           echo WETHAQ_COMMIT_BUILD_MATCH_OK
-
       - name: Final Verification
         shell: bash
         run: |
@@ -186,7 +167,6 @@ jobs:
           grep -Eq '^APK_SIZE_BYTES=[0-9]+$' release-verification.txt
           test "$(git rev-parse HEAD)" = "$FINAL_SOURCE_SHA"
           echo WETHAQ_FINAL_VERIFICATION_OK
-
       - name: Upload production candidate
         uses: actions/upload-artifact@v4
         with:
