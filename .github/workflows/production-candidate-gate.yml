@@ -232,3 +232,5 @@ jobs:
             app/build/outputs/apk/release/app-release.apk
             release-verification.txt
           retention-days: 30
+
+# canonical release gate revision: 2026-09-02-source-bound-v3
