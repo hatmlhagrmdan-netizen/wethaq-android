@@ -1,0 +1,149 @@
+name: Wethaq Production Candidate Gate
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  production-gate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Node 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package.json
+
+      - name: Repair source-level release blockers
+        run: python3 scripts/final_gate_repair.py
+
+      - name: Source integrity checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/*.py
+          node --check backend/server.js
+          git diff --check
+          if grep -R --line-number --fixed-strings 'signingConfig signingConfigs.debug' app; then
+            echo 'Release signing must not use the debug signing config.'
+            exit 1
+          fi
+          test -f app/src/main/AndroidManifest.xml
+          test -f app/build.gradle
+          test -f backend/server.js
+
+      - name: Commit repaired source to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'No source repair changes were required.'
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add app/build.gradle app/src/main/java/com/wethaq/app/WethaqMessageService.java backend/server.js scripts/final_gate_repair.py backend/final-acceptance.mjs .github/workflows/production-candidate-gate.yml
+            git commit -m 'fix: harden production candidate release gate'
+            git push origin HEAD:main
+          fi
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo "FINAL_SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Backend dependency install
+        working-directory: backend
+        run: npm install --no-audit --no-fund
+
+      - name: Backend syntax and acceptance
+        working-directory: backend
+        env:
+          PORT: 3100
+          NODE_ENV: test
+          DB_PATH: ${{ github.workspace }}/backend/wethaq-final-gate.db
+          JWT_SECRET: ci-only-wethaq-final-gate-secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f "$DB_PATH"
+          node --check server.js
+          node server.js > ../backend-final-gate.log 2>&1 &
+          PID=$!
+          trap 'kill $PID 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 40); do
+            if curl --fail --silent --show-error http://127.0.0.1:3100/health >/dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          test "$ready" = 1
+          npm run test:smoke
+          node final-acceptance.mjs
+
+      - name: Prepare isolated Release signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool -genkeypair -v \
+            -keystore "$RUNNER_TEMP/wethaq-ci-release.jks" \
+            -storepass 'wethaq-ci-store-pass' \
+            -keypass 'wethaq-ci-key-pass' \
+            -alias wethaq-ci \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 3650 \
+            -dname 'CN=Wethaq CI Release, OU=CI, O=Wethaq, L=NA, ST=NA, C=US'
+
+      - name: Android clean, unit tests, lint, and release build
+        env:
+          WETHAQ_KEYSTORE_PATH: ${{ runner.temp }}/wethaq-ci-release.jks
+          WETHAQ_KEYSTORE_PASSWORD: wethaq-ci-store-pass
+          WETHAQ_KEY_ALIAS: wethaq-ci
+          WETHAQ_KEY_PASSWORD: wethaq-ci-key-pass
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace clean test lintVitalRelease assembleRelease
+
+      - name: APK integrity and source binding verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          test -x "$AAPT"
+          "$APKSIGNER" verify --verbose "$APK"
+          "$AAPT" dump badging "$APK" | grep -q "package: name='com.wethaq.app'"
+          SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          APK_SIZE="$(stat -c '%s' "$APK")"
+          printf 'SOURCE_SHA=%s\nAPK_SHA256=%s\nAPK_SIZE_BYTES=%s\nAPK=%s\n' "$FINAL_SOURCE_SHA" "$SHA256" "$APK_SIZE" "$APK" | tee release-verification.txt
+          git status --porcelain
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$FINAL_SOURCE_SHA"
+
+      - name: Upload verified Production Candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: Wethaq-Production-Candidate-${{ env.FINAL_SOURCE_SHA }}
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            release-verification.txt
+          retention-days: 30
