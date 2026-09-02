@@ -1,0 +1,95 @@
+name: Wethaq Targeted Regression Repair
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [wethaq-fix-20260902]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@v5
+        with:
+          ref: wethaq-fix-20260902
+          fetch-depth: 0
+
+      - name: Apply targeted production fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          def patch(path, replacements):
+              p = Path(path)
+              s = p.read_text(encoding='utf-8')
+              original = s
+              for old, new in replacements:
+                  if old not in s:
+                      raise SystemExit(f'Missing patch anchor in {path}: {old[:160]}')
+                  s = s.replace(old, new, 1)
+              p.write_text(s, encoding='utf-8')
+              if s == original:
+                  raise SystemExit(f'No change made to {path}')
+
+          patch('app/src/main/java/com/wethaq/app/VideoCallActivity.java', [
+              ('private boolean isInitiator(){return myId.compareTo(target)<0;}',
+               'private boolean isInitiator(){return incomingOffer==null||incomingOffer.trim().isEmpty();}')
+          ])
+
+          patch('app/src/main/java/com/wethaq/app/MainActivity.java', [
+              ('out.setOnClickListener(v->{click();stopService(new Intent(this,WethaqMessageService.class));prefs.edit().clear().apply();login();});',
+               'out.setOnClickListener(v->{click();stopService(new Intent(this,WethaqMessageService.class));String deviceKey=prefs.getString("device_key","");prefs.edit().clear().putString("device_key",deviceKey).apply();login();});'),
+              ('h.post(()->{dismissProgress();home();});',
+               'h.post(()->{dismissProgress();if(!role.isEmpty()&&isAdminRoleName(role))toast("تم تفعيل صلاحيتك الإدارية: "+role);home();});')
+          ])
+
+          patch('app/src/main/java/com/wethaq/app/WethaqMessageService.java', [
+              ('}else if("call".equals(event)){JSONObject from=o.optJSONObject("from");String id=from==null?"":from.optString("wethaq_id","");String name=from==null?"مستخدم":from.optString("name","مستخدم");String type=o.optString("type","");String payload=o.optString("payload","");if("offer".equals(type)&&!id.isEmpty()){boolean audioOnly=!payload.contains("m=video");showIncomingCall(id,name,audioOnly,payload);}}}catch(Exception ignored){}}',
+               '}else if("call".equals(event)){JSONObject from=o.optJSONObject("from");String id=from==null?"":from.optString("wethaq_id","");String name=from==null?"مستخدم":from.optString("name","مستخدم");String type=o.optString("type","");String payload=o.optString("payload","");if("offer".equals(type)&&!id.isEmpty()){boolean audioOnly=!payload.contains("m=video");showIncomingCall(id,name,audioOnly,payload);}}else if("admin".equals(event)){String msg=o.optString("message","تم تحديث صلاحياتك الإدارية في وَثاق");showAdminNotice(msg,o.optString("type","admin"));}}catch(Exception ignored){}}'),
+              ('    private void showIncomingCall(String target,String name,boolean audioOnly,String offerPayload){Intent i=new Intent(this,VideoCallActivity.class);',
+               '    private void showAdminNotice(String message,String type){Intent i=new Intent(this,AdminActivity.class);i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP);PendingIntent pi=PendingIntent.getActivity(this,7000+Math.abs(type.hashCode()%1000),i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);NotificationCompat.Builder b=new NotificationCompat.Builder(this,MESSAGE_CHANNEL).setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("صلاحية إدارية في وَثاق").setContentText(message).setStyle(new NotificationCompat.BigTextStyle().bigText(message)).setContentIntent(pi).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_MAX).setCategory(NotificationCompat.CATEGORY_STATUS);NotificationManager nm=getSystemService(NotificationManager.class);if(nm!=null)nm.notify(4700+Math.abs(type.hashCode()%200),b.build());}\n    private void showIncomingCall(String target,String name,boolean audioOnly,String offerPayload){Intent i=new Intent(this,VideoCallActivity.class);')
+          ])
+
+          p = Path('backend/server.js')
+          s = p.read_text(encoding='utf-8')
+          old = "if(u.device_key&&u.device_key!==x.deviceKey)return res.status(401).json({error:'device_not_trusted'});if(!u.device_key)return res.status(409).json({error:'device_binding_required'});if(u.personal_code_hash&&u.personal_code_hash!==personalCodeHash)return res.status(401).json({error:'personal_code_required'});if(personalCodeHash&&!u.personal_code_hash)db.prepare('UPDATE users SET personal_code_hash=? WHERE id=?').run(personalCodeHash,u.id);db.prepare('UPDATE users SET last_seen=? WHERE id=?').run(now(),u.id);u=db.prepare('SELECT * FROM users WHERE id=?').get(u.id);const loginRole=roleOf(u.id);const submittedCodeHash=String(req.body?.personalCodeHash||'').trim().toLowerCase();if(loginRole&&u.personal_code_hash){if(!/^[a-f0-9]{64}$/.test(submittedCodeHash)||submittedCodeHash!==u.personal_code_hash)return res.status(403).json({error:'invalid_personal_code'});}audit(u.id,'login',u.id);res.json({user:publicUser(u),token:tokenFor(u),role:loginRole,personal_code_configured:!!u.personal_code_hash})"
+          new = "const adminCredential=db.prepare('SELECT role,admin_code_hash FROM admin_roles WHERE user_id=?').get(u.id);const personalMatches=!!u.personal_code_hash&&u.personal_code_hash===personalCodeHash;const adminMatches=!!adminCredential?.admin_code_hash&&adminCredential.admin_code_hash===personalCodeHash;const codeMatches=personalMatches||adminMatches;if(u.device_key&&u.device_key!==x.deviceKey&&!codeMatches)return res.status(401).json({error:'device_not_trusted'});if(!u.device_key)return res.status(409).json({error:'device_binding_required'});if(u.personal_code_hash&&!codeMatches)return res.status(401).json({error:'personal_code_required'});if(u.device_key!==x.deviceKey)db.prepare('UPDATE users SET device_key=? WHERE id=?').run(x.deviceKey,u.id);if(personalCodeHash&&!u.personal_code_hash&&!adminMatches)db.prepare('UPDATE users SET personal_code_hash=? WHERE id=?').run(personalCodeHash,u.id);db.prepare('UPDATE users SET last_seen=? WHERE id=?').run(now(),u.id);u=db.prepare('SELECT * FROM users WHERE id=?').get(u.id);const loginRole=roleOf(u.id);const submittedCodeHash=String(req.body?.personalCodeHash||'').trim().toLowerCase();if(loginRole&&u.personal_code_hash&&!personalMatches&&!adminMatches)return res.status(403).json({error:'invalid_personal_code'});const adminNotice=loginRole?`تم تعيينك ${roleLabel(loginRole)} في وَثاق. افتح لوحة التحكم الإدارية لاستخدام صلاحياتك.`:'';audit(u.id,'login',u.id);res.json({user:publicUser(u),token:tokenFor(u),role:loginRole,personal_code_configured:!!u.personal_code_hash,admin_notice:adminNotice})"
+          if old not in s:
+              raise SystemExit('Missing login anchor in backend/server.js')
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8')
+
+          patch('app/src/main/java/com/wethaq/app/AdminActivity.java', [
+              ('if("founder".equals(role)||"deputy1".equals(role)||"deputy2".equals(role)||"deputy3".equals(role)){body.addView(target,lp(-1,60,8));body.addView(minutes,lp(-1,60,8));body.addView(reason,lp(-1,60,8));}if("founder".equals(role))addFounderControls();else if("deputy1".equals(role)||"deputy2".equals(role)||"deputy3".equals(role))addModerationControls();Button complaints=b("📨 الشكاوى والتوجيه"),back=b("رجوع");body.addView(complaints,lp(-1,68,8));body.addView(back,lp(-1,68,12));complaints.setOnClickListener(v->complaints());back.setOnClickListener(v->finish());}',
+               'if("founder".equals(role)){addFounderControls();addFounderModerationControls();}else if("deputy1".equals(role)||"deputy2".equals(role)||"deputy3".equals(role))addModerationControls();LinearLayout cb=card("📨 الشكاوى والتوجيه");Button complaints=b("فتح الشكاوى والتوجيه"),back=b("رجوع");cb.addView(complaints,lp(-1,68,8));cb.addView(back,lp(-1,68,4));complaints.setOnClickListener(v->complaints());back.setOnClickListener(v->finish());}')
+          ])
+
+          p = Path('app/src/main/java/com/wethaq/app/AdminActivity.java')
+          s = p.read_text(encoding='utf-8')
+          pattern = r' private void addFounderControls\(\)\{.*? private void addModerationControls'
+          replacement = ''' private LinearLayout card(String title){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(dp(10),dp(10),dp(10),dp(10));GradientDrawable gd=new GradientDrawable();gd.setColor(Color.rgb(18,18,18));gd.setCornerRadius(dp(16));gd.setStroke(dp(2),Color.DKGRAY);c.setBackground(gd);body.addView(c,lp(-1,-2,10));TextView h=heading(title);h.setTextColor(gold());h.setTypeface(Typeface.DEFAULT,Typeface.BOLD);c.addView(h,lp(-1,-2,6));return c;}\n private void addFounderControls(){LinearLayout box=card("👑 التعيين والهيكل الإداري");EditText assign=f("معرف المستخدم للتعيين");Spinner roles=new Spinner(this);String[] values={"نائب أول","نائب ثانٍ","نائب ثالث","عضو إدارة"};roles.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,values));Button assignBtn=b("تعيين وإصدار رمز إداري"),remove=b("إزالة التعيين"),auditBtn=b("📋 سجل الإدارة");box.addView(assign,lp(-1,60,6));box.addView(roles,lp(-1,60,6));box.addView(assignBtn,lp(-1,68,6));box.addView(remove,lp(-1,68,6));box.addView(auditBtn,lp(-1,68,4));auditBtn.setOnClickListener(v->auditLog());assignBtn.setOnClickListener(v->{int p=roles.getSelectedItemPosition();String r=p==0?"deputy1":p==1?"deputy2":p==2?"deputy3":"admin_member";JSONObject q=new JSONObject();try{q.put("wethaqId",assign.getText().toString().trim());q.put("role",r);}catch(Exception ignored){}req("POST","/api/admin/assign",q.toString(),res->{try{JSONObject o=new JSONObject(res);new AlertDialog.Builder(this).setTitle("تم التعيين ✓").setMessage("المنصب: "+o.optString("role_label")+"\\nالرمز الإداري:\\n"+o.optString("admin_code")+"\\n\\nسيظهر للمستخدم إشعار إداري ويمكنه الدخول بالرمز الإداري على جهاز آخر.").setPositiveButton("إغلاق",null).show();loadStructure();}catch(Exception e){toast("تم التعيين");}});});remove.setOnClickListener(v->{JSONObject q=new JSONObject();try{q.put("wethaqId",assign.getText().toString().trim());}catch(Exception ignored){}confirm("إزالة التعيين","هل أنت متأكد؟",()->req("POST","/api/admin/remove-role",q.toString(),r->{toast("تمت إزالة التعيين ✓");loadStructure();}));});}\n private void addFounderModerationControls(){LinearLayout box=card("🚫 الحظر والتحذير والإلغاء");target=f("معرف وَثاق للمستخدم");minutes=f("مدة الحظر بالدقائق — 0 = نهائي");reason=f("سبب الإجراء");Button ban=b("🚫 حظر المستخدم"),unban=b("✅ إلغاء الحظر"),alert=b("⚠️ إرسال تنبيه");box.addView(target,lp(-1,60,6));box.addView(minutes,lp(-1,60,6));box.addView(reason,lp(-1,60,6));box.addView(ban,lp(-1,68,6));box.addView(unban,lp(-1,68,6));box.addView(alert,lp(-1,68,4));ban.setOnClickListener(v->{boolean permanent=minutes.getText().toString().trim().isEmpty()||"0".equals(minutes.getText().toString().trim());confirm(permanent?"حظر نهائي":"حظر مؤقت",permanent?"هل أنت متأكد من الحظر النهائي؟":"تنفيذ الحظر؟",()->{JSONObject q=new JSONObject();try{q.put("wethaqId",target.getText().toString().trim());q.put("minutes",minutes.getText().toString().trim().isEmpty()?0:Integer.parseInt(minutes.getText().toString().trim()));q.put("reason",reason.getText().toString().trim());}catch(Exception e){toast("المدة غير صحيحة");return;}req("POST","/api/admin/ban",q.toString(),r->toast("تم تنفيذ الحظر ✓"));});});unban.setOnClickListener(v->{JSONObject q=new JSONObject();try{q.put("wethaqId",target.getText().toString().trim());}catch(Exception ignored){}req("POST","/api/admin/unban",q.toString(),r->toast("تم إلغاء الحظر ✓"));});alert.setOnClickListener(v->{JSONObject q=new JSONObject();try{q.put("wethaqId",target.getText().toString().trim());q.put("reason",reason.getText().toString().trim());}catch(Exception ignored){}req("POST","/api/admin/alert",q.toString(),r->toast("تم إرسال التنبيه ✓"));});}\n private void addModerationControls'''
+          ns, count = re.subn(pattern, replacement, s, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit('Could not replace AdminActivity control block')
+          p.write_text(ns, encoding='utf-8')
+          print('TARGETED_PATCH_OK')
+          PY
+
+      - name: Commit repairs to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git status --short
+          git diff --check
+          git add app/src/main/java/com/wethaq/app/VideoCallActivity.java app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/WethaqMessageService.java app/src/main/java/com/wethaq/app/AdminActivity.java backend/server.js
+          git commit -m 'fix: repair calls login and admin permissions'
+          git push origin HEAD:main
