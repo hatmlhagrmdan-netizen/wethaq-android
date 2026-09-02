@@ -1,0 +1,94 @@
+name: Wethaq Finalize Visual Admin
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Apply final UI and permission policy
+        shell: python
+        run: |
+          from pathlib import Path
+
+          # Home card: only add once, directly above logout.
+          f=Path('app/src/main/java/com/wethaq/app/MainActivity.java')
+          s=f.read_text(encoding='utf-8')
+          if 'الإدارة والمناصب الإدارية' not in s:
+              anchor='Button out=btn("تسجيل الخروج");content.addView(out,lp(-1,76,8));'
+              insert=('LinearLayout paid=infoCard("💼 الإدارة والمناصب الإدارية");'
+                      'paid.addView(tv("المناصب الإدارية في وَثاق مدفوعة لمدة سنة واحدة. للحصول على منصب إداري، يرجى التواصل مباشرةً مع المدير والمؤسس.",15,Color.WHITE),lp(-1,-2,0));'
+                      'content.addView(paid,lp(-1,-2,10));'+anchor)
+              s=s.replace(anchor,insert,1)
+          if 'private LinearLayout infoCard(String title)' not in s:
+              anchor='private void menu(String s,Runnable r){'
+              helper=('private LinearLayout infoCard(String title){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(dp(14),dp(12),dp(14),dp(12));GradientDrawable d=new GradientDrawable();d.setColor(Color.rgb(20,20,20));d.setCornerRadius(dp(16));d.setStroke(dp(2),gold());c.setBackground(d);TextView h=tv(title,18,gold());h.setGravity(Gravity.RIGHT);h.setTypeface(Typeface.DEFAULT,Typeface.BOLD);c.addView(h,lp(-1,-2,4));return c;}\n ')
+              s=s.replace(anchor,helper+anchor,1)
+          f.write_text(s,encoding='utf-8')
+
+          # Public administration: every role is a separate card with price and clear permissions.
+          f=Path('app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java')
+          s=f.read_text(encoding='utf-8')
+          start=s.index('    private void show(String raw){')
+          end=s.index('    private String nameOf',start)
+          show='''    private void show(String raw){try{JSONObject o=new JSONObject(raw);body.removeAllViews();JSONObject f=o.optJSONObject("founder");body.addView(card("👑 المؤسس\\n"+(f==null?"غير محدد":f.optString("name","غير محدد")),"القيادة الكاملة للتطبيق، اعتماد الهيكل والمناصب، إدارة الصلاحيات العليا، والإشراف الكامل.","مجاني — منصب المؤسس لا يُباع",true));JSONObject d=o.optJSONObject("deputies");body.addView(card("🥇 النائب الأول\\n"+nameOf(d==null?null:d.optJSONObject("deputy1")),"إشراف إداري موسع، متابعة أعضاء الإدارة، التعامل مع المخالفات والحظر ضمن الصلاحية، التنبيهات والشكاوى ورفع التقارير للمؤسس.","20$ سنويًا",false));body.addView(card("🥈 النائب الثاني\\n"+nameOf(d==null?null:d.optJSONObject("deputy2")),"إشراف متوسط، متابعة المستخدمين وأعضاء الإدارة، التنبيهات والمخالفات ضمن الصلاحية، ورفع الحالات الأعلى للمؤسس أو النائب الأول.","17$ سنويًا",false));body.addView(card("🥉 النائب الثالث\\n"+nameOf(d==null?null:d.optJSONObject("deputy3")),"متابعة المستخدمين، استقبال البلاغات، إرسال التنبيهات واتخاذ إجراءات الإشراف الأساسية ضمن الصلاحية، دون تعيين مناصب إدارية.","12$ سنويًا",false));body.addView(text("👥 أعضاء الإدارة — 10 خانات",20,Color.rgb(212,175,55)));JSONArray m=o.optJSONArray("members");for(int i=0;i<10;i++){JSONObject x=null;if(m!=null&&i<m.length())x=m.optJSONObject(i);String name=(x==null?"غير معين":x.optString("name","غير معروف"));body.addView(card((i+1)+". "+name,"المتابعة الإدارية، الاطلاع على المعلومات الإدارية العامة، استقبال التوجيهات، والمساهمة في رفع البلاغات والتنبيهات. لا يملك صلاحية تعيين المناصب أو تنفيذ الحظر.","8$ سنويًا",false));}body.addView(card("المستخدمون\\nجميع المستخدمين خارج الهيكل الإداري","استخدام خدمات وَثاق الأساسية دون صلاحيات إدارية.","مجاني",false));}catch(Exception e){status.setText("🔴 حدث خطأ أثناء قراءة البيانات");}}\n'''
+          s=s[:start]+show+s[end:]
+          cstart=s.index('    private TextView card(')
+          # card() is the final method in this source file; replace it and guarantee the class closing brace.
+          card='''    private TextView card(String title,String permissions,String price,boolean founder){TextView t=text(title+"\\n\\nالصلاحيات الممنوحة:\\n"+permissions+"\\n\\nالرسوم: "+price,founder?20:17,Color.WHITE);GradientDrawable d=new GradientDrawable();d.setColor(founder?Color.rgb(45,36,12):Color.rgb(24,24,28));d.setCornerRadius(dp(16));d.setStroke(dp(2),founder?Color.rgb(212,175,55):Color.rgb(70,70,75));t.setBackground(d);t.setPadding(dp(16),dp(14),dp(16),dp(14));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(10);t.setLayoutParams(p);return t;}\n}\n'''
+          s=s[:cstart]+card
+          f.write_text(s,encoding='utf-8')
+
+          # Server-side policy: first deputy has the widest paid deputy scope; lower roles are progressively restricted.
+          f=Path('backend/server.js')
+          s=f.read_text(encoding='utf-8')
+          old="function roleCanBan(a,t){if(a===ROLE_FOUNDER)return t!==ROLE_FOUNDER;if(a===ROLE_V1||a===ROLE_V2)return t===null||t===ROLE_MEMBER;if(a===ROLE_V3)return t===null;return false}"
+          new="function roleCanBan(a,t){if(a===ROLE_FOUNDER)return t!==ROLE_FOUNDER;if(a===ROLE_V1)return t===null||t===ROLE_MEMBER||t===ROLE_V2||t===ROLE_V3;if(a===ROLE_V2)return t===null||t===ROLE_MEMBER;if(a===ROLE_V3)return t===null;return false}"
+          if old in s:s=s.replace(old,new,1)
+          f.write_text(s,encoding='utf-8')
+          print('final policy applied')
+
+      - name: Static checks
+        run: |
+          git diff --check
+          grep -Fq 'الإدارة والمناصب الإدارية' app/src/main/java/com/wethaq/app/MainActivity.java
+          grep -Fq '20$ سنويًا' app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java
+          grep -Fq '17$ سنويًا' app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java
+          grep -Fq '12$ سنويًا' app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java
+          grep -Fq '8$ سنويًا' app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java
+          grep -Fq 'function roleCanBan' backend/server.js
+          tail -n 2 app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java | grep -Fq '}'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Release build verification
+        run: |
+          chmod +x gradlew
+          ./gradlew clean assembleRelease --no-daemon
+      - name: Commit finalized changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java backend/server.js
+          git diff --cached --quiet && exit 0
+          git commit -m 'feat: finalize Wethaq visual identity and annual admin roles'
+          git push origin HEAD:main
+      - name: Upload verified APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Wethaq-visual-admin-final
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 30
