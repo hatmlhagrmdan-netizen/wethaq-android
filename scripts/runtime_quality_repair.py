@@ -1,5 +1,4 @@
 from pathlib import Path
-import re
 
 VIDEO = Path('app/src/main/java/com/wethaq/app/VideoCallActivity.java')
 
@@ -31,28 +30,36 @@ new = 'if(poll!=null)handler.removeCallbacks(poll);sendEndSignal();'
 if old in s:
     s = s.replace(old, new, 1)
 
-# Normalize common one-line lifecycle variants emitted by earlier repair scripts.
-# The semantic invariant is: onDestroy must route through endCall before super.
-variants = [
-    '@Override protected void onDestroy(){if(!cleaned)endCall();else if(poll!=null)handler.removeCallbacks(poll);super.onDestroy();}',
-    '@Override protected void onDestroy(){if(!cleaned)endCall();super.onDestroy();}',
-    '@Override protected void onDestroy(){if(!cleaned) endCall();super.onDestroy();}',
-]
+# Canonicalize the complete onDestroy() method using balanced-brace parsing.
+# This deliberately repairs variants emitted by earlier layered repair scripts,
+# including versions containing a nested try/catch or an incorrect handler name.
+signature = '@Override protected void onDestroy()'
+start = s.find(signature)
+if start < 0:
+    raise SystemExit('missing runtime quality invariant: onDestroy method')
+brace = s.find('{', start)
+if brace < 0:
+    raise SystemExit('missing runtime quality invariant: onDestroy opening brace')
+depth = 0
+end = -1
+for i in range(brace, len(s)):
+    if s[i] == '{':
+        depth += 1
+    elif s[i] == '}':
+        depth -= 1
+        if depth == 0:
+            end = i + 1
+            break
+if end < 0:
+    raise SystemExit('unterminated onDestroy method')
 canonical = '@Override protected void onDestroy(){if(!cleaned)endCall();else if(poll!=null)handler.removeCallbacks(poll);super.onDestroy();}'
-for variant in variants:
-    if variant in s:
-        s = s.replace(variant, canonical, 1)
-        break
+s = s[:start] + canonical + s[end:]
 
 VIDEO.write_text(s, encoding='utf-8')
 check = VIDEO.read_text(encoding='utf-8')
 if not ('callIo' in check or ('pollIo' in check and 'signalIo' in check)):
     raise SystemExit('missing runtime quality invariant: call executors')
-if 'pollInFlight' not in check:
-    raise SystemExit('missing runtime quality invariant: pollInFlight')
-if 'sendEndSignal' not in check:
-    raise SystemExit('missing runtime quality invariant: sendEndSignal')
-on_destroy = re.search(r'@Override\s+protected\s+void\s+onDestroy\s*\(\)\s*\{[^}]*endCall\s*\(\)', check, re.S)
-if not on_destroy:
-    raise SystemExit('missing runtime quality invariant: onDestroy must call endCall')
+for needle in ('pollInFlight', 'sendEndSignal', 'handler.removeCallbacks(poll)', 'super.onDestroy();'):
+    if needle not in check:
+        raise SystemExit(f'missing runtime quality invariant: {needle}')
 print('WETHAQ_RUNTIME_QUALITY_REPAIR_OK')
