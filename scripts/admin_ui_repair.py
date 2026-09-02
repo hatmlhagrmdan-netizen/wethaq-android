@@ -11,7 +11,10 @@ new = 'target=f("معرف وَثاق للمستخدم");minutes=f("مدة الح
 if old in s:
     s = s.replace(old, new, 1)
 elif 'if("founder".equals(role)||"deputy1".equals(role)||"deputy2".equals(role)||"deputy3".equals(role)){body.addView(target' not in s:
-    raise SystemExit('AdminActivity moderation-field layout is unknown')
+    # The current UI intentionally initializes moderation fields in render() and attaches them
+    # to role-specific moderation cards. Accept that valid layout rather than falsely failing.
+    if not all(x in s for x in ['target=f("معرف وَثاق للمستخدم")','minutes=f("مدة الحظر بالدقائق — 0 = نهائي")','reason=f("السبب")','addModerationControls()']):
+        raise SystemExit('AdminActivity moderation-field contract is missing')
 
 if 'private void setBusy(boolean busy)' not in s:
     anchor = 'private interface CB{void ok(String s);}'
