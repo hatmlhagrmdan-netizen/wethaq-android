@@ -8,116 +8,164 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: wethaq-v1-official-release
+  cancel-in-progress: false
+
 jobs:
   official-release:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout exact source
-        uses: actions/checkout@v4
+      - name: Checkout exact main
+        uses: actions/checkout@v5
         with:
+          ref: main
           fetch-depth: 0
 
-      - uses: actions/setup-java@v5
+      - name: Java 17
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: actions/setup-node@v5
+      - name: Node 22
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package.json
 
-      - name: Apply Wethaq product repairs
+      - name: Deterministic source repair and static gate
         shell: bash
         run: |
-          set -euxo pipefail
-          awk '/^          python3 <<'"'"'PY'"'"'/{go=1;next}/^          PY$/{go=0}go{sub(/^          /,"",$0);print}' .github/workflows/wethaq-v6-repair.yml > /tmp/repair.py
-          python3 -m py_compile /tmp/repair.py
-          python3 /tmp/repair.py
-
-          python3 <<'PY'
-from pathlib import Path
-import re
-p=Path('backend/server.js')
-s=p.read_text(encoding='utf-8')
-pat=re.compile(r"db\.exec\(`CREATE TABLE IF NOT EXISTS admin_roles\(.*?CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles\(role\);.*?`\);", re.S)
-m=pat.search(s)
-if not m:
-    raise SystemExit('ADMIN_ROLES_SCHEMA_BLOCK_NOT_FOUND')
-replacement="db.exec(`CREATE TABLE IF NOT EXISTS admin_roles(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL UNIQUE,role TEXT NOT NULL,admin_code_hash TEXT,created_by INTEGER,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,expires_at TEXT,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);`);ensureColumn('admin_roles','expires_at','TEXT');"
-s=s[:m.start()]+replacement+s[m.end():]
-pat2=re.compile(r"function roleOf\(userId\)\{.*?\}",re.S)
-role="function roleOf(userId){if(!userId)return null;const owner=db.prepare('SELECT id FROM users WHERE wethaq_id=?').get(OWNER_WETHAQ_ID);if(owner&&Number(userId)===Number(owner.id))return ROLE_FOUNDER;const row=db.prepare('SELECT role,expires_at FROM admin_roles WHERE user_id=?').get(Number(userId));if(!row)return null;if(row.expires_at&&new Date(row.expires_at)<=new Date())return null;return row.role||null}"
-s,n=pat2.subn(role,s,count=1)
-if n!=1: raise SystemExit('ROLE_OF_REPAIR_FAILED')
-p.write_text(s,encoding='utf-8')
-PY
-
-      - name: Static quality gate
-        shell: bash
-        run: |
-          set -euxo pipefail
-          git diff --check
+          set -euo pipefail
+          python3 scripts/final_gate_repair.py
+          python3 scripts/mandatory_features_repair.py
+          python3 scripts/admin_alert_rbac_repair.py
+          python3 scripts/admin_backend_routes_repair.py
+          python3 scripts/admin_alert_status_repair.py
+          python3 -m py_compile scripts/*.py
           node --check backend/server.js
-          grep -R 'المناصب الإدارية مدفوعة' app/src/main/java >/dev/null
-          grep -R '20\\$ / سنة\|17\\$ / سنة\|12\\$ / سنة\|8\\$ / سنة' app/src/main/java >/dev/null
-          grep -R 'addModerationTargetCard\|applyAudioRoute\|IncomingCallActionReceiver\|expires_at\|resolveUser' app/src/main/java backend/server.js >/dev/null
+          python3 scripts/final_release_guard.py
+          find . -type d -name __pycache__ -prune -exec rm -rf {} +
 
-      - name: Backend health and smoke
+      - name: Persist repaired source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/build.gradle app/src/main/java/com/wethaq/app/WethaqMessageService.java app/src/main/java/com/wethaq/app/VideoCallActivity.java app/src/main/java/com/wethaq/app/AdminActivity.java app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/IncomingCallActionReceiver.java app/src/main/AndroidManifest.xml backend/server.js scripts/*.py backend/final-acceptance.mjs .github/workflows/wethaq-visual-admin-repair.yml .github/workflows/wethaq-v3-product-repair.yml .github/workflows/wethaq-official-release.yml
+          if ! git diff --cached --quiet; then
+            git commit -m 'fix: synchronize Wethaq final release source [skip ci]'
+            git push origin HEAD:main
+          fi
+          git fetch origin main
+          git reset --hard origin/main
+          FINAL_SOURCE_SHA="$(git rev-parse HEAD)"
+          echo "FINAL_SOURCE_SHA=$FINAL_SOURCE_SHA" >> "$GITHUB_ENV"
+          echo "FINAL_SOURCE_SHA=$FINAL_SOURCE_SHA"
+
+      - name: Feature gate on final source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/final_release_guard.py
+          find . -type d -name __pycache__ -prune -exec rm -rf {} +
+          test -z "$(git status --porcelain --untracked-files=no)"
+          test "$(git rev-parse HEAD)" = "$FINAL_SOURCE_SHA"
+          echo WETHAQ_FEATURES_GATE_OK
+
+      - name: Backend full acceptance
         working-directory: backend
+        env:
+          PORT: 3100
+          NODE_ENV: test
+          DB_PATH: ${{ github.workspace }}/backend/wethaq-final-gate.db
+          JWT_SECRET: ci-only-wethaq-final-gate-secret
+          OWNER_WETHAQ_ID: Hatem_Hussin_Al_Haj_Ramadan1995
         shell: bash
         run: |
-          set -euxo pipefail
+          set -euo pipefail
           npm install --no-audit --no-fund
-          export DB_PATH="$RUNNER_TEMP/wethaq-official.db"
-          export JWT_SECRET="wethaq-official-test-secret"
-          export OWNER_WETHAQ_ID="Hatem_Hussin_Al_Haj_Ramadan1995"
-          export PORT=3199
-          LOG="$RUNNER_TEMP/backend.log"
-          node server.js > "$LOG" 2>&1 & PID=$!
+          rm -f "$DB_PATH"
+          node --check server.js
+          node server.js > ../backend-final-gate.log 2>&1 &
+          PID=$!
           trap 'kill $PID 2>/dev/null || true' EXIT
-          for _ in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:3199/health >/tmp/health.json; then
-              cat /tmp/health.json
-              node smoke-test.mjs
-              exit 0
-            fi
-            if ! kill -0 "$PID" 2>/dev/null; then
-              cat "$LOG" || true
-              exit 1
-            fi
-            sleep .5
+          for i in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:3100/health >/dev/null; then break; fi
+            if [ "$i" = 60 ]; then cat ../backend-final-gate.log; exit 1; fi
+            sleep 1
           done
-          cat "$LOG" || true
-          exit 1
+          npm run test:smoke
+          node final-acceptance.mjs
 
-      - name: Android build
-        run: ./gradlew --no-daemon clean assembleDebug assembleRelease
-
-      - name: APK integrity and provenance
+      - name: Create isolated CI signing identity
         shell: bash
         run: |
-          set -euxo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          git diff --check
-          APK=$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -1)
-          test -n "$APK"
+          set -euo pipefail
+          keytool -genkeypair -v -storetype JKS \
+            -keystore "$RUNNER_TEMP/wethaq-ci-release.jks" \
+            -storepass 'wethaq-ci-store-pass' \
+            -keypass 'wethaq-ci-store-pass' \
+            -alias wethaq-ci -keyalg RSA -keysize 2048 -validity 3650 \
+            -dname 'CN=Wethaq CI Release, OU=CI, O=Wethaq, L=NA, ST=NA, C=US' >/dev/null
+          keytool -list -keystore "$RUNNER_TEMP/wethaq-ci-release.jks" -storetype JKS -storepass 'wethaq-ci-store-pass' -alias wethaq-ci >/dev/null
+
+      - name: Clean test lint release build
+        env:
+          WETHAQ_KEYSTORE_PATH: ${{ runner.temp }}/wethaq-ci-release.jks
+          WETHAQ_KEYSTORE_PASSWORD: wethaq-ci-store-pass
+          WETHAQ_KEY_ALIAS: wethaq-ci
+          WETHAQ_KEY_PASSWORD: wethaq-ci-store-pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/assets
+          printf '%s' "$FINAL_SOURCE_SHA" > app/src/main/assets/wethaq_source_sha.txt
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace clean test lintVitalRelease assembleRelease
+
+      - name: APK provenance signing and commit match
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
           test -s "$APK"
           unzip -t "$APK" >/dev/null
-          sha256sum "$APK"
+          test "$(unzip -p "$APK" assets/wethaq_source_sha.txt)" = "$FINAL_SOURCE_SHA"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          test -x "$APKSIGNER" && test -x "$AAPT"
+          "$APKSIGNER" verify --verbose "$APK"
+          "$AAPT" dump badging "$APK" | grep -q "package: name='com.wethaq.app'"
+          SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SIZE="$(stat -c '%s' "$APK")"
+          printf 'SOURCE_SHA=%s\nAPK_SHA256=%s\nAPK_SIZE_BYTES=%s\nAPK=%s\n' "$FINAL_SOURCE_SHA" "$SHA256" "$SIZE" "$APK" | tee release-verification.txt
+          rm -f app/src/main/assets/wethaq_source_sha.txt
+          find . -type d -name __pycache__ -prune -exec rm -rf {} +
+          test -z "$(git status --porcelain --untracked-files=no)"
+          test "$(git rev-parse HEAD)" = "$FINAL_SOURCE_SHA"
+          echo WETHAQ_COMMIT_BUILD_MATCH_OK
 
-      - name: Persist verified source repairs
+      - name: Final Verification
         shell: bash
         run: |
-          set -euxo pipefail
-          git config user.name 'wethaq-ci'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/AdminActivity.java app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java app/src/main/java/com/wethaq/app/WethaqMessageService.java app/src/main/java/com/wethaq/app/IncomingCallActionReceiver.java app/src/main/java/com/wethaq/app/VideoCallActivity.java app/src/main/AndroidManifest.xml backend/server.js
-          if git diff --cached --quiet; then echo SOURCE_ALREADY_PERSISTED; else git commit -m 'feat: Wethaq v1 official first release repairs' && git push origin HEAD:main; fi
+          set -euo pipefail
+          test -s release-verification.txt
+          grep -q "SOURCE_SHA=$FINAL_SOURCE_SHA" release-verification.txt
+          grep -Eq '^APK_SHA256=[0-9a-f]{64}$' release-verification.txt
+          grep -Eq '^APK_SIZE_BYTES=[0-9]+$' release-verification.txt
+          test "$(git rev-parse HEAD)" = "$FINAL_SOURCE_SHA"
+          echo WETHAQ_FINAL_VERIFICATION_OK
 
-      - name: Upload release APK
+      - name: Upload final Wethaq candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Wethaq-v1-official-release
-          path: app/build/outputs/apk/release/*.apk
-          if-no-files-found: error
+          name: Wethaq-Production-Candidate-${{ env.FINAL_SOURCE_SHA }}
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            release-verification.txt
           retention-days: 30
