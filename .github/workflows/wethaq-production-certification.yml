@@ -149,3 +149,5 @@ jobs:
             release-verification.txt
           if-no-files-found: error
           retention-days: 30
+
+# Certification gate is intentionally immutable: it never rewrites application source.
