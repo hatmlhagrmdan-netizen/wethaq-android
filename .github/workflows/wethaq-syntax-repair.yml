@@ -1,0 +1,41 @@
+name: Wethaq Syntax Repair
+
+on:
+  push:
+    branches: [wethaq-syntax-fix-20260902]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: wethaq-syntax-fix-20260902
+          fetch-depth: 0
+      - name: Repair Java string literals
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+          p=Path('app/src/main/java/com/wethaq/app/AdminActivity.java')
+          s=p.read_text(encoding='utf-8')
+          old='''setMessage("المنصب: "+o.optString("role_label")+"\nالرمز الإداري:\n"+o.optString("admin_code")+"\n\nسيظهر للمستخدم إشعار إداري ويمكنه الدخول بالرمز الإداري على جهاز آخر.")'''
+          new='''setMessage("المنصب: "+o.optString("role_label")+"\\nالرمز الإداري:\\n"+o.optString("admin_code")+"\\n\\nسيظهر للمستخدم إشعار إداري ويمكنه الدخول بالرمز الإداري على جهاز آخر.")'''
+          if old not in s:
+              raise SystemExit('AdminActivity anchor not found')
+          s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8')
+          print('ADMIN_STRING_REPAIRED')
+          PY
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/wethaq/app/AdminActivity.java
+          git commit -m 'fix: repair admin panel Java string literals'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
