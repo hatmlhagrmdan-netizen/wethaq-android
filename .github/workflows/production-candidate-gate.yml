@@ -86,12 +86,22 @@ jobs:
           node server.js > ../backend-final-gate.log 2>&1 &
           PID=$!
           trap 'kill $PID 2>/dev/null || true' EXIT
+          sleep 1
+          if ! kill -0 "$PID" 2>/dev/null; then
+            echo 'Backend process exited before health check.'
+            cat ../backend-final-gate.log
+            exit 1
+          fi
           ready=0
           for i in $(seq 1 40); do
             if curl --fail --silent --show-error http://127.0.0.1:3100/health >/dev/null; then ready=1; break; fi
             sleep 1
           done
-          test "$ready" = 1
+          if test "$ready" != 1; then
+            echo 'Backend health endpoint did not become ready.'
+            cat ../backend-final-gate.log
+            exit 1
+          fi
           npm run test:smoke
           node final-acceptance.mjs
 
