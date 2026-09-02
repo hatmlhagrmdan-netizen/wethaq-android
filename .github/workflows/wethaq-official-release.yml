@@ -125,8 +125,8 @@ jobs:
           set -euo pipefail
           mkdir -p app/src/main/assets
           printf '%s' "$FINAL_SOURCE_SHA" > app/src/main/assets/wethaq_source_sha.txt
-          chmod +x gradlew
-          ./gradlew --no-daemon --stacktrace clean test lintVitalRelease assembleRelease
+          chmod +x gradlew 2>/dev/null || true
+          if [ -x ./gradlew ]; then ./gradlew --no-daemon --stacktrace clean test lintVitalRelease assembleRelease; else gradle --no-daemon --stacktrace clean test lintVitalRelease assembleRelease; fi
 
       - name: APK provenance signing and commit match
         shell: bash
