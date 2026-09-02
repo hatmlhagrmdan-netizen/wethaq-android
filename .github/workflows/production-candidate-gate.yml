@@ -35,6 +35,9 @@ jobs:
       - name: Repair source-level release blockers
         run: python3 scripts/final_gate_repair.py
 
+      - name: Enforce mandatory feature repairs
+        run: python3 scripts/mandatory_features_repair.py
+
       - name: Source integrity checks
         shell: bash
         run: |
@@ -49,6 +52,9 @@ jobs:
           test -f app/src/main/AndroidManifest.xml
           test -f app/build.gradle
           test -f backend/server.js
+          grep -q 'private void acceptIncoming()' app/src/main/java/com/wethaq/app/VideoCallActivity.java
+          grep -q 'private void rejectIncoming()' app/src/main/java/com/wethaq/app/VideoCallActivity.java
+          grep -q 'addAdminSearchControls()' app/src/main/java/com/wethaq/app/AdminActivity.java
 
       - name: Commit repaired source to main
         shell: bash
@@ -59,8 +65,8 @@ jobs:
           else
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add app/build.gradle app/src/main/java/com/wethaq/app/WethaqMessageService.java backend/server.js scripts/final_gate_repair.py backend/final-acceptance.mjs .github/workflows/production-candidate-gate.yml
-            git commit -m 'fix: harden production candidate release gate'
+            git add app/build.gradle app/src/main/java/com/wethaq/app/WethaqMessageService.java app/src/main/java/com/wethaq/app/VideoCallActivity.java app/src/main/java/com/wethaq/app/AdminActivity.java backend/server.js scripts/*.py backend/final-acceptance.mjs .github/workflows/production-candidate-gate.yml .github/workflows/final-build-v2.yml
+            git commit -m 'fix: close mandatory feature and release verification gaps'
             git push origin HEAD:main
           fi
           git fetch origin main
