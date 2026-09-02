@@ -31,21 +31,24 @@ jobs:
           awk '/^          python3 <<'"'"'PY'"'"'/{go=1;next}/^          PY$/{go=0}go{sub(/^          /,"",$0);print}' .github/workflows/wethaq-v6-repair.yml > /tmp/repair.py
           python3 -m py_compile /tmp/repair.py
           python3 /tmp/repair.py
-      - name: Correct migration placement
+      - name: Correct sqlite migration deterministically
         run: |
           set -euxo pipefail
           python3 <<'PY'
 from pathlib import Path
 p=Path('backend/server.js')
 s=p.read_text(encoding='utf-8')
-needle="ensureColumn('admin_roles','expires_at','TEXT');`);"
-if needle in s:
-    s=s.replace(needle,"`);ensureColumn('admin_roles','expires_at','TEXT');",1)
-elif "CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);`);ensureColumn('admin_roles','expires_at','TEXT');" in s:
-    pass
-else:
-    # Repair the specific malformed form where the migration call sits inside db.exec().
-    s=s.replace("CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);ensureColumn('admin_roles','expires_at','TEXT');`);","CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);`);ensureColumn('admin_roles','expires_at','TEXT');",1)
+needle="ensureColumn('admin_roles','expires_at','TEXT');"
+idx=s.find(needle)
+if idx < 0:
+    raise SystemExit('MIGRATION_CALL_NOT_FOUND')
+end_sql=s.find('`);', idx)
+if end_sql >= 0 and idx < end_sql:
+    s=s[:idx]+s[idx+len(needle):]
+    end_sql=s.find('`);')
+    if end_sql < 0:
+        raise SystemExit('SQL_END_NOT_FOUND')
+    s=s[:end_sql+3]+needle+s[end_sql+3:]
 p.write_text(s,encoding='utf-8')
 PY
           node --check backend/server.js
@@ -55,6 +58,7 @@ PY
           git diff --check
           node --check backend/server.js
           grep -R 'المناصب الإدارية مدفوعة' app/src/main/java >/dev/null
+          grep -R '20\\$ / سنة\|17\\$ / سنة\|12\\$ / سنة\|8\\$ / سنة' app/src/main/java >/dev/null
           grep -R 'expires_at\|resolveUser\|addModerationTargetCard\|applyAudioRoute' app/src/main/java backend/server.js >/dev/null
       - name: Backend diagnostics
         working-directory: backend
