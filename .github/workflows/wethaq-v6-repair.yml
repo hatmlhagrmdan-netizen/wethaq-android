@@ -1,0 +1,185 @@
+name: Wethaq V6 Repair
+
+on:
+  push:
+    branches: [wethaq-v6-repair]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Apply V6 source repairs
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+          def R(p): return Path(p).read_text(encoding='utf-8')
+          def W(p,s): Path(p).write_text(s,encoding='utf-8')
+          def method_span(s, signature):
+              st=s.find(signature)
+              if st<0:return None
+              br=s.find('{',st)
+              if br<0:return None
+              d=0
+              for i in range(br,len(s)):
+                  if s[i]=='{': d+=1
+                  elif s[i]=='}':
+                      d-=1
+                      if d==0:return st,i+1
+              return None
+
+          # MainActivity
+          p='app/src/main/java/com/wethaq/app/MainActivity.java';s=R(p)
+          s=s.replace('private final ExecutorService io=Executors.newSingleThreadExecutor();','private final ExecutorService io=Executors.newFixedThreadPool(4);',1)
+          if 'addAdminPricingNotice();' not in s:
+              s=s.replace('content.addView(me,lp(-1,-2,12));menu("⌕  البحث",this::searchScreen);','content.addView(me,lp(-1,-2,12));addAdminPricingNotice();menu("⌕  البحث",this::searchScreen);',1)
+          if 'private void addAdminPricingNotice()' not in s:
+              anchor='private void publicAdministrationScreen(){startActivity(new Intent(this,PublicAdministrationActivity.class));}'
+              s=s.replace(anchor,anchor+'''\n private void addAdminPricingNotice(){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(dp(14),dp(12),dp(14),dp(12));GradientDrawable g=new GradientDrawable();g.setColor(Color.rgb(28,24,12));g.setCornerRadius(dp(16));g.setStroke(dp(2),gold());c.setBackground(g);TextView t=tv("💼 المناصب الإدارية مدفوعة",18,Color.WHITE);t.setGravity(Gravity.RIGHT);t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);c.addView(t);TextView b=tv("المناصب الإدارية في وَثاق مدفوعة لمدة سنة واحدة.\\nللحصول على منصب إداري، يرجى التواصل مع المدير العام ومؤسس وَثاق.",15,gold());b.setGravity(Gravity.RIGHT);c.addView(b);content.addView(c,lp(-1,-2,14));}''',1)
+          span=method_span(s,'private void conversation(String id,String n)')
+          if not span: raise SystemExit('conversation not found')
+          st,en=span
+          conv='''private void conversation(String id,String n){stopPolling();activeId=id;activeName=n;base(n);LinearLayout head=new LinearLayout(this);head.setGravity(Gravity.CENTER_VERTICAL|Gravity.RIGHT);ImageView av=new ImageView(this);av.setImageDrawable(defaultAvatar());head.addView(av,new LinearLayout.LayoutParams(dp(58),dp(58)));LinearLayout nn=new LinearLayout(this);nn.setOrientation(LinearLayout.VERTICAL);nn.addView(tv(n,19,Color.WHITE));nn.addView(tv(id,13,Color.LTGRAY));head.addView(nn,new LinearLayout.LayoutParams(0,-2,1));content.addView(head,lp(-1,-2,8));loadAvatarInto(id,av);Button video=btn("📹 مكالمة فيديو"),audio=btn("📞 مكالمة صوتية");content.addView(video,lp(-1,76,5));content.addView(audio,lp(-1,76,8));video.setOnClickListener(v->{click();startVideoCall();});audio.setOnClickListener(v->{click();startAudioCall();});messages=new LinearLayout(this);messages.setOrientation(LinearLayout.VERTICAL);ScrollView sc=new ScrollView(this);sc.setFillViewport(true);sc.addView(messages);content.addView(sc,new LinearLayout.LayoutParams(-1,0,1));LinearLayout composer=new LinearLayout(this);composer.setGravity(Gravity.CENTER_VERTICAL);Button mic=btn("🎙"),gallery=btn("▧"),send=btn("إرسال");input=field("اكتب رسالة…");composer.addView(mic,new LinearLayout.LayoutParams(dp(58),68));composer.addView(gallery,new LinearLayout.LayoutParams(dp(58),68));composer.addView(input,new LinearLayout.LayoutParams(0,68,1));composer.addView(send,new LinearLayout.LayoutParams(dp(86),68));content.addView(composer,lp(-1,-2,6));Button back=btn("‹ جهات الاتصال");content.addView(back,lp(-1,68,6));back.setOnClickListener(v->{click();contactsScreen();});send.setOnClickListener(v->{click();send();});mic.setOnClickListener(v->{click();if(recording)stopRecording(true);else startRecording();});gallery.setOnClickListener(v->{click();pickImage();});loadMessages();startPolling();}'''
+          s=s[:st]+conv+s[en:]
+          W(p,s)
+
+          # PublicAdministrationActivity
+          p='app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java';s=R(p)
+          span=method_span(s,'private void show(String raw)')
+          if not span: raise SystemExit('public admin show not found')
+          st,en=span
+          show='''private void show(String raw){try{JSONObject o=new JSONObject(raw);body.removeAllViews();body.addView(card("💼 المناصب الإدارية مدفوعة\\nكل منصب إداري مدته سنة واحدة والأسعار سنوية.",true));JSONObject f=o.optJSONObject("founder");body.addView(card("👑 المؤسس\\n"+(f==null?"غير محدد":f.optString("name","غير محدد"))+"\\nالصلاحيات: الإشراف الكامل، التعيين والعزل، الحظر والتنبيه والإشراف على جميع المناصب.",true));JSONObject d=o.optJSONObject("deputies");body.addView(roleCard("🥇 النائب الأول","20$ / سنة","الحظر والتنبيه وإدارة المستخدمين ضمن حدود الدور، وهو أعلى منصب بعد المؤسس.",d==null?null:d.optJSONObject("deputy1")));body.addView(roleCard("🥈 النائب الثاني","17$ / سنة","الحظر والتنبيه وإدارة المستخدمين دون تجاوز المؤسس أو النائب الأول.",d==null?null:d.optJSONObject("deputy2")));body.addView(roleCard("🥉 النائب الثالث","12$ / سنة","الحظر والتنبيه الأساسي للمستخدمين ضمن حدود الدور.",d==null?null:d.optJSONObject("deputy3")));body.addView(text("👥 أعضاء الإدارة — حتى 10 أعضاء",20,Color.rgb(212,175,55)));JSONArray m=o.optJSONArray("members");for(int i=0;i<10;i++){JSONObject x=m!=null&&i<m.length()?m.optJSONObject(i):null;body.addView(roleCard((i+1)+". عضو إدارة","8$ / سنة","المراقبة واستقبال البلاغات والتنبيه فقط؛ بلا حظر أو تعيين عام.",x));}}catch(Exception e){status.setText("🔴 تعذر تحميل لوحة المناصب");}}\nprivate LinearLayout roleCard(String role,String price,String permissions,JSONObject holder){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(dp(16),dp(12),dp(16),dp(12));GradientDrawable g=new GradientDrawable();g.setColor(Color.rgb(24,24,28));g.setCornerRadius(dp(16));g.setStroke(dp(2),Color.rgb(70,70,75));c.setBackground(g);TextView r=text(role,19,Color.WHITE);r.setTypeface(Typeface.DEFAULT,Typeface.BOLD);TextView p=text(price,17,Color.rgb(212,175,55));p.setTypeface(Typeface.DEFAULT,Typeface.BOLD);TextView q=text("الصلاحيات: "+permissions,14,Color.LTGRAY);TextView u=text("المعين: "+(holder==null?"غير معين":holder.optString("name","غير معروف")),15,Color.WHITE);String e=holder==null?"":holder.optString("expires_at","");TextView x=text(e.isEmpty()?"مدة المنصب: سنة واحدة من تاريخ التعيين":"ينتهي في: "+e,13,Color.LTGRAY);c.addView(r);c.addView(p);c.addView(q);c.addView(u);c.addView(x);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(10);c.setLayoutParams(lp);return c;}\n'''
+          s=s[:st]+show+s[en:]
+          W(p,s)
+
+          # AdminActivity: inject one target panel before moderation controls. Render it on every admin role.
+          p='app/src/main/java/com/wethaq/app/AdminActivity.java';s=R(p)
+          if 'private void addModerationTargetCard()' not in s:
+              anchor='private void addModerationControls(){'
+              if anchor not in s: raise SystemExit('moderation method not found')
+              method='''private void addModerationTargetCard(){LinearLayout box=card("🎯 إدارة مستخدم محدد");box.addView(heading("اكتب الاسم الكامل أو معرف وَثاق. تُطبق العملية حسب رتبتك الإدارية، واسم المؤسس محمي من الحظر والتنبيه."),lp(-1,-2,4));target=f("اسم المستخدم أو معرف وَثاق");minutes=f("مدة الحظر بالدقائق — 0 = نهائي");reason=f("سبب الحظر أو التنبيه");box.addView(target,lp(-1,60,6));box.addView(minutes,lp(-1,60,6));box.addView(reason,lp(-1,60,6));}\n '''
+              s=s.replace(anchor,method+anchor,1)
+          # Existing target creation in render is removed so the card owns these fields.
+          s=re.sub(r'target=f\("معرف وَثاق للمستخدم"\);minutes=f\("مدة الحظر بالدقائق — 0 = نهائي"\);reason=f\("السبب"\);','',s,count=1)
+          # Add panel immediately before role-specific controls.
+          if 'addModerationTargetCard();' not in s:
+              s=s.replace('if("founder".equals(role)){addFounderControls();addFounderModerationControls();}else if("deputy1".equals(role)||"deputy2".equals(role)||"deputy3".equals(role))addModerationControls();','if("founder".equals(role)){addFounderControls();}addModerationTargetCard();if("founder".equals(role)||"deputy1".equals(role)||"deputy2".equals(role)||"deputy3".equals(role)||"admin_member".equals(role))addModerationControls();',1)
+          s=s.replace('private void addModerationControls(){Button ban=b("🚫 حظر حسب الصلاحية"),alert=b("⚠️ إرسال تنبيه");','private void addModerationControls(){Button ban=b("🚫 حظر حسب الصلاحية"),alert=b("⚠️ إرسال تنبيه");if("admin_member".equals(role))ban.setEnabled(false);',1)
+          W(p,s)
+
+          # Backend: expiry/name resolution and protection.
+          p='backend/server.js';s=R(p)
+          old="CREATE TABLE IF NOT EXISTS admin_roles(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL UNIQUE,role TEXT NOT NULL,admin_code_hash TEXT,created_by INTEGER,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);"
+          new="CREATE TABLE IF NOT EXISTS admin_roles(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL UNIQUE,role TEXT NOT NULL,admin_code_hash TEXT,created_by INTEGER,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,expires_at TEXT,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);"
+          s=s.replace(old,new,1)
+          if "ensureColumn('admin_roles','expires_at','TEXT');" not in s:s=s.replace('CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);','CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);ensureColumn(\'admin_roles\',\'expires_at\',\'TEXT\');',1)
+          role='function roleOf(userId){if(!userId)return null;const owner=db.prepare(\'SELECT id FROM users WHERE wethaq_id=?\').get(OWNER_WETHAQ_ID);if(owner&&Number(userId)===Number(owner.id))return ROLE_FOUNDER;const row=db.prepare(\'SELECT role,expires_at FROM admin_roles WHERE user_id=?\').get(Number(userId));if(!row)return null;if(row.expires_at&&new Date(row.expires_at)<=new Date())return null;return row.role||null}'
+          if 'const row=db.prepare(\'SELECT role,expires_at FROM admin_roles WHERE user_id=?\')' not in s:
+              s=re.sub(r"function roleOf\(userId\)\{.*?\}",role,s,count=1)
+          if 'function resolveUser(value)' not in s:s=s.replace("function findUser(id){return db.prepare('SELECT id,wethaq_id,name,birth_year FROM users WHERE wethaq_id=?').get(String(id||'').trim())}","function findUser(id){return db.prepare('SELECT id,wethaq_id,name,birth_year FROM users WHERE wethaq_id=?').get(String(id||'').trim())}\nfunction resolveUser(value){const q=String(value||'').trim();if(!q)return null;return findUser(q)||db.prepare('SELECT id,wethaq_id,name,birth_year FROM users WHERE name=? COLLATE NOCASE').get(q)}",1)
+          s=s.replace("const rows=db.prepare('SELECT ar.role,u.id,u.wethaq_id,u.name,u.birth_year FROM admin_roles ar JOIN users u ON u.id=ar.user_id ORDER BY ar.id').all();","const rows=db.prepare('SELECT ar.role,ar.expires_at,u.id,u.wethaq_id,u.name,u.birth_year FROM admin_roles ar JOIN users u ON u.id=ar.user_id ORDER BY ar.id').all();",1)
+          s=s.replace("const target=findUser(req.body?.wethaqId),role=String(req.body?.role||'');","const target=resolveUser(req.body?.wethaqId||req.body?.target),role=String(req.body?.role||'');",1)
+          ins="const code=newAdminCode();db.prepare('INSERT INTO admin_roles(user_id,role,admin_code_hash,created_by) VALUES(?,?,?,?)').run(target.id,role,hashCode(code),req.user.sub);"
+          ins2="const code=newAdminCode(),expiresAt=new Date(Date.now()+365*24*60*60*1000).toISOString();db.prepare('INSERT INTO admin_roles(user_id,role,admin_code_hash,created_by,expires_at) VALUES(?,?,?,?,?)').run(target.id,role,hashCode(code),req.user.sub,expiresAt);"
+          s=s.replace(ins,ins2,1)
+          s=s.replace("res.status(201).json({ok:true,user:target,role,role_label:roleLabel(role),admin_code:code})","res.status(201).json({ok:true,user:target,role,role_label:roleLabel(role),admin_code:code,expires_at:expiresAt})",1)
+          s=s.replace("const target=findUser(req.body?.wethaqId),minutes=","const target=resolveUser(req.body?.wethaqId||req.body?.target),minutes=",2)
+          s=s.replace("const target=findUser(req.body?.wethaqId),reason=","const target=resolveUser(req.body?.wethaqId||req.body?.target),reason=",1)
+          s=s.replace("const u=findUser(req.body?.wethaqId);if(!u)return res.status(404).json({error:'user_not_found'});if(u.wethaq_id===OWNER_WETHAQ_ID)return res.status(400).json({error:'cannot_ban_owner'});","const u=resolveUser(req.body?.wethaqId||req.body?.target);if(!u)return res.status(404).json({error:'user_not_found'});if(u.wethaq_id===OWNER_WETHAQ_ID)return res.status(403).json({error:'cannot_ban_owner'});",1)
+          verify="const code=String(req.body?.code||'').trim().toUpperCase(),row=db.prepare('SELECT role,admin_code_hash FROM admin_roles WHERE user_id=?').get(req.user.sub);if(!row||!code||hashCode(code)!==row.admin_code_hash)return res.status(403).json({error:'invalid_admin_code'});"
+          verify2="const code=String(req.body?.code||'').trim().toUpperCase(),row=db.prepare('SELECT role,admin_code_hash,expires_at FROM admin_roles WHERE user_id=?').get(req.user.sub);if(!row||!code||hashCode(code)!==row.admin_code_hash)return res.status(403).json({error:'invalid_admin_code'});if(row.expires_at&&new Date(row.expires_at)<=new Date())return res.status(403).json({error:'admin_role_expired'});"
+          s=s.replace(verify,verify2,1)
+          W(p,s)
+
+          # Call notification actions.
+          p='app/src/main/java/com/wethaq/app/WethaqMessageService.java';s=R(p)
+          if 'addAction(new NotificationCompat.Action.Builder' not in s:
+              span=method_span(s,'private void showIncomingCall(')
+              if not span: raise SystemExit('incoming call method not found')
+              st,en=span
+              method='''private void showIncomingCall(String target,String name,boolean audioOnly,String offerPayload){Intent i=new Intent(this,VideoCallActivity.class);i.putExtra("target",target);i.putExtra("name",name);i.putExtra("audioOnly",audioOnly);i.putExtra("incomingOffer",offerPayload);i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);PendingIntent accept=PendingIntent.getActivity(this,(target+name+"accept").hashCode(),i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);Intent rejectIntent=new Intent(this,IncomingCallActionReceiver.class).setAction("com.wethaq.REJECT_CALL").putExtra("target",target).putExtra("token",getSharedPreferences("wethaq",MODE_PRIVATE).getString("token",""));PendingIntent reject=PendingIntent.getBroadcast(this,(target+name+"reject").hashCode(),rejectIntent,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);NotificationCompat.Builder b=new NotificationCompat.Builder(this,CALL_CHANNEL).setSmallIcon(android.R.drawable.sym_call_incoming).setContentTitle((audioOnly?"مكالمة صوتية واردة من ":"مكالمة فيديو واردة من ")+name).setContentText("يمكنك الرد أو الرفض مباشرة").setContentIntent(accept).setFullScreenIntent(accept,true).addAction(new NotificationCompat.Action.Builder(android.R.drawable.ic_menu_call,"رد",accept).build()).addAction(new NotificationCompat.Action.Builder(android.R.drawable.ic_menu_close_clear_cancel,"رفض",reject).build()).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_MAX).setCategory(NotificationCompat.CATEGORY_CALL).setOngoing(true).setTimeoutAfter(60000);NotificationManager nm=getSystemService(NotificationManager.class);if(nm!=null)nm.notify(4102,b.build());}'''
+              s=s[:st]+method+s[en:];W(p,s)
+          rp='app/src/main/java/com/wethaq/app/IncomingCallActionReceiver.java'
+          if not Path(rp).exists():W(rp,'package com.wethaq.app;import android.content.BroadcastReceiver;import android.content.Context;import android.content.Intent;import java.io.OutputStream;import java.net.HttpURLConnection;import java.net.URL;import java.nio.charset.StandardCharsets;public final class IncomingCallActionReceiver extends BroadcastReceiver{private static final String API="https://wethaq-backend-production.up.railway.app";public void onReceive(Context c,Intent i){if(!"com.wethaq.REJECT_CALL".equals(i.getAction()))return;String t=i.getStringExtra("target"),k=i.getStringExtra("token");if(t==null||k==null)return;new Thread(()->{try{HttpURLConnection h=(HttpURLConnection)new URL(API+"/api/calls/signal").openConnection();h.setRequestMethod("POST");h.setDoOutput(true);h.setRequestProperty("Authorization","Bearer "+k);h.setRequestProperty("Content-Type","application/json");try(OutputStream o=h.getOutputStream()){o.write(("{\\"to\\":\\""+t+"\\",\\"type\\":\\"end\\",\\"payload\\":\\"{}\\"}").getBytes(StandardCharsets.UTF_8));}h.getResponseCode();h.disconnect();}catch(Exception ignored){}}).start();}}\n')
+          mp='app/src/main/AndroidManifest.xml';m=R(mp)
+          if 'IncomingCallActionReceiver' not in m:W(mp,m.replace('</application>','<receiver android:name=".IncomingCallActionReceiver" android:exported="false"/>\n</application>'))
+
+          # VideoCallActivity
+          p='app/src/main/java/com/wethaq/app/VideoCallActivity.java';s=R(p)
+          if 'AudioDeviceInfo' not in s:s=s.replace('import android.media.AudioManager;','import android.media.AudioManager;import android.media.AudioDeviceInfo;import android.media.AudioFocusRequest;',1)
+          if 'AudioFocusRequest audioFocusRequest' not in s:s=s.replace('private AudioManager audioManager;','private AudioManager audioManager;private AudioFocusRequest audioFocusRequest;',1)
+          if 'private void applyAudioRoute()' not in s:s=s.replace('    private void toggleMute(){','    private void applyAudioRoute(){if(audioManager==null)return;if(Build.VERSION.SDK_INT>=31){AudioDeviceInfo w=null;for(AudioDeviceInfo d:audioManager.getAvailableCommunicationDevices()){if(speakerOn&&d.getType()==AudioDeviceInfo.TYPE_BUILTIN_SPEAKER){w=d;break;}if(!speakerOn&&d.getType()==AudioDeviceInfo.TYPE_BUILTIN_EARPIECE){w=d;break;}}if(w!=null)audioManager.setCommunicationDevice(w);}else{audioManager.setSpeakerphoneOn(speakerOn);}}\n    private void toggleMute(){',1)
+          s=s.replace('audioManager.setSpeakerphoneOn(speakerOn);speakerButton.setText(speakerOn?"🔊 السماعة: تشغيل":"🔈 السماعة: إيقاف");','speakerOn=!speakerOn;applyAudioRoute();speakerButton.setText(speakerOn?"🔊 السماعة: تشغيل":"🔈 السماعة: إيقاف");',1)
+          s=s.replace('audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);audioManager.setSpeakerphoneOn(true);speakerOn=true;','audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);if(Build.VERSION.SDK_INT>=26){audioFocusRequest=new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE).setOnAudioFocusChangeListener(v->{}).build();audioManager.requestAudioFocus(audioFocusRequest);}speakerOn=true;applyAudioRoute();',1)
+          W(p,s)
+          print('V6_SOURCE_REPAIRS_APPLIED')
+          PY
+
+      - name: Source validation
+        run: |
+          git diff --check
+          node --check backend/server.js
+          grep -R "المناصب الإدارية مدفوعة\|20\\$ / سنة\|17\\$ / سنة\|12\\$ / سنة\|8\\$ / سنة\|addModerationTargetCard\|applyAudioRoute\|expires_at\|resolveUser" app/src/main/java backend/server.js >/dev/null
+
+      - name: Backend hard health and smoke
+        working-directory: backend
+        shell: bash
+        run: |
+          npm ci
+          export DB_PATH="$RUNNER_TEMP/wethaq-v6.db"
+          export JWT_SECRET="wethaq-v6-secret"
+          export OWNER_WETHAQ_ID="Hatem_Hussin_Al_Haj_Ramadan1995"
+          export PORT=3199
+          node server.js > "$RUNNER_TEMP/wethaq-v6-server.log" 2>&1 & PID=$!
+          trap 'kill $PID 2>/dev/null || true' EXIT
+          python3 - <<'PY'
+          import json,time,urllib.request
+          for _ in range(60):
+            try:
+              with urllib.request.urlopen('http://127.0.0.1:3199/health',timeout=1) as r:
+                d=json.loads(r.read().decode());
+                if r.status==200 and d.get('ok') is True:print('HEALTH_OK');break
+            except Exception:pass
+            time.sleep(.25)
+          else:
+            print(open('/runner/_temp/wethaq-v6-server.log').read());raise SystemExit('HEALTH_GATE_FAILED')
+          PY
+          node smoke-test.mjs
+
+      - name: Release build
+        run: ./gradlew --no-daemon clean assembleRelease
+
+      - name: Commit repairs back to branch
+        shell: bash
+        run: |
+          git config user.name 'wethaq-ci'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/AdminActivity.java app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java app/src/main/java/com/wethaq/app/WethaqMessageService.java app/src/main/java/com/wethaq/app/IncomingCallActionReceiver.java app/src/main/java/com/wethaq/app/VideoCallActivity.java app/src/main/AndroidManifest.xml backend/server.js
+          if git diff --cached --quiet; then echo 'SOURCE_ALREADY_FIXED'; exit 0; fi
+          git commit -m 'feat: complete Wethaq V6 product repair'
+          git push origin HEAD:wethaq-v6-repair
+
+      - name: Upload verified APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: wethaq-v6-repaired-release
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30
