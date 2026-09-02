@@ -31,6 +31,24 @@ jobs:
           awk '/^          python3 <<'"'"'PY'"'"'/{go=1;next}/^          PY$/{go=0}go{sub(/^          /,"",$0);print}' .github/workflows/wethaq-v6-repair.yml > /tmp/repair.py
           python3 -m py_compile /tmp/repair.py
           python3 /tmp/repair.py
+      - name: Correct migration placement
+        run: |
+          set -euxo pipefail
+          python3 <<'PY'
+from pathlib import Path
+p=Path('backend/server.js')
+s=p.read_text(encoding='utf-8')
+needle="ensureColumn('admin_roles','expires_at','TEXT');`);"
+if needle in s:
+    s=s.replace(needle,"`);ensureColumn('admin_roles','expires_at','TEXT');",1)
+elif "CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);`);ensureColumn('admin_roles','expires_at','TEXT');" in s:
+    pass
+else:
+    # Repair the specific malformed form where the migration call sits inside db.exec().
+    s=s.replace("CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);ensureColumn('admin_roles','expires_at','TEXT');`);","CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);`);ensureColumn('admin_roles','expires_at','TEXT');",1)
+p.write_text(s,encoding='utf-8')
+PY
+          node --check backend/server.js
       - name: Source gates
         run: |
           set -euxo pipefail
