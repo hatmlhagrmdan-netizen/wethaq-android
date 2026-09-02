@@ -42,6 +42,8 @@ jobs:
           test -f app/src/main/java/com/wethaq/app/VideoCallActivity.java
           test -f app/src/main/java/com/wethaq/app/WethaqMessageService.java
           test -f app/src/main/java/com/wethaq/app/WethaqBootReceiver.java
+          grep -q "versionName '1.0.0'" app/build.gradle
+          grep -q 'VERSION = "1.0.0"' app/src/main/java/com/wethaq/app/BuildInfo.java
           grep -q 'private Button btn(String s)' app/src/main/java/com/wethaq/app/MainActivity.java
           grep -q 'setElevation' app/src/main/java/com/wethaq/app/MainActivity.java
           grep -q 'incomingOffer' app/src/main/java/com/wethaq/app/VideoCallActivity.java
