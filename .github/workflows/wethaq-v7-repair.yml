@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 env:
-  V7_TRIGGER: '1'
+  V7_TRIGGER: '2'
 
 jobs:
   repair-build:
@@ -30,13 +30,14 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          from textwrap import dedent
           s=Path('.github/workflows/wethaq-v6-repair.yml').read_text(encoding='utf-8')
-          a=s.find('          python3 <<\'PY\'')
+          a=s.find("          python3 <<'PY'")
           if a<0: raise SystemExit('repair script marker missing')
           a=s.find('\n',a)+1
           b=s.find('\n          PY',a)
           if b<0: raise SystemExit('repair script end missing')
-          Path('/tmp/repair.py').write_text(s[a:b]+'\n',encoding='utf-8')
+          Path('/tmp/repair.py').write_text(dedent(s[a:b])+'\n',encoding='utf-8')
           PY
           python3 /tmp/repair.py
       - name: Validate source
