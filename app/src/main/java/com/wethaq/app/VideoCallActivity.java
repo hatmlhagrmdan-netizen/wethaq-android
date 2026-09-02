@@ -55,7 +55,8 @@ public final class VideoCallActivity extends Activity {
     private final ExecutorService signalIo=Executors.newSingleThreadExecutor();
     private volatile boolean pollInFlight;
     private TextView status;
-    private Button speakerButton,muteButton,cameraButton;
+    private Button speakerButton,muteButton,cameraButton,acceptButton,rejectButton;
+    private Runnable callTimeout;
 
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
@@ -100,6 +101,14 @@ public final class VideoCallActivity extends Activity {
         if(!audioOnly){
             cameraButton=controlButton("📹 الكاميرا");cameraButton.setContentDescription("تشغيل أو إيقاف الكاميرا");controls.addView(cameraButton,buttonParams());cameraButton.setOnClickListener(v->toggleCamera());
         }
+        if(incomingOffer!=null&&!incomingOffer.trim().isEmpty()&&!isInitiator()){
+            LinearLayout incomingControls=new LinearLayout(this);incomingControls.setOrientation(LinearLayout.HORIZONTAL);incomingControls.setGravity(Gravity.CENTER);
+            FrameLayout.LayoutParams ip=new FrameLayout.LayoutParams(-1,dp(72),Gravity.TOP);ip.setMargins(dp(16),dp(84),dp(16),0);root.addView(incomingControls,ip);
+            acceptButton=controlButton("✅ قبول المكالمة");rejectButton=controlButton("❌ رفض المكالمة");
+            acceptButton.setContentDescription("قبول المكالمة الواردة");rejectButton.setContentDescription("رفض المكالمة الواردة");
+            incomingControls.addView(acceptButton,buttonParams());incomingControls.addView(rejectButton,buttonParams());
+            acceptButton.setOnClickListener(v->acceptIncoming());rejectButton.setOnClickListener(v->rejectIncoming());
+        }
         Button end=controlButton("☎ إنهاء المكالمة");end.setContentDescription("إنهاء المكالمة");end.setTextSize(18);FrameLayout.LayoutParams ep=new FrameLayout.LayoutParams(-1,dp(64),Gravity.BOTTOM);ep.setMargins(dp(16),0,dp(16),dp(24));root.addView(end,ep);end.setOnClickListener(v->endCall());
         return root;
     }
@@ -130,10 +139,11 @@ public final class VideoCallActivity extends Activity {
             PeerConnectionFactory.Builder builder=PeerConnectionFactory.builder();
             if(!audioOnly)builder.setVideoEncoderFactory(new DefaultVideoEncoderFactory(egl.getEglBaseContext(),true,true)).setVideoDecoderFactory(new DefaultVideoDecoderFactory(egl.getEglBaseContext()));
             factory=builder.createPeerConnectionFactory();createPeer();startLocal();
-            if(incomingOffer!=null&&!incomingOffer.trim().isEmpty()&&!isInitiator())handler.post(()->handle("offer",incomingOffer));
+            if(incomingOffer!=null&&!incomingOffer.trim().isEmpty()&&!isInitiator())handler.post(()->status.setText("مكالمة واردة — اختر قبول أو رفض"));
             poll=new Runnable(){@Override public void run(){pollSignals();if(!cleaned)handler.postDelayed(this,1000);}};handler.post(poll);
             if(isInitiator()&&(incomingOffer==null||incomingOffer.trim().isEmpty()))sendOffer();
-            status.setText(isInitiator()?"جاري الاتصال بالطرف الآخر…":"بانتظار اتصال الطرف الآخر…");
+            if(!isInitiator()){status.setText("مكالمة واردة — اختر قبول أو رفض");}else{status.setText("جاري الاتصال بالطرف الآخر…");}
+            callTimeout=()->{if(!cleaned){runOnUiThread(()->status.setText("انتهت مهلة الاتصال"));endCall();}};handler.postDelayed(callTimeout,45000);
         }catch(Throwable e){fail("تعذر بدء المكالمة: "+(e.getMessage()==null?"خطأ WebRTC":e.getMessage()));}
     }
     private boolean isInitiator(){return incomingOffer==null||incomingOffer.trim().isEmpty();}
@@ -146,7 +156,7 @@ public final class VideoCallActivity extends Activity {
         PeerConnection.RTCConfiguration cfg=new PeerConnection.RTCConfiguration(servers);cfg.sdpSemantics=PeerConnection.SdpSemantics.UNIFIED_PLAN;cfg.continualGatheringPolicy=PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY;
         peer=factory.createPeerConnection(cfg,new PeerConnection.Observer(){
             public void onSignalingChange(PeerConnection.SignalingState s){}
-            public void onIceConnectionChange(PeerConnection.IceConnectionState s){runOnUiThread(()->{if(s==PeerConnection.IceConnectionState.CONNECTED||s==PeerConnection.IceConnectionState.COMPLETED)status.setText("تم الاتصال ✓");else if(s==PeerConnection.IceConnectionState.CHECKING)status.setText("جاري تثبيت الاتصال…");else if(s==PeerConnection.IceConnectionState.DISCONNECTED)status.setText("إعادة الاتصال…");else if(s==PeerConnection.IceConnectionState.FAILED)status.setText("تعذر الاتصال بالطرف الآخر");});}
+            public void onIceConnectionChange(PeerConnection.IceConnectionState s){runOnUiThread(()->{if(s==PeerConnection.IceConnectionState.CONNECTED||s==PeerConnection.IceConnectionState.COMPLETED){if(callTimeout!=null)handler.removeCallbacks(callTimeout);status.setText("تم الاتصال ✓");}else if(s==PeerConnection.IceConnectionState.CHECKING)status.setText("جاري تثبيت الاتصال…");else if(s==PeerConnection.IceConnectionState.DISCONNECTED)status.setText("إعادة الاتصال…");else if(s==PeerConnection.IceConnectionState.FAILED)status.setText("تعذر الاتصال بالطرف الآخر");});}
             public void onIceConnectionReceivingChange(boolean b){}
             public void onIceGatheringChange(PeerConnection.IceGatheringState s){}
             public void onIceCandidate(IceCandidate c){sendSignal("ice",candidateJson(c));}
@@ -175,6 +185,9 @@ public final class VideoCallActivity extends Activity {
     private void sendOffer(){if(offerSent||peer==null)return;offerSent=true;peer.createOffer(new SdpObserver(){public void onCreateSuccess(SessionDescription d){peer.setLocalDescription(new SimpleSdp(){public void onSetSuccess(){sendSignal("offer",sdpJson(d));}public void onSetFailure(String s){offerSent=false;}},d);}public void onSetSuccess(){}public void onCreateFailure(String s){offerSent=false;}public void onSetFailure(String s){}},new MediaConstraints());}
     private void pollSignals(){if(cleaned||pollInFlight)return;pollInFlight=true;pollIo.execute(()->{HttpURLConnection c=null;try{c=(HttpURLConnection)new URL(API+"/api/calls/signals/"+URLEncoder.encode(target,"UTF-8")).openConnection();c.setRequestProperty("Authorization","Bearer "+token);c.setConnectTimeout(3500);c.setReadTimeout(5000);if(c.getResponseCode()!=200)return;InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[4096];int n;while((n=in.read(b))!=-1)out.write(b,0,n);in.close();JSONArray a=new JSONObject(new String(out.toByteArray(),StandardCharsets.UTF_8)).optJSONArray("signals");if(a==null)return;for(int i=0;i<a.length();i++){JSONObject x=a.optJSONObject(i);if(x==null)continue;String id=x.optString("id","");String key=id.isEmpty()?x.optString("created_at","")+x.optString("type","")+x.optString("payload",""):id;if(!seenSignals.add(key))continue;String sender=x.optString("sender_id","");if(sender.equals(myId)||sender.equals(getSharedPreferences("wethaq",MODE_PRIVATE).getString("db_user_id","")))continue;handle(x.optString("type"),x.optString("payload"));}}catch(Exception ignored){}finally{if(c!=null)c.disconnect();pollInFlight=false;}});}
     private void handle(String type,String payload){runOnUiThread(()->{try{JSONObject o=new JSONObject(payload);if("offer".equals(type)&&!isInitiator()&&peer!=null&&!remoteDescriptionSet){SessionDescription d=new SessionDescription(SessionDescription.Type.OFFER,o.getString("sdp"));peer.setRemoteDescription(new SimpleSdp(){public void onSetSuccess(){remoteDescriptionSet=true;flushIce();createAnswer();status.setText("تم استلام المكالمة…");}},d);}else if("answer".equals(type)&&isInitiator()&&peer!=null&&!remoteDescriptionSet){SessionDescription d=new SessionDescription(SessionDescription.Type.ANSWER,o.getString("sdp"));peer.setRemoteDescription(new SimpleSdp(){public void onSetSuccess(){remoteDescriptionSet=true;flushIce();}},d);}else if("ice".equals(type)&&peer!=null){IceCandidate c=new IceCandidate(o.getString("sdpMid"),o.getInt("sdpMLineIndex"),o.getString("candidate"));if(remoteDescriptionSet)peer.addIceCandidate(c);else pendingCandidates.add(c);}else if("end".equals(type))endCall();}catch(Exception ignored){}});}
+    private void acceptIncoming(){if(cleaned||incomingOffer==null||incomingOffer.trim().isEmpty()||peer==null)return;if(acceptButton!=null)acceptButton.setVisibility(View.GONE);if(rejectButton!=null)rejectButton.setVisibility(View.GONE);status.setText("جاري قبول المكالمة…");handle("offer",incomingOffer);}
+    private void rejectIncoming(){if(cleaned)return;sendSignal("end","{}");endCall();}
+
     private void createAnswer(){peer.createAnswer(new SdpObserver(){public void onCreateSuccess(SessionDescription a){peer.setLocalDescription(new SimpleSdp(){public void onSetSuccess(){sendSignal("answer",sdpJson(a));}},a);}public void onSetSuccess(){}public void onCreateFailure(String s){}public void onSetFailure(String s){}},new MediaConstraints());}
     private void flushIce(){if(peer==null)return;for(IceCandidate c:pendingCandidates)peer.addIceCandidate(c);pendingCandidates.clear();}
     private String sdpJson(SessionDescription d){try{return new JSONObject().put("sdp",d.description).toString();}catch(Exception e){return "{}";}}
