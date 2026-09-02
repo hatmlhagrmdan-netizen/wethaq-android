@@ -136,7 +136,7 @@ public final class VideoCallActivity extends Activity {
             status.setText(isInitiator()?"جاري الاتصال بالطرف الآخر…":"بانتظار اتصال الطرف الآخر…");
         }catch(Throwable e){fail("تعذر بدء المكالمة: "+(e.getMessage()==null?"خطأ WebRTC":e.getMessage()));}
     }
-    private boolean isInitiator(){return myId.compareTo(target)<0;}
+    private boolean isInitiator(){return incomingOffer==null||incomingOffer.trim().isEmpty();}
     private void createPeer(){
         List<PeerConnection.IceServer> servers=new ArrayList<>();
         servers.add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer());
