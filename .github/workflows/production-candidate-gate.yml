@@ -56,6 +56,13 @@ jobs:
           grep -q 'private void rejectIncoming()' app/src/main/java/com/wethaq/app/VideoCallActivity.java
           grep -q 'addAdminSearchControls()' app/src/main/java/com/wethaq/app/AdminActivity.java
 
+      - name: Operational feature contract gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/final_release_guard.py
+          echo 'WETHAQ_FEATURES_GATE_OK'
+
       - name: Commit repaired source to main
         shell: bash
         run: |
