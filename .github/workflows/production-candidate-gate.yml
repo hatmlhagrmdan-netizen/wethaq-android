@@ -48,6 +48,9 @@ jobs:
       - name: Restore mandatory admin backend routes
         run: python3 scripts/admin_backend_routes_repair.py
 
+      - name: Repair admin alert acceptance status
+        run: python3 scripts/admin_alert_status_repair.py
+
       - name: Source integrity checks
         shell: bash
         run: |
@@ -69,6 +72,7 @@ jobs:
           grep -q "app.get('/api/admin/role',auth" backend/server.js
           grep -q "app.get('/api/public/administration'" backend/server.js
           grep -q "app.post('/api/profile/personal-code/verify',auth" backend/server.js
+          grep -q "res.status(201).json({ok:true})})" backend/server.js
 
       - name: Operational feature contract gate
         shell: bash
@@ -84,7 +88,7 @@ jobs:
           if ! git diff --quiet; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add app/build.gradle app/src/main/java/com/wethaq/app/WethaqMessageService.java app/src/main/java/com/wethaq/app/VideoCallActivity.java app/src/main/java/com/wethaq/app/AdminActivity.java backend/server.js scripts/*.py backend/final-acceptance.mjs .github/workflows/production-candidate-gate.yml .github/workflows/final-build-v2.yml
+            git add app/build.gradle app/src/main/java/com/wethaq/app/WethaqMessageService.java app/src/main/java/com/wethaq/app/VideoCallActivity.java app/src/main/java/com/wethaq/app/AdminActivity.java backend/server.js scripts/*.py backend/final-acceptance.mjs .github/workflows/production-candidate-gate.yml
             git commit -m 'fix: close mandatory feature and release verification gaps'
             for attempt in 1 2 3 4 5; do
               git fetch origin main
@@ -108,6 +112,7 @@ jobs:
           python3 scripts/mandatory_features_repair.py
           python3 scripts/admin_alert_rbac_repair.py
           python3 scripts/admin_backend_routes_repair.py
+          python3 scripts/admin_alert_status_repair.py
           python3 -m py_compile scripts/*.py
           node --check backend/server.js
           python3 scripts/final_release_guard.py
@@ -216,6 +221,7 @@ jobs:
           grep -q "SOURCE_SHA=$FINAL_SOURCE_SHA" release-verification.txt
           grep -q '^APK_SHA256=[0-9a-f]\{64\}$' release-verification.txt
           grep -q '^APK_SIZE_BYTES=[0-9][0-9]*$' release-verification.txt
+          test "$(git rev-parse HEAD)" = "$FINAL_SOURCE_SHA"
           echo 'WETHAQ_FINAL_VERIFICATION_OK'
 
       - name: Upload verified Production Candidate
