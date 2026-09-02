@@ -41,6 +41,7 @@ assert 'personalCodeHash' in SERVER
 # Required administration capabilities.
 assert '/api/public/administration' in SERVER
 assert '/api/admin/audit-log' in SERVER
+assert 'app.get(\'/api/admin/audit-log\',auth,founderOnly' in SERVER
 assert '10' in PUBLIC
 assert 'members' in PUBLIC
 assert 'setBusy(boolean busy)' in ADMIN
@@ -49,6 +50,7 @@ assert 'تم تأكيد العملية من الخادم' in ADMIN
 assert 'تعذر الاتصال بالخادم' in ADMIN
 assert 'هل أنت متأكد' in ADMIN
 assert 'حظر نهائي' in ADMIN
+assert 'تواصل مع المدير العام للحصول على رمز الدخول الإداري الخاص بك.' in SERVER
 
 # Call controls / media wiring preserved.
 assert 'startAudioCall' in MAIN
