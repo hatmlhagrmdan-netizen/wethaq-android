@@ -1,15 +1,15 @@
-name: Wethaq V8 Repair
+name: Wethaq V9 Final Gate
 
 on:
   push:
-    branches: [wethaq-v6-repair]
+    branches: [wethaq-v9-final]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  repair-build:
+  final-gate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,57 +22,74 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
-      - name: Extract V6 repair script safely
+      - name: Apply product repairs
         shell: bash
         run: |
           awk '/^          python3 <<'"'"'PY'"'"'/{go=1;next}/^          PY$/{go=0}go{sub(/^          /,"",$0);print}' .github/workflows/wethaq-v6-repair.yml > /tmp/repair.py
           test -s /tmp/repair.py
           python3 -m py_compile /tmp/repair.py
           python3 /tmp/repair.py
-      - name: Validate repaired source
+      - name: Static source gate
         run: |
+          set -e
           git diff --check
           node --check backend/server.js
-          grep -R "المناصب الإدارية مدفوعة\|20\\$ / سنة\|17\\$ / سنة\|12\\$ / سنة\|8\\$ / سنة\|addModerationTargetCard\|applyAudioRoute\|expires_at\|resolveUser" app/src/main/java backend/server.js >/dev/null
+          grep -R "المناصب الإدارية مدفوعة" app/src/main/java >/dev/null
+          grep -R '20\\$ / سنة\|17\\$ / سنة\|12\\$ / سنة\|8\\$ / سنة' app/src/main/java >/dev/null
+          grep -R 'addModerationTargetCard\|applyAudioRoute\|expires_at\|resolveUser' app/src/main/java backend/server.js >/dev/null
       - name: Backend hard health and smoke
         working-directory: backend
         shell: bash
         run: |
+          set -euxo pipefail
           npm install --no-audit --no-fund
-          export DB_PATH="$RUNNER_TEMP/wethaq-v8.db"
-          export JWT_SECRET="wethaq-v8-secret"
+          export DB_PATH="$RUNNER_TEMP/wethaq-v9.db"
+          export JWT_SECRET="wethaq-v9-secret"
           export OWNER_WETHAQ_ID="Hatem_Hussin_Al_Haj_Ramadan1995"
           export PORT=3199
-          node server.js > "$RUNNER_TEMP/wethaq-v8-server.log" 2>&1 & PID=$!
+          node server.js > "$RUNNER_TEMP/wethaq-v9-server.log" 2>&1 & PID=$!
           trap 'kill $PID 2>/dev/null || true' EXIT
-          python3 - <<'PY'
-          import json,time,urllib.request,os
-          for _ in range(60):
-            try:
-              with urllib.request.urlopen('http://127.0.0.1:3199/health',timeout=1) as r:
-                d=json.loads(r.read().decode())
-                if r.status==200 and d.get('ok') is True:print('HEALTH_OK');break
-            except Exception:pass
-            time.sleep(.25)
-          else:
-            p=os.path.join(os.environ.get('RUNNER_TEMP','/tmp'),'wethaq-v8-server.log')
-            print(open(p).read() if os.path.exists(p) else 'backend log unavailable')
-            raise SystemExit('HEALTH_GATE_FAILED')
-          PY
+          ok=0
+          for _ in $(seq 1 60); do
+            if ! kill -0 "$PID" 2>/dev/null; then
+              echo 'BACKEND_PROCESS_EXITED'
+              break
+            fi
+            if python3 - <<'PY'
+import json,urllib.request
+with urllib.request.urlopen('http://127.0.0.1:3199/health',timeout=1) as r:
+    d=json.loads(r.read().decode())
+    assert r.status==200 and d.get('ok') is True
+print('HEALTH_OK')
+PY
+            then ok=1; break; fi
+            sleep .5
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo '===== BACKEND LOG ====='
+            cat "$RUNNER_TEMP/wethaq-v9-server.log" || true
+            exit 1
+          fi
           node smoke-test.mjs
-      - name: Build Release
-        run: ./gradlew --no-daemon clean assembleRelease
-      - name: Commit verified repairs
+      - name: Android release build
+        run: ./gradlew --no-daemon clean assembleDebug assembleRelease
+      - name: Provenance gate
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --check
+          test -s app/build/outputs/apk/release/*.apk
+          sha256sum app/build/outputs/apk/release/*.apk
+      - name: Commit verified repairs to final branch
         shell: bash
         run: |
           git config user.name 'wethaq-ci'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/AdminActivity.java app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java app/src/main/java/com/wethaq/app/WethaqMessageService.java app/src/main/java/com/wethaq/app/IncomingCallActionReceiver.java app/src/main/java/com/wethaq/app/VideoCallActivity.java app/src/main/AndroidManifest.xml backend/server.js
-          if git diff --cached --quiet; then echo SOURCE_ALREADY_REPAIRED; else git commit -m 'feat: complete Wethaq V8 product repair' && git push origin HEAD:wethaq-v6-repair; fi
-      - name: Upload verified APK
+          if git diff --cached --quiet; then echo SOURCE_ALREADY_REPAIRED; else git commit -m 'feat: complete Wethaq v1 official release repairs' && git push origin HEAD:wethaq-v9-final; fi
+      - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: wethaq-v8-repaired-release
+          name: wethaq-v1-official-release
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 30
