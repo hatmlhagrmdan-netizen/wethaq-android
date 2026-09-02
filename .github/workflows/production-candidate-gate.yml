@@ -45,6 +45,9 @@ jobs:
       - name: Repair admin alert RBAC
         run: python3 scripts/admin_alert_rbac_repair.py
 
+      - name: Restore mandatory admin backend routes
+        run: python3 scripts/admin_backend_routes_repair.py
+
       - name: Source integrity checks
         shell: bash
         run: |
@@ -63,6 +66,9 @@ jobs:
           grep -q 'private void rejectIncoming()' app/src/main/java/com/wethaq/app/VideoCallActivity.java
           grep -q 'addAdminSearchControls()' app/src/main/java/com/wethaq/app/AdminActivity.java
           grep -q "app.post('/api/admin/alert',auth,rbac" backend/server.js
+          grep -q "app.get('/api/admin/role',auth" backend/server.js
+          grep -q "app.get('/api/public/administration'" backend/server.js
+          grep -q "app.post('/api/profile/personal-code/verify',auth" backend/server.js
 
       - name: Operational feature contract gate
         shell: bash
@@ -93,6 +99,21 @@ jobs:
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
           echo "FINAL_SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           echo "FINAL_SOURCE_SHA=$(git rev-parse HEAD)"
+
+      - name: Re-verify synchronized main source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/final_gate_repair.py
+          python3 scripts/mandatory_features_repair.py
+          python3 scripts/admin_alert_rbac_repair.py
+          python3 scripts/admin_backend_routes_repair.py
+          python3 -m py_compile scripts/*.py
+          node --check backend/server.js
+          python3 scripts/final_release_guard.py
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$FINAL_SOURCE_SHA"
+          echo 'WETHAQ_SYNCHRONIZED_SOURCE_OK'
 
       - name: Backend dependency install
         working-directory: backend
@@ -200,6 +221,7 @@ jobs:
         with:
           name: Wethaq-Production-Candidate-${{ env.FINAL_SOURCE_SHA }}
           path: |
+            app/build/outputs/apk/build/outputs/apk/release/app-release.apk
             app/build/outputs/apk/release/app-release.apk
             release-verification.txt
           retention-days: 30
