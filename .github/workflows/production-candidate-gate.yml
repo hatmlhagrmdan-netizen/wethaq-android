@@ -110,21 +110,26 @@ jobs:
         run: |
           set -euo pipefail
           keytool -genkeypair -v \
+            -storetype JKS \
             -keystore "$RUNNER_TEMP/wethaq-ci-release.jks" \
             -storepass 'wethaq-ci-store-pass' \
-            -keypass 'wethaq-ci-key-pass' \
+            -keypass 'wethaq-ci-store-pass' \
             -alias wethaq-ci \
             -keyalg RSA \
             -keysize 2048 \
             -validity 3650 \
             -dname 'CN=Wethaq CI Release, OU=CI, O=Wethaq, L=NA, ST=NA, C=US'
+          keytool -list -v -storetype JKS \
+            -keystore "$RUNNER_TEMP/wethaq-ci-release.jks" \
+            -storepass 'wethaq-ci-store-pass' \
+            -alias wethaq-ci >/dev/null
 
       - name: Android clean, unit tests, lint, and release build
         env:
           WETHAQ_KEYSTORE_PATH: ${{ runner.temp }}/wethaq-ci-release.jks
           WETHAQ_KEYSTORE_PASSWORD: wethaq-ci-store-pass
           WETHAQ_KEY_ALIAS: wethaq-ci
-          WETHAQ_KEY_PASSWORD: wethaq-ci-key-pass
+          WETHAQ_KEY_PASSWORD: wethaq-ci-store-pass
         run: |
           set -euo pipefail
           gradle --no-daemon --stacktrace clean test lintVitalRelease assembleRelease
