@@ -1,5 +1,4 @@
 from pathlib import Path
-import re
 
 
 def read(path: str) -> str:
@@ -21,17 +20,25 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
 def patch_backend() -> None:
     p = "backend/server.js"
     s = read(p)
+    bad = "CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);ensureColumn('admin_roles','expires_at','TEXT');"
+    good = "CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);"
+    # Repair the previous faulty patch if it is present: ensureColumn is JavaScript and
+    # must execute after the SQL template has closed, never inside db.exec().
+    if bad in s:
+        s = s.replace(bad, good, 1)
     s = replace_once(
         s,
         "CREATE TABLE IF NOT EXISTS admin_roles(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL UNIQUE,role TEXT NOT NULL,admin_code_hash TEXT,created_by INTEGER,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);",
         "CREATE TABLE IF NOT EXISTS admin_roles(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL UNIQUE,role TEXT NOT NULL,admin_code_hash TEXT,created_by INTEGER,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,expires_at TEXT,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);",
         "admin_roles expiry schema",
     )
-    if "ensureColumn('admin_roles','expires_at','TEXT')" not in s:
+    # Place the migration only after the admin_roles db.exec() has completed.
+    marker = "CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);`);"
+    if "ensureColumn('admin_roles','expires_at','TEXT');" not in s:
         s = replace_once(
             s,
-            "CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);",
-            "CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);ensureColumn('admin_roles','expires_at','TEXT');",
+            marker,
+            marker + "ensureColumn('admin_roles','expires_at','TEXT');",
             "admin_roles expiry migration",
         )
     s = replace_once(
@@ -77,8 +84,6 @@ def patch_backend() -> None:
         "const code=String(req.body?.code||'').trim().toUpperCase(),row=db.prepare('SELECT role,admin_code_hash,expires_at FROM admin_roles WHERE user_id=?').get(req.user.sub);if(!row||!roleOf(req.user.sub)||!code||hashCode(code)!==row.admin_code_hash)return res.status(403).json({error:'invalid_admin_code'});res.json({ok:true,role:row.role,role_label:roleLabel(row.role),expires_at:row.expires_at||null})",
         "admin code expiry verification",
     )
-    # The administration console search accepts either name or Wethaq ID.
-    s = s.replace("const q=safeName(req.query.q||'');const rows=q?db.prepare('SELECT id,wethaq_id,name,birth_year,last_seen FROM users WHERE wethaq_id LIKE ? OR name LIKE ? ORDER BY id DESC LIMIT 50').all(`%${q}%`,`%${q}%`):", "const q=safeName(req.query.q||'');const rows=q?db.prepare('SELECT id,wethaq_id,name,birth_year,last_seen FROM users WHERE wethaq_id LIKE ? OR name LIKE ? ORDER BY id DESC LIMIT 50').all(`%${q}%`,`%${q}%`):", 1)
     write(p, s)
 
 
