@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 VIDEO = Path('app/src/main/java/com/wethaq/app/VideoCallActivity.java')
 
@@ -30,18 +31,28 @@ new = 'if(poll!=null)handler.removeCallbacks(poll);sendEndSignal();'
 if old in s:
     s = s.replace(old, new, 1)
 
-old_destroy='@Override protected void onDestroy(){if(!cleaned&&poll!=null)handler.removeCallbacks(poll);super.onDestroy();}'
-new_destroy='@Override protected void onDestroy(){if(!cleaned)endCall();else if(poll!=null)handler.removeCallbacks(poll);super.onDestroy();}'
-if old_destroy in s:
-    s = s.replace(old_destroy, new_destroy, 1)
+# Normalize common one-line lifecycle variants emitted by earlier repair scripts.
+# The semantic invariant is: onDestroy must route through endCall before super.
+variants = [
+    '@Override protected void onDestroy(){if(!cleaned)endCall();else if(poll!=null)handler.removeCallbacks(poll);super.onDestroy();}',
+    '@Override protected void onDestroy(){if(!cleaned)endCall();super.onDestroy();}',
+    '@Override protected void onDestroy(){if(!cleaned) endCall();super.onDestroy();}',
+]
+canonical = '@Override protected void onDestroy(){if(!cleaned)endCall();else if(poll!=null)handler.removeCallbacks(poll);super.onDestroy();}'
+for variant in variants:
+    if variant in s:
+        s = s.replace(variant, canonical, 1)
+        break
 
-# The production source currently uses separate read/write executors (pollIo/signalIo).
-# Accept that design, while keeping backward compatibility with the earlier callIo name.
 VIDEO.write_text(s, encoding='utf-8')
 check = VIDEO.read_text(encoding='utf-8')
 if not ('callIo' in check or ('pollIo' in check and 'signalIo' in check)):
     raise SystemExit('missing runtime quality invariant: call executors')
-for needle in ('pollInFlight','sendEndSignal','@Override protected void onDestroy(){if(!cleaned)endCall()'):
-    if needle not in check:
-        raise SystemExit(f'missing runtime quality invariant: {needle}')
+if 'pollInFlight' not in check:
+    raise SystemExit('missing runtime quality invariant: pollInFlight')
+if 'sendEndSignal' not in check:
+    raise SystemExit('missing runtime quality invariant: sendEndSignal')
+on_destroy = re.search(r'@Override\s+protected\s+void\s+onDestroy\s*\(\)\s*\{[^}]*endCall\s*\(\)', check, re.S)
+if not on_destroy:
+    raise SystemExit('missing runtime quality invariant: onDestroy must call endCall')
 print('WETHAQ_RUNTIME_QUALITY_REPAIR_OK')
