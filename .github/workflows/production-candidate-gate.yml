@@ -221,7 +221,6 @@ jobs:
         with:
           name: Wethaq-Production-Candidate-${{ env.FINAL_SOURCE_SHA }}
           path: |
-            app/build/outputs/apk/build/outputs/apk/release/app-release.apk
             app/build/outputs/apk/release/app-release.apk
             release-verification.txt
           retention-days: 30
