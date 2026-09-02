@@ -1,0 +1,86 @@
+name: Wethaq Post-Repair Final Release
+
+on:
+  workflow_run:
+    workflows: ["Wethaq Targeted Regression Repair"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact main source
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: '8.9'
+      - name: Verify source provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.workflow_run.head_sha }}" -o "$(git rev-parse HEAD)" = "$(git ls-remote origin refs/heads/main | cut -f1)"
+          test -f app/build.gradle
+          grep -q "versionName '1.0.0'" app/build.gradle
+          grep -q 'VERSION = "1.0.0"' app/src/main/java/com/wethaq/app/BuildInfo.java
+          grep -q 'private boolean isInitiator(){return incomingOffer==null||incomingOffer.trim().isEmpty();}' app/src/main/java/com/wethaq/app/VideoCallActivity.java
+          grep -q 'String deviceKey=prefs.getString("device_key","")' app/src/main/java/com/wethaq/app/MainActivity.java
+          grep -q 'adminCredential=db.prepare' backend/server.js
+          grep -q 'showAdminNotice' app/src/main/java/com/wethaq/app/WethaqMessageService.java
+          grep -q 'addFounderModerationControls' app/src/main/java/com/wethaq/app/AdminActivity.java
+          git diff --check
+      - name: Backend smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd backend
+          npm install --no-audit --no-fund
+          DB_FILE="$RUNNER_TEMP/wethaq-smoke.db"
+          PORT=3100 DB_PATH="$DB_FILE" JWT_SECRET='wethaq-ci-test-secret-change-me' OWNER_WETHAQ_ID='Hatem_Hussin_Al_Haj_Ramadan1995' node server.js > "$RUNNER_TEMP/wethaq-backend.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3100/health >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3100/health >/dev/null
+          PORT=3100 node smoke-test.mjs
+          kill "$SERVER_PID" 2>/dev/null || true
+          wait "$SERVER_PID" 2>/dev/null || true
+      - name: Clean compile and release build
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :app:clean :app:compileReleaseJavaWithJavac :app:assembleRelease --no-daemon --stacktrace --console=plain
+      - name: Verify APK integrity and provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          sha256sum "$APK" | tee app/build/outputs/apk/release/SHA256SUMS.txt
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose "$APK"
+      - name: Publish final APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Wethaq-final-release-fixed
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/apk/release/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 90
