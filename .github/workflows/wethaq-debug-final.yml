@@ -21,6 +21,7 @@ jobs:
           java-version: '17'
       - name: Show repository state
         run: |
+          set -euxo pipefail
           git status --short
           git rev-parse HEAD
           test -f .github/workflows/wethaq-v6-repair.yml
@@ -39,16 +40,27 @@ from pathlib import Path
 import re
 p=Path('backend/server.js')
 s=p.read_text(encoding='utf-8')
-pat=re.compile(r"db\.exec\(`CREATE TABLE IF NOT EXISTS admin_roles\(.*?CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles\(role\);.*?`\);", re.S)
+# Normalize the complete admin_roles schema block and keep migration outside SQL.
+pat=re.compile(r"db\.exec\(`CREATE TABLE IF NOT EXISTS admin_roles\(.*?CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles\(role\);`\);", re.S)
 m=pat.search(s)
 if not m:
     raise SystemExit('ADMIN_ROLES_SCHEMA_BLOCK_NOT_FOUND')
 replacement="db.exec(`CREATE TABLE IF NOT EXISTS admin_roles(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL UNIQUE,role TEXT NOT NULL,admin_code_hash TEXT,created_by INTEGER,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,expires_at TEXT,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);CREATE INDEX IF NOT EXISTS idx_admin_roles_role ON admin_roles(role);`);ensureColumn('admin_roles','expires_at','TEXT');"
 s=s[:m.start()]+replacement+s[m.end():]
-pat2=re.compile(r"function roleOf\(userId\)\{.*?\}",re.S)
+# Replace the entire roleOf function using a brace-aware scan, never a non-greedy regex.
+start=s.find('function roleOf(userId){')
+if start<0: raise SystemExit('ROLE_OF_NOT_FOUND')
+i=start;depth=0;end=None
+while i<len(s):
+    if s[i]=='{': depth+=1
+    elif s[i]=='}':
+        depth-=1
+        if depth==0:
+            end=i+1;break
+    i+=1
+if end is None: raise SystemExit('ROLE_OF_UNCLOSED')
 role="function roleOf(userId){if(!userId)return null;const owner=db.prepare('SELECT id FROM users WHERE wethaq_id=?').get(OWNER_WETHAQ_ID);if(owner&&Number(userId)===Number(owner.id))return ROLE_FOUNDER;const row=db.prepare('SELECT role,expires_at FROM admin_roles WHERE user_id=?').get(Number(userId));if(!row)return null;if(row.expires_at&&new Date(row.expires_at)<=new Date())return null;return row.role||null}"
-s,n=pat2.subn(role,s,count=1)
-if n!=1: raise SystemExit('ROLE_OF_REPAIR_FAILED')
+s=s[:start]+role+s[end:]
 p.write_text(s,encoding='utf-8')
 PY
           node --check backend/server.js
@@ -64,18 +76,18 @@ PY
         working-directory: backend
         shell: bash
         run: |
-          set -euxo pipefail
-          npm install --no-audit --no-fund
+          set -uo pipefail
+          npm install --no-audit --no-fund > "$RUNNER_TEMP/npm-install.log" 2>&1 || { cat "$RUNNER_TEMP/npm-install.log"; exit 1; }
           export DB_PATH="$RUNNER_TEMP/wethaq-final.db"
           export JWT_SECRET="wethaq-final-secret"
           export OWNER_WETHAQ_ID="Hatem_Hussin_Al_Haj_Ramadan1995"
           export PORT=3199
           LOG="$RUNNER_TEMP/backend.log"
           node server.js > "$LOG" 2>&1 & PID=$!
+          trap 'kill "$PID" 2>/dev/null || true' EXIT
           for _ in $(seq 1 40); do
-            if curl -fsS http://127.0.0.1:3199/health >/tmp/health.json 2>/tmp/curl.err; then
-              cat /tmp/health.json
-              kill "$PID" 2>/dev/null || true
+            if curl -fsS http://127.0.0.1:3199/health > "$RUNNER_TEMP/health.json" 2> "$RUNNER_TEMP/curl.err"; then
+              cat "$RUNNER_TEMP/health.json"
               exit 0
             fi
             if ! kill -0 "$PID" 2>/dev/null; then
@@ -87,11 +99,39 @@ PY
           done
           echo 'HEALTH_TIMEOUT'
           cat "$LOG" || true
-          cat /tmp/curl.err || true
+          cat "$RUNNER_TEMP/curl.err" || true
           exit 1
-      - name: Build compile gate
-        run: ./gradlew --no-daemon assembleDebug
+      - name: Upload backend diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wethaq-backend-diagnostics
+          path: |
+            ${{ runner.temp }}/backend.log
+            ${{ runner.temp }}/npm-install.log
+            ${{ runner.temp }}/health.json
+            ${{ runner.temp }}/curl.err
+          if-no-files-found: ignore
+      - name: Build debug gate
+        if: success()
+        run: ./gradlew --no-daemon clean assembleDebug
+      - name: Build release gate
+        if: success()
+        run: ./gradlew --no-daemon assembleRelease
+      - name: Release integrity and provenance
+        if: success()
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APK=$(find app/build/outputs/apk/release -type f -name '*.apk' | head -n1)
+          test -n "$APK"
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          sha256sum "$APK"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --check
       - name: Persist only verified source
+        if: success()
         shell: bash
         run: |
           set -euxo pipefail
@@ -99,3 +139,10 @@ PY
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/AdminActivity.java app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java app/src/main/java/com/wethaq/app/WethaqMessageService.java app/src/main/java/com/wethaq/app/IncomingCallActionReceiver.java app/src/main/java/com/wethaq/app/VideoCallActivity.java app/src/main/AndroidManifest.xml backend/server.js
           if git diff --cached --quiet; then echo NO_SOURCE_DELTA; else git commit -m 'feat: apply verified Wethaq v1 repairs' && git push origin HEAD:wethaq-v9-final; fi
+      - name: Upload release APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Wethaq-v1-release
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 30
