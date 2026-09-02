@@ -1,0 +1,151 @@
+name: Wethaq Production Certification
+
+on:
+  push:
+    branches:
+      - release/wethaq-production-clean-20260903
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wethaq-production-certification
+  cancel-in-progress: false
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact release source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Verify immutable source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test -z "$(git status --porcelain)"
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Node 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package.json
+
+      - name: Static integrity and required contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/*.py
+          node --check backend/server.js
+          git diff --check
+          test -f app/src/main/AndroidManifest.xml
+          test -f app/build.gradle
+          test -f backend/server.js
+          test -f backend/final-acceptance.mjs
+          grep -q 'android:name=".AdminActivity" android:exported="false"' app/src/main/AndroidManifest.xml
+          grep -q 'android:name=".PublicAdministrationActivity" android:exported="false"' app/src/main/AndroidManifest.xml
+          grep -q 'founderOnly' backend/server.js
+          grep -q 'roleCanBan' backend/server.js
+
+      - name: Backend smoke and acceptance
+        working-directory: backend
+        env:
+          PORT: 3100
+          NODE_ENV: test
+          DB_PATH: ${{ github.workspace }}/backend/wethaq-certification.db
+          JWT_SECRET: ci-only-wethaq-certification-secret
+          OWNER_WETHAQ_ID: Hatem_Hussin_Al_Haj_Ramadan1995
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f "$DB_PATH"
+          npm install --no-audit --no-fund
+          node server.js > ../backend-certification.log 2>&1 &
+          PID=$!
+          cleanup() { kill "$PID" 2>/dev/null || true; rm -f "$DB_PATH"; }
+          trap cleanup EXIT
+          ready=0
+          for i in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:3100/health >/dev/null; then ready=1; break; fi
+            if ! kill -0 "$PID" 2>/dev/null; then cat ../backend-certification.log; exit 1; fi
+            sleep 1
+          done
+          test "$ready" = 1
+          npm run test:smoke
+          node final-acceptance.mjs
+
+      - name: Create isolated CI release signer
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool -genkeypair -v -storetype JKS \
+            -keystore "$RUNNER_TEMP/wethaq-certification-release.jks" \
+            -storepass 'wethaq-ci-store-pass' \
+            -keypass 'wethaq-ci-store-pass' \
+            -alias wethaq-ci -keyalg RSA -keysize 2048 -validity 3650 \
+            -dname 'CN=Wethaq CI Certification Release, OU=CI, O=Wethaq, L=NA, ST=NA, C=US' >/dev/null
+
+      - name: Clean unit tests lint and Release build
+        env:
+          WETHAQ_KEYSTORE_PATH: ${{ runner.temp }}/wethaq-certification-release.jks
+          WETHAQ_KEYSTORE_PASSWORD: wethaq-ci-store-pass
+          WETHAQ_KEY_ALIAS: wethaq-ci
+          WETHAQ_KEY_PASSWORD: wethaq-ci-store-pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/assets
+          printf '%s' "$(git rev-parse HEAD)" > app/src/main/assets/wethaq_source_sha.txt
+          gradle --no-daemon --stacktrace clean test lintVitalRelease assembleRelease
+
+      - name: Verify APK and exact source binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          test "$(unzip -p "$APK" assets/wethaq_source_sha.txt)" = "$(git rev-parse HEAD)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          test -x "$APKSIGNER" && test -x "$AAPT"
+          "$APKSIGNER" verify --verbose "$APK"
+          "$AAPT" dump badging "$APK" | grep -q "package: name='com.wethaq.app'"
+          SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SIZE="$(stat -c '%s' "$APK")"
+          printf 'SOURCE_SHA=%s\nAPK_SHA256=%s\nAPK_SIZE_BYTES=%s\nAPK=%s\n' "$(git rev-parse HEAD)" "$SHA256" "$SIZE" "$APK" > release-verification.txt
+          rm -f app/src/main/assets/wethaq_source_sha.txt
+          find . -type d -name __pycache__ -prune -exec rm -rf {} +
+          test -z "$(git status --porcelain)"
+
+      - name: Final certification
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test -s release-verification.txt
+          grep -q "SOURCE_SHA=${GITHUB_SHA}" release-verification.txt
+          grep -Eq '^APK_SHA256=[0-9a-f]{64}$' release-verification.txt
+          grep -Eq '^APK_SIZE_BYTES=[0-9]+$' release-verification.txt
+          echo WETHAQ_PRODUCTION_CERTIFIED_OK
+
+      - name: Upload certified APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Wethaq-Production-Certified-${{ github.sha }}
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            release-verification.txt
+          if-no-files-found: error
+          retention-days: 30
