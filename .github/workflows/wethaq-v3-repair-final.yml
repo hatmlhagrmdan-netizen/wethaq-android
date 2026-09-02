@@ -124,6 +124,23 @@ jobs:
             -keypass 'wethaq-ci-store-pass' \
             -alias wethaq-ci -keyalg RSA -keysize 2048 -validity 3650 \
             -dname 'CN=Wethaq CI Release, OU=CI, O=Wethaq, L=NA, ST=NA, C=US' >/dev/null
+      - name: Repair Java source compatibility before build
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/main/java/com/wethaq/app/AdminActivity.java')
+          s=p.read_text(encoding='utf-8')
+          old='URLEncoder.encode(query,"UTF-8")'
+          new='URLEncoder.encode(query,StandardCharsets.UTF_8)'
+          if old in s:
+              s=s.replace(old,new)
+              p.write_text(s,encoding='utf-8')
+          if 'URLEncoder.encode(query,"UTF-8")' in s:
+              raise SystemExit('ADMIN_ACTIVITY_UTF8_ENCODING_REPAIR_FAILED')
+          print('WETHAQ_JAVA_SOURCE_COMPATIBILITY_OK')
+          PY
       - name: Clean test lint and release build
         env:
           WETHAQ_KEYSTORE_PATH: ${{ runner.temp }}/wethaq-ci-release.jks
