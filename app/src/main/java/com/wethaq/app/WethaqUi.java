@@ -56,14 +56,15 @@ public final class WethaqUi{
  }
  /** Premium restrained motion: the founder identity gently breathes and catches a gold highlight without distracting from content. */
  private static void animateFounderBrand(TextView t){
-  t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);t.setShadowLayer(dp(t,10),0,dp(t,2),Color.argb(120,212,175,55));
+  t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);t.setTextColor(BRIGHT_GOLD);t.setLetterSpacing(.018f);t.setShadowLayer(dp(t,10),0,dp(t,2),Color.argb(150,212,175,55));
   AnimatorSet set=new AnimatorSet();
   ObjectAnimator sx=ObjectAnimator.ofFloat(t,View.SCALE_X,1f,1.018f,1f);
   ObjectAnimator sy=ObjectAnimator.ofFloat(t,View.SCALE_Y,1f,1.018f,1f);
-  ObjectAnimator alpha=ObjectAnimator.ofFloat(t,View.ALPHA,1f,.90f,1f);
+  ObjectAnimator alpha=ObjectAnimator.ofFloat(t,View.ALPHA,1f,.92f,1f);
   sx.setDuration(2400);sy.setDuration(2400);alpha.setDuration(2400);
-  set.playTogether(sx,sy,alpha);set.setInterpolator(new AccelerateDecelerateInterpolator());set.setStartDelay(250);set.setDuration(2400);set.start();
-  set.addListener(new android.animation.AnimatorListenerAdapter(){@Override public void onAnimationEnd(android.animation.Animator animation){if(t.getWindowToken()!=null)animateFounderBrand(t);}});
+  set.playTogether(sx,sy,alpha);set.setInterpolator(new AccelerateDecelerateInterpolator());set.setStartDelay(250);set.setDuration(2400);set.setRepeatCount(ValueAnimator.INFINITE);
+  t.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){@Override public void onViewAttachedToWindow(View v){if(!set.isStarted())set.start();}@Override public void onViewDetachedFromWindow(View v){if(set.isRunning())set.cancel();}});
+  if(t.getWindowToken()!=null)set.start();
  }
  private static void styleImage(ImageView v){if(v.getTag()!=null)return;v.setTag("wethaq_avatar_style");v.setScaleType(ImageView.ScaleType.CENTER_CROP);}
  private static Drawable placeholder(View v){GradientDrawable d=new GradientDrawable();d.setShape(GradientDrawable.OVAL);d.setColor(Color.rgb(48,48,54));d.setStroke(dp(v,2),GOLD);d.setSize(dp(v,42),dp(v,42));return d;}
