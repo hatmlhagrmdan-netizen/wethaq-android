@@ -1,0 +1,51 @@
+name: Apply Message Status Fix
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-message-status-fix.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch status semantics
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('backend/server.js')
+          s=p.read_text()
+          old="const rows=db.prepare(`SELECT m.*,u.name sender_name,u.wethaq_id sender_wethaq_id FROM messages m JOIN users u ON u.id=m.sender_id WHERE m.receiver_id=? ORDER BY m.id ASC LIMIT 200`).all(req.user.sub);db.prepare(\"UPDATE messages SET status='delivered' WHERE receiver_id=? AND status='sent'\").run(req.user.sub);res.json({messages:rows})"
+          new="db.prepare(\"UPDATE messages SET status='delivered' WHERE receiver_id=? AND status='sent'\").run(req.user.sub);const rows=db.prepare(`SELECT m.*,u.name sender_name,u.wethaq_id sender_wethaq_id FROM messages m JOIN users u ON u.id=m.sender_id WHERE m.receiver_id=? ORDER BY m.id ASC LIMIT 200`).all(req.user.sub);res.json({messages:rows})"
+          assert old in s, 'inbox status block not found'
+          s=s.replace(old,new,1)
+          old="const rows=db.prepare(`SELECT m.*,su.name sender_name,su.wethaq_id sender_wethaq_id FROM messages m JOIN users su ON su.id=m.sender_id WHERE (m.sender_id=? AND m.receiver_id=?) OR (m.sender_id=? AND m.receiver_id=?) ORDER BY m.id ASC LIMIT 500`).all(req.user.sub,u.id,u.id,req.user.sub);db.prepare(\"UPDATE messages SET status='read' WHERE sender_id=? AND receiver_id=? AND status<>'read'\").run(u.id,req.user.sub);res.json({contact:publicUser(u,true),messages:rows})"
+          new="db.prepare(\"UPDATE messages SET status='read' WHERE sender_id=? AND receiver_id=? AND status<>'read'\").run(u.id,req.user.sub);const rows=db.prepare(`SELECT m.*,su.name sender_name,su.wethaq_id sender_wethaq_id FROM messages m JOIN users su ON su.id=m.sender_id WHERE (m.sender_id=? AND m.receiver_id=?) OR (m.sender_id=? AND m.receiver_id=?) ORDER BY m.id ASC LIMIT 500`).all(req.user.sub,u.id,u.id,req.user.sub);res.json({contact:publicUser(u,true),messages:rows})"
+          assert old in s, 'conversation read block not found'
+          s=s.replace(old,new,1)
+          old="VALUES(?,?,?,'sent','audio',?,?,?)"
+          new="VALUES(?,?,?,?,'audio',?,?,?)"
+          assert old in s, 'audio insert not found'
+          s=s.replace(old,new,1)
+          old="run(req.user.sub,u.id,'',mime,audio,clientId)"
+          new="run(req.user.sub,u.id,'',isOnline(u.id)?'delivered':'sent',mime,audio,clientId)"
+          assert old in s, 'audio run not found'
+          s=s.replace(old,new,1)
+          old="VALUES(?,?,?,'sent','image',?,?,?)"
+          new="VALUES(?,?,?,?,'image',?,?,?)"
+          assert old in s, 'image insert not found'
+          s=s.replace(old,new,1)
+          old="run(req.user.sub,u.id,'',mime,image,clientId)"
+          new="run(req.user.sub,u.id,'',isOnline(u.id)?'delivered':'sent',mime,image,clientId)"
+          assert old in s, 'image run not found'
+          s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name 'wethaq-engineering'
+          git config user.email 'wethaq-engineering@users.noreply.github.com'
+          git add backend/server.js
+          git commit -m 'fix: return authoritative message delivery and read status' || exit 0
+          git push
