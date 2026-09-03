@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - rescue/wethaq-stable-7146f4e-20260903
-      - development/wethaq-next-engineering-20260903
   workflow_dispatch:
 
 permissions:
