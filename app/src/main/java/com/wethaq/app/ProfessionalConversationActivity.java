@@ -8,6 +8,7 @@ import android.media.MediaRecorder;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
+import android.util.Base64;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.*;
@@ -15,13 +16,13 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URLEncoder;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -75,11 +76,12 @@ public final class ProfessionalConversationActivity extends Activity {
     private void retryOutbox(){synchronized(OUTBOX){try{android.content.SharedPreferences p=getSharedPreferences(PREFS,MODE_PRIVATE);JSONArray q=new JSONArray(p.getString(OUTBOX,"[]"));JSONArray keep=new JSONArray();for(int i=0;i<q.length();i++){JSONObject j=q.optJSONObject(i);if(j==null)continue;try{HttpResult r=request("POST","/api/messages",j.toString());if(r.code<200||r.code>=300)keep.put(j);}catch(Exception e){keep.put(j);}}p.edit().putString(OUTBOX,keep.toString()).apply();}catch(Exception ignored){}}}
 
     private void toggleRecording(Button mic){if(recording){finishRecording(mic);return;}try{recordingFile=new File(getCacheDir(),"wethaq_voice_"+System.currentTimeMillis()+".3gp");recorder=new MediaRecorder(this);recorder.setAudioSource(MediaRecorder.AudioSource.MIC);recorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);recorder.setOutputFile(recordingFile.getAbsolutePath());recorder.prepare();recorder.start();recording=true;mic.setText("⏹️");toast("جارٍ التسجيل… اضغط للإرسال");}catch(Exception e){releaseRecorder();toast("تعذر بدء التسجيل");}}
-    private void finishRecording(Button mic){try{recorder.stop();recorder.release();recorder=null;recording=false;mic.setText("🎙️");if(recordingFile==null||!recordingFile.exists()){toast("لم يتم إنشاء المقطع");return;}long size=recordingFile.length();if(size>5*1024*1024){toast("المقطع أكبر من الحد المسموح");recordingFile.delete();return;}byte[] bytes=java.nio.file.Files.readAllBytes(recordingFile.toPath());String data=Base64.getEncoder().encodeToString(bytes);String target=id();if(target.length()<2){toast("حدد معرف وَثاق قبل إرسال الصوت");recordingFile.delete();return;}sendPayload(target,"audio","",data,"audio/3gpp");recordingFile.delete();}catch(Exception e){releaseRecorder();toast("تعذر حفظ المقطع الصوتي");}}
+    private void finishRecording(Button mic){try{recorder.stop();recorder.release();recorder=null;recording=false;mic.setText("🎙️");if(recordingFile==null||!recordingFile.exists()){toast("لم يتم إنشاء المقطع");return;}long size=recordingFile.length();if(size>5*1024*1024){toast("المقطع أكبر من الحد المسموح");recordingFile.delete();return;}byte[] bytes=readFile(recordingFile);String data=Base64.encodeToString(bytes,Base64.NO_WRAP);String target=id();if(target.length()<2){toast("حدد معرف وَثاق قبل إرسال الصوت");recordingFile.delete();return;}sendPayload(target,"audio","",data,"audio/3gpp");recordingFile.delete();}catch(Exception e){releaseRecorder();toast("تعذر حفظ المقطع الصوتي");}}
     private void releaseRecorder(){try{if(recorder!=null)recorder.release();}catch(Exception ignored){}recorder=null;recording=false;}
+    private byte[] readFile(File file)throws Exception{try(FileInputStream in=new FileInputStream(file);ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1)out.write(b,0,n);return out.toByteArray();}}
 
     private void pickImage(){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.setType("image/*");i.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(i,PICK_IMAGE);}
-    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request!=PICK_IMAGE||result!=RESULT_OK||data==null||data.getData()==null)return;Uri uri=data.getData();io.execute(()->{try{long size=contentLength(uri);if(size>6*1024*1024){toast("الصورة أكبر من الحد المسموح");return;}byte[] bytes=read(uri);String b64=Base64.getEncoder().encodeToString(bytes);String mime=getContentResolver().getType(uri);String target=id();if(target.length()<2){toast("حدد معرف وَثاق قبل إرسال الصورة");return;}sendPayload(target,"image","",b64,mime==null?"image/*":mime);}catch(Exception e){toast("تعذر قراءة الصورة");}});}
+    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request!=PICK_IMAGE||result!=RESULT_OK||data==null||data.getData()==null)return;Uri uri=data.getData();io.execute(()->{try{long size=contentLength(uri);if(size>6*1024*1024){toast("الصورة أكبر من الحد المسموح");return;}byte[] bytes=read(uri);String b64=Base64.encodeToString(bytes,Base64.NO_WRAP);String mime=getContentResolver().getType(uri);String target=id();if(target.length()<2){toast("حدد معرف وَثاق قبل إرسال الصورة");return;}sendPayload(target,"image","",b64,mime==null?"image/*":mime);}catch(Exception e){toast("تعذر قراءة الصورة");}});}
     private long contentLength(Uri uri){try(android.database.Cursor c=getContentResolver().query(uri,new String[]{OpenableColumns.SIZE},null,null,null)){if(c!=null&&c.moveToFirst())return c.getLong(0);}catch(Exception ignored){}return -1;}
     private byte[] read(Uri uri)throws Exception{try(InputStream in=getContentResolver().openInputStream(uri);ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1)out.write(b,0,n);return out.toByteArray();}}
 
