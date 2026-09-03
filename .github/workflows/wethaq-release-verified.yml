@@ -68,6 +68,18 @@ jobs:
             echo "WETHAQ_KEY_ALIAS=$WETHAQ_KEY_ALIAS"
             echo "WETHAQ_KEY_PASSWORD=$WETHAQ_KEY_PASSWORD"
           } >> "$GITHUB_ENV"
+      - name: Validate production signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$WETHAQ_KEYSTORE_PATH"
+          keytool -list -v -keystore "$WETHAQ_KEYSTORE_PATH" -storepass "$WETHAQ_KEYSTORE_PASSWORD" -alias "$WETHAQ_KEY_ALIAS" >/tmp/wethaq-keytool.txt
+          grep -q 'Entry type: PrivateKeyEntry' /tmp/wethaq-keytool.txt
+          grep -q 'SHA256: 64:4B:F1:1F:70:99:10:F4:FB:53:16:FB:76:E7:AD:FB:30:4C:03:71:62:69:F0:27:A7:BF:37:F7:45:DF:FE:D3' /tmp/wethaq-keytool.txt
+          rm -f "$RUNNER_TEMP/key-check.p12"
+          keytool -importkeystore -noprompt -srckeystore "$WETHAQ_KEYSTORE_PATH" -srcstoretype JKS -srcstorepass "$WETHAQ_KEYSTORE_PASSWORD" -srcalias "$WETHAQ_KEY_ALIAS" -srckeypass "$WETHAQ_KEY_PASSWORD" -destkeystore "$RUNNER_TEMP/key-check.p12" -deststoretype PKCS12 -deststorepass "$WETHAQ_KEYSTORE_PASSWORD" -destkeypass "$WETHAQ_KEY_PASSWORD" >/tmp/wethaq-key-import.log
+          test -s "$RUNNER_TEMP/key-check.p12"
+          rm -f "$RUNNER_TEMP/key-check.p12" /tmp/wethaq-keytool.txt /tmp/wethaq-key-import.log
       - name: Backend dependency and smoke checks
         shell: bash
         working-directory: backend
@@ -84,7 +96,7 @@ jobs:
             sleep 1
           done
           test -s /tmp/wethaq-health.json
-          grep -q '"version":"7.0.0"' /tmp/wethaq-health.json
+          grep -q '\"version\":\"7.0.0\"' /tmp/wethaq-health.json
           PORT=3100 node smoke-test.mjs
           PORT=3100 node rbac-smoke.mjs
       - name: Android tests and signed release build
@@ -107,6 +119,7 @@ jobs:
           "$APKSIGNER" verify --verbose --print-certs "$APK"
           "$APKSIGNER" verify --print-certs "$APK" | grep -q 'Signer #1 certificate DN:'
           "$APKSIGNER" verify --print-certs "$APK" | grep -q 'Signer #1 certificate SHA-256 digest:'
+          "$APKSIGNER" verify --print-certs "$APK" | grep -q '64:4B:F1:1F:70:99:10:F4:FB:53:16:FB:76:E7:AD:FB:30:4C:03:71:62:69:F0:27:A7:BF:37:F7:45:DF:FE:D3'
           cp "$APK" "$RUNNER_TEMP/wethaq-release.apk"
           sha256sum "$RUNNER_TEMP/wethaq-release.apk"
       - name: Upload verified signed APK
