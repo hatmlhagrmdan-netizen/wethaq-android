@@ -1,0 +1,38 @@
+name: Wethaq Message Reliability Syntax Fix
+on:
+  push:
+    branches:
+      - development/wethaq-next-engineering-20260903
+permissions:
+  contents: write
+jobs:
+  fix:
+    if: ${{ !contains(github.event.head_commit.message, 'message reliability syntax fixed') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Remove duplicate helper declaration
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('backend/server.js')
+          s=p.read_text()
+          helper="function messageClientId(req){const v=String(req.body?.client_id||'').trim();return /^[A-Za-z0-9_-]{1,100}$/.test(v)?v:null}"
+          doubled=helper+helper
+          if doubled not in s:
+            raise SystemExit('EXPECTED_DUPLICATE_HELPER_NOT_FOUND')
+          s=s.replace(doubled,helper,1)
+          if doubled in s:
+            raise SystemExit('DUPLICATE_HELPER_REMAINS')
+          p.write_text(s)
+      - name: Validate syntax
+        run: node --check backend/server.js
+      - name: Commit syntax fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/server.js
+          git commit -m 'fix: remove duplicate message helper declaration — message reliability syntax fixed'
+          git push
