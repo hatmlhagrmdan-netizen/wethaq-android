@@ -24,8 +24,11 @@ const me = await request('/api/me', { headers: { authorization: `Bearer ${a.body
 assert(me.response.ok && me.body.user?.wethaq_id === a.body.user.wethaq_id, 'me failed');
 const unauthorizedMe = await request('/api/me');
 assert(unauthorizedMe.response.status === 401, `unauthenticated request was accepted: ${unauthorizedMe.response.status}`);
-const sent = await request('/api/messages', { method: 'POST', headers: { authorization: `Bearer ${a.body.token}` }, body: JSON.stringify({ to: b.body.user.wethaq_id, body: 'رسالة اختبار من وثاق' }) });
+const clientId = `smoke-${suffix}`;
+const sent = await request('/api/messages', { method: 'POST', headers: { authorization: `Bearer ${a.body.token}` }, body: JSON.stringify({ to: b.body.user.wethaq_id, body: 'رسالة اختبار من وثاق', client_id: clientId }) });
 assert(sent.response.status === 201 && sent.body.message?.body === 'رسالة اختبار من وثاق', `message send failed: ${sent.response.status} ${sent.text}`);
+const replay = await request('/api/messages', { method: 'POST', headers: { authorization: `Bearer ${a.body.token}` }, body: JSON.stringify({ to: b.body.user.wethaq_id, body: 'رسالة اختبار من وثاق', client_id: clientId }) });
+assert(replay.response.ok && replay.body.idempotent === true && replay.body.message?.id === sent.body.message.id, `message replay was not idempotent: ${replay.response.status} ${replay.text}`);
 const history = await request(`/api/messages/${encodeURIComponent(b.body.user.wethaq_id)}`, { headers: { authorization: `Bearer ${a.body.token}` } });
 assert(history.response.ok && history.body.messages?.some(m => m.id === sent.body.message.id), 'message history failed');
 console.log('WETHAQ_SMOKE_TEST_OK');
