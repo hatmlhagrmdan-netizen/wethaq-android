@@ -84,3 +84,4 @@ jobs:
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 14
+# Exact-head verification trigger: every branch update must produce a fresh Release check.
