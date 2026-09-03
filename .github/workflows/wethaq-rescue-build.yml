@@ -44,19 +44,22 @@ jobs:
           set -euo pipefail
           python3 -m py_compile scripts/*.py
           node --check backend/server.js
+          node --check backend/server-v8.js
           git diff --check
           test -f app/src/main/AndroidManifest.xml
           test -f app/build.gradle
           test -f backend/server.js
+          test -f backend/server-v8.js
           grep -q 'android:name=".AdminActivity" android:exported="false"' app/src/main/AndroidManifest.xml
           grep -q 'android:name=".PublicAdministrationActivity" android:exported="false"' app/src/main/AndroidManifest.xml
           grep -q 'founderOnly' backend/server.js
           grep -q 'roleCanBan' backend/server.js
 
-      - name: Backend smoke and acceptance
+      - name: Backend smoke and RBAC acceptance
         working-directory: backend
         env:
           PORT: 3100
+          WETHAQ_CORE_PORT: 39091
           NODE_ENV: test
           DB_PATH: ${{ github.workspace }}/backend/wethaq-rescue-smoke.db
           JWT_SECRET: ci-only-wethaq-rescue-secret
@@ -64,17 +67,17 @@ jobs:
         run: |
           set -euo pipefail
           npm install --no-audit --no-fund
-          node server.js > ../backend-rescue.log 2>&1 &
+          PORT=3100 WETHAQ_CORE_PORT=39091 node server-v8.js > ../backend-rescue.log 2>&1 &
           PID=$!
-          trap 'kill $PID 2>/dev/null || true' EXIT
+          trap 'kill $PID 2>/dev/null || true; pkill -f "server.js" 2>/dev/null || true; rm -f wethaq-rescue-smoke.db wethaq-rescue-smoke.db-shm wethaq-rescue-smoke.db-wal' EXIT
           ready=0
           for i in $(seq 1 40); do
             if curl --fail --silent --show-error http://127.0.0.1:3100/health >/dev/null; then ready=1; break; fi
             sleep 1
           done
           if test "$ready" != 1; then cat ../backend-rescue.log; exit 1; fi
-          npm run test:smoke
-          if test -f final-acceptance.mjs; then node final-acceptance.mjs; fi
+          PORT=3100 npm run test:smoke
+          PORT=3100 npm run test:rbac
 
       - name: Prepare isolated Release signing key
         shell: bash
