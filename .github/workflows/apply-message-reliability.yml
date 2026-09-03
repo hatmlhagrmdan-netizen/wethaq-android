@@ -1,0 +1,47 @@
+name: Wethaq Message Reliability Migration
+on:
+  push:
+    branches:
+      - development/wethaq-next-engineering-20260903
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, 'message reliability migration applied') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply exact reliability patch
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('backend/server.js')
+          s=p.read_text()
+          original=s
+          s=s.replace("ensureColumn('messages','audio_data','TEXT');", "ensureColumn('messages','audio_data','TEXT');ensureColumn('messages','client_id','TEXT');db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_sender_client ON messages(sender_id,client_id) WHERE client_id IS NOT NULL AND client_id<>''`);")
+          marker="function messageClientId(req){const v=String(req.body?.client_id||'').trim();return /^[A-Za-z0-9_-]{1,100}$/.test(v)?v:null}"
+          s=s.replace("function receiver(to,res){const u=db.prepare('SELECT id,wethaq_id,name FROM users WHERE wethaq_id=?').get(to);if(!u){res.status(404).json({error:'user_not_found'});return null}return u}", "function receiver(to,res){const u=db.prepare('SELECT id,wethaq_id,name FROM users WHERE wethaq_id=?').get(to);if(!u){res.status(404).json({error:'user_not_found'});return null}return u}"+marker)
+          s=s.replace("const to=String(req.body?.to||'').trim(),body=safeMessage(req.body?.body??req.body?.text);if(!to||!body||body.length>MAX_MESSAGE)return res.status(400).json({error:'invalid_message'});", "const to=String(req.body?.to||'').trim(),body=safeMessage(req.body?.body??req.body?.text),clientId=messageClientId(req);if(!to||!body||body.length>MAX_MESSAGE||!clientId)return res.status(400).json({error:'invalid_message'});")
+          s=s.replace("const sender=db.prepare('SELECT id,wethaq_id,name FROM users WHERE id=?').get(req.user.sub);linkContacts(req.user.sub,u.id);const z=db.prepare(\"INSERT INTO messages(sender_id,receiver_id,body,status,message_type) VALUES(?,?,?,?,'text')\").run(req.user.sub,u.id,body,isOnline(u.id)?'delivered':'sent');", "const sender=db.prepare('SELECT id,wethaq_id,name FROM users WHERE id=?').get(req.user.sub);const existing=db.prepare('SELECT * FROM messages WHERE sender_id=? AND client_id=?').get(req.user.sub,clientId);if(existing)return res.json({message:existing,idempotent:true});linkContacts(req.user.sub,u.id);const z=db.prepare(\"INSERT INTO messages(sender_id,receiver_id,body,status,message_type,client_id) VALUES(?,?,?,?,'text',?)\").run(req.user.sub,u.id,body,isOnline(u.id)?'delivered':'sent',clientId);")
+          s=s.replace("app.post('/api/messages/audio',auth,(req,res)=>{const to=", "app.post('/api/messages/audio',auth,(req,res)=>{if(!rateLimit(`media:${req.user.sub}`,30,60000))return res.status(429).json({error:'rate_limited'});const to=")
+          s=s.replace("const to=String(req.body?.to||'').trim(),audio=String(req.body?.audioBase64||'').trim(),mime=String(req.body?.mimeType||'audio/mp4');if(!to||!audio||audio.length>MAX_AUDIO_BASE64||!/^[A-Za-z0-9+/=]+$/.test(audio))", "const to=String(req.body?.to||'').trim(),audio=String(req.body?.audioBase64||'').trim(),mime=String(req.body?.mimeType||'audio/mp4'),clientId=messageClientId(req);if(!to||!audio||!clientId||audio.length>MAX_AUDIO_BASE64||!/^[A-Za-z0-9+/=]+$/.test(audio))")
+          s=s.replace("const sender=db.prepare('SELECT id,wethaq_id,name FROM users WHERE id=?').get(req.user.sub);linkContacts(req.user.sub,u.id);const z=db.prepare(\"INSERT INTO messages(sender_id,receiver_id,body,status,message_type,mime_type,audio_data) VALUES(?,?,?,'sent','audio',?,?)\").run(req.user.sub,u.id,'',mime,audio);", "const sender=db.prepare('SELECT id,wethaq_id,name FROM users WHERE id=?').get(req.user.sub);const existing=db.prepare('SELECT * FROM messages WHERE sender_id=? AND client_id=?').get(req.user.sub,clientId);if(existing)return res.json({message:existing,idempotent:true});linkContacts(req.user.sub,u.id);const z=db.prepare(\"INSERT INTO messages(sender_id,receiver_id,body,status,message_type,mime_type,audio_data,client_id) VALUES(?,?,?,'sent','audio',?,?,?)\").run(req.user.sub,u.id,'',mime,audio,clientId);")
+          s=s.replace("app.post('/api/messages/image',auth,(req,res)=>{const to=", "app.post('/api/messages/image',auth,(req,res)=>{if(!rateLimit(`media:${req.user.sub}`,30,60000))return res.status(429).json({error:'rate_limited'});const to=")
+          s=s.replace("const to=String(req.body?.to||'').trim(),image=String(req.body?.imageBase64||'').trim(),mime=String(req.body?.mimeType||'image/jpeg');if(!to||!image||image.length>MAX_IMAGE_BASE64||!/^[A-Za-z0-9+/=]+$/.test(image)||!/^image\\/(jpeg|png|webp)$/.test(mime))", "const to=String(req.body?.to||'').trim(),image=String(req.body?.imageBase64||'').trim(),mime=String(req.body?.mimeType||'image/jpeg'),clientId=messageClientId(req);if(!to||!image||!clientId||image.length>MAX_IMAGE_BASE64||!/^[A-Za-z0-9+/=]+$/.test(image)||!/^image\\/(jpeg|png|webp)$/.test(mime))")
+          s=s.replace("const sender=db.prepare('SELECT id,wethaq_id,name FROM users WHERE id=?').get(req.user.sub);linkContacts(req.user.sub,u.id);const z=db.prepare(\"INSERT INTO messages(sender_id,receiver_id,body,status,message_type,mime_type,audio_data) VALUES(?,?,?,'sent','image',?,?)\").run(req.user.sub,u.id,'',mime,image);", "const sender=db.prepare('SELECT id,wethaq_id,name FROM users WHERE id=?').get(req.user.sub);const existing=db.prepare('SELECT * FROM messages WHERE sender_id=? AND client_id=?').get(req.user.sub,clientId);if(existing)return res.json({message:existing,idempotent:true});linkContacts(req.user.sub,u.id);const z=db.prepare(\"INSERT INTO messages(sender_id,receiver_id,body,status,message_type,mime_type,audio_data,client_id) VALUES(?,?,?,'sent','image',?,?,?)\").run(req.user.sub,u.id,'',mime,image,clientId);")
+          if s==original:
+            raise SystemExit('PATCH_DID_NOT_CHANGE')
+          required=["ensureColumn('messages','client_id','TEXT')","idx_messages_sender_client","function messageClientId(req)","client_id) VALUES"]
+          for x in required:
+            if x not in s: raise SystemExit('MISSING_PATCH_MARKER:'+x)
+          p.write_text(s)
+      - name: Commit migration
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/server.js
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix: make message delivery idempotent and rate limited — message reliability migration applied'
+          git push
