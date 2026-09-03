@@ -40,11 +40,11 @@ jobs:
           test -f app/build.gradle
           test -f app/src/main/AndroidManifest.xml
           test -f backend/server.js
-          test -f backend/server-v7.js
+          test -f backend/server-v8.js
           grep -q "com.android.application.*8.7.3" build.gradle
           grep -q "compileSdk 35" app/build.gradle
           node --check backend/server.js
-          node --check backend/server-v7.js
+          node --check backend/server-v8.js
       - name: Backend dependency and smoke checks
         shell: bash
         working-directory: backend
@@ -52,15 +52,15 @@ jobs:
           set -euo pipefail
           npm install --no-audit --no-fund
           node --check server.js
-          node --check server-v7.js
-          PORT=3100 WETHAQ_CORE_PORT=39091 node server-v7.js > /tmp/wethaq-server.log 2>&1 &
+          node --check server-v8.js
+          PORT=3100 WETHAQ_CORE_PORT=39091 node server-v8.js > /tmp/wethaq-server.log 2>&1 &
           PID=$!
           trap 'kill $PID 2>/dev/null || true' EXIT
           for i in {1..30}; do
             if curl -fsS http://127.0.0.1:3100/health >/tmp/wethaq-health.json; then break; fi
             sleep 1
           done
-          grep -q '"version":"7.0.0"' /tmp/wethaq-health.json
+          grep -q '"version":"8.0.0"' /tmp/wethaq-health.json
           PORT=3100 node smoke-test.mjs
           PORT=3100 node rbac-smoke.mjs
       - name: Android tests and release build
