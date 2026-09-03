@@ -1,5 +1,8 @@
 name: Apply Conversation V1
 on:
+  push:
+    branches:
+      - development/wethaq-next-engineering-20260903
   workflow_dispatch:
 permissions:
   contents: write
