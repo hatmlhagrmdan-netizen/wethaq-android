@@ -1,0 +1,44 @@
+name: Apply Conversation V1
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Patch conversation status UI and header
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/main/java/com/wethaq/app/ProfessionalConversationActivity.java')
+          s=p.read_text()
+          old='private TextView text(String s,float z,int c){TextView t=new TextView(this);t.setText(s);t.setTextSize(z);t.setTextColor(c);t.setPadding(14,10,14,10);return t;}'
+          new='private TextView text(String s,float z,int c){TextView t=new TextView(this);t.setText(s);t.setTextSize(z);t.setTextColor(c);t.setPadding(14,10,14,10);return t;}private String statusLabel(JSONObject m,boolean mine){String status=m.optString("status","sent");if(mine){if("read".equals(status))return "✓✓ قُرئت";if("delivered".equals(status))return "✓✓ استلمت";return "✓ أرسلت";}return "read".equals(status)?"✓ قُرئت":"✓ استلمت";}'
+          if old not in s: raise SystemExit('text helper anchor missing')
+          s=s.replace(old,new,1)
+          old='targetId=field("معرف وَثاق للطرف الآخر");Button load=button("فتح");'
+          new='targetId=field("معرف وَثاق للطرف الآخر");Button load=button("فتح");TextView targetHint=text("الرسائل مشفّرة أثناء النقل • الحالة تتحدث تلقائياً",11,Color.LTGRAY);targetHint.setGravity(Gravity.CENTER);'
+          if old not in s: raise SystemExit('target anchor missing')
+          s=s.replace(old,new,1)
+          old='root.addView(target);progress=new ProgressBar(this);'
+          new='root.addView(target);root.addView(targetHint,new LinearLayout.LayoutParams(-1,28));progress=new ProgressBar(this);'
+          if old not in s: raise SystemExit('target insert anchor missing')
+          s=s.replace(old,new,1)
+          old='bubble.addView(text((mine?"✓ أرسلت":"✓ استلمت")+"  "+m.optString("created_at",""),11,Color.LTGRAY));'
+          new='bubble.addView(text(statusLabel(m,mine)+"  "+m.optString("created_at",""),11,Color.LTGRAY));'
+          if old not in s: raise SystemExit('status anchor missing')
+          s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+          git diff --check
+          git config user.name 'wethaq-engineering'
+          git config user.email 'wethaq-engineering@users.noreply.github.com'
+          git add app/src/main/java/com/wethaq/app/ProfessionalConversationActivity.java
+          git commit -m 'feat: surface message delivery and read states in conversation UI'
+          git push origin HEAD:development/wethaq-next-engineering-20260903
