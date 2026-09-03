@@ -15,13 +15,27 @@ import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 
-/** Shared Wethaq visual layer: premium RTL styling, avatars, fields and founder-brand motion. */
+/** Shared Wethaq visual layer: premium RTL styling, live dynamic-screen styling, avatars and founder-brand motion. */
 public final class WethaqUi{
  private static final int GOLD=Color.rgb(212,175,55),BRIGHT_GOLD=Color.rgb(255,220,110),DARK=Color.rgb(28,28,32),PRESSED=Color.rgb(55,45,24),FIELD=Color.rgb(18,19,23),FIELD_STROKE=Color.rgb(78,80,88);
  private static final String API="https://wethaq-backend-production.up.railway.app";
  private static final String FOUNDER_NAME="حاتم حسين الحاج رمضان";
  private WethaqUi(){}
- public static void apply(Application app,Activity a){View r=a.findViewById(android.R.id.content);if(r instanceof ViewGroup)styleTree(a,(ViewGroup)r);}
+ public static void apply(Application app,Activity a){
+  View r=a.findViewById(android.R.id.content);
+  if(!(r instanceof ViewGroup))return;
+  ViewGroup root=(ViewGroup)r;
+  styleRoot(root);
+  styleTree(a,root);
+  if(!Boolean.TRUE.equals(root.getTag(R.id.wethaq_ui_root_marker))){
+   root.setTag(R.id.wethaq_ui_root_marker,Boolean.TRUE);
+   root.getViewTreeObserver().addOnGlobalLayoutListener(()->styleTree(a,root));
+  }
+ }
+ private static void styleRoot(ViewGroup root){
+  GradientDrawable bg=new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,new int[]{Color.rgb(9,9,12),Color.rgb(18,17,14),Color.rgb(7,7,9)});
+  root.setBackground(bg);
+ }
  private static void styleTree(Activity a,ViewGroup g){for(int i=0;i<g.getChildCount();i++){View v=g.getChildAt(i);if(v instanceof Button)styleButton((Button)v);else if(v instanceof EditText)styleField((EditText)v);else if(v instanceof TextView)styleText(a,(TextView)v);if(v instanceof ImageView)styleImage((ImageView)v);if(v instanceof ViewGroup)styleTree(a,(ViewGroup)v);}}
  private static void styleButton(Button b){if(Boolean.TRUE.equals(b.getTag()))return;b.setTag(Boolean.TRUE);b.setAllCaps(false);b.setEnabled(true);b.setClickable(true);b.setFocusable(true);b.setTextSize(Math.max(18,b.getTextSize()/b.getResources().getDisplayMetrics().scaledDensity));b.setTypeface(Typeface.DEFAULT,Typeface.BOLD);b.setMinHeight(dp(b,68));b.setMinimumHeight(dp(b,68));b.setMinWidth(0);b.setMinimumWidth(0);b.setPadding(dp(b,14),0,dp(b,14),0);b.setGravity(Gravity.CENTER);StateListDrawable s=new StateListDrawable();s.addState(new int[]{android.R.attr.state_pressed},face(b,PRESSED,2));s.addState(new int[]{-android.R.attr.state_enabled},face(b,Color.rgb(45,45,45),1));s.addState(new int[]{},face(b,DARK,3));b.setBackground(s);b.setElevation(dp(b,7));b.setTranslationZ(dp(b,1));b.setOnTouchListener((v,e)->{if(e.getAction()==MotionEvent.ACTION_DOWN)v.animate().scaleX(.97f).scaleY(.94f).translationZ(0).setDuration(80).start();else if(e.getAction()==MotionEvent.ACTION_UP||e.getAction()==MotionEvent.ACTION_CANCEL)v.animate().scaleX(1f).scaleY(1f).translationZ(dp(v,1)).setDuration(110).start();return false;});}
  private static void styleField(EditText e){if(Boolean.TRUE.equals(e.getTag()))return;e.setTag(Boolean.TRUE);e.setTextColor(Color.WHITE);e.setHintTextColor(Color.rgb(175,176,184));e.setTextSize(Math.max(17,e.getTextSize()/e.getResources().getDisplayMetrics().scaledDensity));e.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);e.setPadding(dp(e,16),0,dp(e,16),0);e.setMinHeight(dp(e,64));e.setBackground(fieldFace(e,FIELD,FIELD_STROKE,2));e.setOnFocusChangeListener((v,focused)->v.setBackground(fieldFace(v,FIELD,focused?GOLD:FIELD_STROKE,focused?3:2)));}
