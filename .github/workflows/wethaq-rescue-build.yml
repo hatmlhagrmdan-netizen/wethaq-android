@@ -1,0 +1,133 @@
+name: Wethaq Stable Rescue Build — Certification 2
+
+on:
+  push:
+    branches:
+      - rescue/wethaq-stable-7146f4e-20260903
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rescue-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact rescue source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Verify source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "SOURCE_SHA=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Node 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package.json
+
+      - name: Static source integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/*.py
+          node --check backend/server.js
+          git diff --check
+          test -f app/src/main/AndroidManifest.xml
+          test -f app/build.gradle
+          test -f backend/server.js
+          grep -q 'android:name=".AdminActivity" android:exported="false"' app/src/main/AndroidManifest.xml
+          grep -q 'android:name=".PublicAdministrationActivity" android:exported="false"' app/src/main/AndroidManifest.xml
+          grep -q 'founderOnly' backend/server.js
+          grep -q 'roleCanBan' backend/server.js
+
+      - name: Backend smoke and acceptance
+        working-directory: backend
+        env:
+          PORT: 3100
+          NODE_ENV: test
+          DB_PATH: ${{ github.workspace }}/backend/wethaq-rescue-smoke.db
+          JWT_SECRET: ci-only-wethaq-rescue-secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          node server.js > ../backend-rescue.log 2>&1 &
+          PID=$!
+          trap 'kill $PID 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 40); do
+            if curl --fail --silent --show-error http://127.0.0.1:3100/health >/dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          if test "$ready" != 1; then cat ../backend-rescue.log; exit 1; fi
+          npm run test:smoke
+          if test -f final-acceptance.mjs; then node final-acceptance.mjs; fi
+
+      - name: Prepare isolated Release signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool -genkeypair -v \
+            -storetype JKS \
+            -keystore "$RUNNER_TEMP/wethaq-rescue-release.jks" \
+            -storepass 'wethaq-ci-store-pass' \
+            -keypass 'wethaq-ci-store-pass' \
+            -alias wethaq-ci \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 3650 \
+            -dname 'CN=Wethaq CI Rescue Release, OU=CI, O=Wethaq, L=NA, ST=NA, C=US'
+
+      - name: Clean tests lint and Release build
+        env:
+          WETHAQ_KEYSTORE_PATH: ${{ runner.temp }}/wethaq-rescue-release.jks
+          WETHAQ_KEYSTORE_PASSWORD: wethaq-ci-store-pass
+          WETHAQ_KEY_ALIAS: wethaq-ci
+          WETHAQ_KEY_PASSWORD: wethaq-ci-store-pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/assets
+          printf '%s' "$(git rev-parse HEAD)" > app/src/main/assets/wethaq_source_sha.txt
+          gradle --no-daemon --stacktrace clean test lintVitalRelease assembleRelease
+
+      - name: Verify APK integrity and source binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          test "$(unzip -p "$APK" assets/wethaq_source_sha.txt)" = "$(git rev-parse HEAD)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          test -x "$AAPT"
+          "$APKSIGNER" verify --verbose "$APK"
+          "$AAPT" dump badging "$APK" | grep -q "package: name='com.wethaq.app'"
+          sha256sum "$APK" | tee rescue-apk-sha256.txt
+          rm -f app/src/main/assets/wethaq_source_sha.txt
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Upload stable rescue APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Wethaq-Stable-Rescue-${{ github.sha }}
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            rescue-apk-sha256.txt
+          if-no-files-found: error
+          retention-days: 30

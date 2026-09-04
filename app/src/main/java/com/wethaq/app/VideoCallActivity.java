@@ -14,6 +14,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -26,6 +27,7 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.*;
 
 public final class VideoCallActivity extends Activity {
     private static final String API="https://wethaq-backend-production.up.railway.app";
@@ -46,8 +48,14 @@ public final class VideoCallActivity extends Activity {
     private boolean previousSpeaker;
     private String target,token,myId,incomingOffer;
     private boolean audioOnly,cleaned,offerSent,remoteDescriptionSet;
+    private boolean muted=false,speakerOn=true,cameraOn=true;
     private Runnable poll;
+    /* Keep long-poll reads separate from signaling writes. A slow read must never queue ICE/SDP writes behind it. */
+    private final ExecutorService pollIo=Executors.newSingleThreadExecutor();
+    private final ExecutorService signalIo=Executors.newSingleThreadExecutor();
+    private volatile boolean pollInFlight;
     private TextView status;
+    private Button speakerButton,muteButton,cameraButton;
 
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
@@ -79,28 +87,56 @@ public final class VideoCallActivity extends Activity {
             TextView call=new TextView(this);call.setText("📞\nمكالمة صوتية\n"+String.valueOf(getIntent().getStringExtra("name")));call.setTextColor(Color.WHITE);call.setTextSize(25);call.setGravity(Gravity.CENTER);root.addView(call,new FrameLayout.LayoutParams(-1,-1));
         }
         status=new TextView(this);status.setText("جاري الاتصال…");status.setTextColor(Color.WHITE);status.setTextSize(18);status.setGravity(Gravity.CENTER);root.addView(status,new FrameLayout.LayoutParams(-1,dp(64),Gravity.TOP));
-        Button end=new Button(this);end.setText("إنهاء المكالمة");end.setTextSize(19);FrameLayout.LayoutParams ep=new FrameLayout.LayoutParams(-1,dp(72),Gravity.BOTTOM);ep.setMargins(dp(16),0,dp(16),dp(24));root.addView(end,ep);end.setOnClickListener(v->endCall());
+
+        LinearLayout controls=new LinearLayout(this);controls.setOrientation(LinearLayout.HORIZONTAL);controls.setGravity(Gravity.CENTER);controls.setPadding(dp(4),0,dp(4),0);
+        FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams(-1,dp(72),Gravity.BOTTOM);cp.setMargins(dp(12),0,dp(12),dp(112));root.addView(controls,cp);
+        speakerButton=controlButton("🔊 السماعة");muteButton=controlButton("🎤 كتم");
+        speakerButton.setContentDescription("تبديل السماعة الخارجية");
+        muteButton.setContentDescription("كتم أو تشغيل الميكروفون");
+        controls.addView(speakerButton,buttonParams());
+        controls.addView(muteButton,buttonParams());
+        speakerButton.setOnClickListener(v->toggleSpeaker());
+        muteButton.setOnClickListener(v->toggleMute());
+        if(!audioOnly){
+            cameraButton=controlButton("📹 الكاميرا");cameraButton.setContentDescription("تشغيل أو إيقاف الكاميرا");controls.addView(cameraButton,buttonParams());cameraButton.setOnClickListener(v->toggleCamera());
+        }
+        Button end=controlButton("☎ إنهاء المكالمة");end.setContentDescription("إنهاء المكالمة");end.setTextSize(18);FrameLayout.LayoutParams ep=new FrameLayout.LayoutParams(-1,dp(64),Gravity.BOTTOM);ep.setMargins(dp(16),0,dp(16),dp(24));root.addView(end,ep);end.setOnClickListener(v->endCall());
         return root;
     }
 
+    private Button controlButton(String text){Button b=new Button(this);b.setText(text);b.setTextSize(14);b.setAllCaps(false);return b;}
+    private LinearLayout.LayoutParams buttonParams(){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(64),1f);p.setMargins(dp(3),0,dp(3),0);return p;}
+
     private int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
+
+    private void toggleSpeaker(){
+        if(audioManager==null)return;
+        speakerOn=!speakerOn;audioManager.setSpeakerphoneOn(speakerOn);speakerButton.setText(speakerOn?"🔊 السماعة: تشغيل":"🔈 السماعة: إيقاف");
+    }
+    private void toggleMute(){
+        muted=!muted;if(localAudioTrack!=null)localAudioTrack.setEnabled(!muted);muteButton.setText(muted?"🎤 مكتوم":"🎤 كتم");
+    }
+    private void toggleCamera(){
+        if(audioOnly||localVideoTrack==null)return;
+        cameraOn=!cameraOn;localVideoTrack.setEnabled(cameraOn);cameraButton.setText(cameraOn?"📹 الكاميرا: تشغيل":"📷 الكاميرا: إيقاف");
+    }
 
     private void startCall(){
         try{
             PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(this).createInitializationOptions());
             if(!audioOnly){egl=EglBase.create();localView.init(egl.getEglBaseContext(),null);remoteView.init(egl.getEglBaseContext(),null);localView.setMirror(true);}
             audioManager=(AudioManager)getSystemService(Context.AUDIO_SERVICE);
-            if(audioManager!=null){previousSpeaker=audioManager.isSpeakerphoneOn();audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);audioManager.setSpeakerphoneOn(true);}
+            if(audioManager!=null){previousSpeaker=audioManager.isSpeakerphoneOn();audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);audioManager.setSpeakerphoneOn(true);speakerOn=true;}
             PeerConnectionFactory.Builder builder=PeerConnectionFactory.builder();
             if(!audioOnly)builder.setVideoEncoderFactory(new DefaultVideoEncoderFactory(egl.getEglBaseContext(),true,true)).setVideoDecoderFactory(new DefaultVideoDecoderFactory(egl.getEglBaseContext()));
             factory=builder.createPeerConnectionFactory();createPeer();startLocal();
             if(incomingOffer!=null&&!incomingOffer.trim().isEmpty()&&!isInitiator())handler.post(()->handle("offer",incomingOffer));
-            poll=new Runnable(){@Override public void run(){pollSignals();if(!cleaned)handler.postDelayed(this,500);}};handler.post(poll);
+            poll=new Runnable(){@Override public void run(){pollSignals();if(!cleaned)handler.postDelayed(this,1000);}};handler.post(poll);
             if(isInitiator()&&(incomingOffer==null||incomingOffer.trim().isEmpty()))sendOffer();
             status.setText(isInitiator()?"جاري الاتصال بالطرف الآخر…":"بانتظار اتصال الطرف الآخر…");
         }catch(Throwable e){fail("تعذر بدء المكالمة: "+(e.getMessage()==null?"خطأ WebRTC":e.getMessage()));}
     }
-    private boolean isInitiator(){return myId.compareTo(target)<0;}
+    private boolean isInitiator(){return incomingOffer==null||incomingOffer.trim().isEmpty();}
     private void createPeer(){
         List<PeerConnection.IceServer> servers=new ArrayList<>();
         servers.add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer());
@@ -133,21 +169,34 @@ public final class VideoCallActivity extends Activity {
         SurfaceTextureHelper helper=SurfaceTextureHelper.create("WethaqCapture",egl.getEglBaseContext());
         capturer.initialize(helper,this,videoSource.getCapturerObserver());
         localVideoTrack=factory.createVideoTrack("wethaq_video",videoSource);localVideoTrack.setEnabled(true);localVideoTrack.addSink(localView);peer.addTrack(localVideoTrack,ids);
-        capturer.startCapture(640,480,24);
+        capturer.startCapture(640,360,20);
     }
     private CameraVideoCapturer createCapturer(){Camera2Enumerator e=new Camera2Enumerator(this);for(String n:e.getDeviceNames())if(e.isFrontFacing(n))return e.createCapturer(n,null);for(String n:e.getDeviceNames())return e.createCapturer(n,null);return null;}
     private void sendOffer(){if(offerSent||peer==null)return;offerSent=true;peer.createOffer(new SdpObserver(){public void onCreateSuccess(SessionDescription d){peer.setLocalDescription(new SimpleSdp(){public void onSetSuccess(){sendSignal("offer",sdpJson(d));}public void onSetFailure(String s){offerSent=false;}},d);}public void onSetSuccess(){}public void onCreateFailure(String s){offerSent=false;}public void onSetFailure(String s){}},new MediaConstraints());}
-    private void pollSignals(){new Thread(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(API+"/api/calls/signals/"+URLEncoder.encode(target,"UTF-8")).openConnection();c.setRequestProperty("Authorization","Bearer "+token);c.setConnectTimeout(5000);c.setReadTimeout(5000);if(c.getResponseCode()!=200){c.disconnect();return;}InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[4096];int n;while((n=in.read(b))!=-1)out.write(b,0,n);in.close();c.disconnect();JSONArray a=new JSONObject(new String(out.toByteArray(),StandardCharsets.UTF_8)).optJSONArray("signals");if(a==null)return;for(int i=0;i<a.length();i++){JSONObject x=a.optJSONObject(i);if(x==null)continue;String id=x.optString("id","");String key=id.isEmpty()?x.optString("created_at","")+x.optString("type","")+x.optString("payload",""):id;if(!seenSignals.add(key))continue;String sender=x.optString("sender_id","");if(sender.equals(myId)||sender.equals(getSharedPreferences("wethaq",MODE_PRIVATE).getString("db_user_id","")))continue;handle(x.optString("type"),x.optString("payload"));}}catch(Exception ignored){}}).start();}
+    private void pollSignals(){if(cleaned||pollInFlight)return;pollInFlight=true;pollIo.execute(()->{HttpURLConnection c=null;try{c=(HttpURLConnection)new URL(API+"/api/calls/signals/"+URLEncoder.encode(target,"UTF-8")).openConnection();c.setRequestProperty("Authorization","Bearer "+token);c.setConnectTimeout(3500);c.setReadTimeout(5000);if(c.getResponseCode()!=200)return;InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[4096];int n;while((n=in.read(b))!=-1)out.write(b,0,n);in.close();JSONArray a=new JSONObject(new String(out.toByteArray(),StandardCharsets.UTF_8)).optJSONArray("signals");if(a==null)return;for(int i=0;i<a.length();i++){JSONObject x=a.optJSONObject(i);if(x==null)continue;String id=x.optString("id","");String key=id.isEmpty()?x.optString("created_at","")+x.optString("type","")+x.optString("payload",""):id;if(!seenSignals.add(key))continue;String sender=x.optString("sender_id","");if(sender.equals(myId)||sender.equals(getSharedPreferences("wethaq",MODE_PRIVATE).getString("db_user_id","")))continue;handle(x.optString("type"),x.optString("payload"));}}catch(Exception ignored){}finally{if(c!=null)c.disconnect();pollInFlight=false;}});}
     private void handle(String type,String payload){runOnUiThread(()->{try{JSONObject o=new JSONObject(payload);if("offer".equals(type)&&!isInitiator()&&peer!=null&&!remoteDescriptionSet){SessionDescription d=new SessionDescription(SessionDescription.Type.OFFER,o.getString("sdp"));peer.setRemoteDescription(new SimpleSdp(){public void onSetSuccess(){remoteDescriptionSet=true;flushIce();createAnswer();status.setText("تم استلام المكالمة…");}},d);}else if("answer".equals(type)&&isInitiator()&&peer!=null&&!remoteDescriptionSet){SessionDescription d=new SessionDescription(SessionDescription.Type.ANSWER,o.getString("sdp"));peer.setRemoteDescription(new SimpleSdp(){public void onSetSuccess(){remoteDescriptionSet=true;flushIce();}},d);}else if("ice".equals(type)&&peer!=null){IceCandidate c=new IceCandidate(o.getString("sdpMid"),o.getInt("sdpMLineIndex"),o.getString("candidate"));if(remoteDescriptionSet)peer.addIceCandidate(c);else pendingCandidates.add(c);}else if("end".equals(type))endCall();}catch(Exception ignored){}});}
     private void createAnswer(){peer.createAnswer(new SdpObserver(){public void onCreateSuccess(SessionDescription a){peer.setLocalDescription(new SimpleSdp(){public void onSetSuccess(){sendSignal("answer",sdpJson(a));}},a);}public void onSetSuccess(){}public void onCreateFailure(String s){}public void onSetFailure(String s){}},new MediaConstraints());}
     private void flushIce(){if(peer==null)return;for(IceCandidate c:pendingCandidates)peer.addIceCandidate(c);pendingCandidates.clear();}
     private String sdpJson(SessionDescription d){try{return new JSONObject().put("sdp",d.description).toString();}catch(Exception e){return "{}";}}
     private String candidateJson(IceCandidate c){try{return new JSONObject().put("candidate",c.sdp).put("sdpMid",c.sdpMid).put("sdpMLineIndex",c.sdpMLineIndex).toString();}catch(Exception e){return "{}";}}
-    private void sendSignal(String type,String payload){new Thread(()->{try{JSONObject q=new JSONObject().put("to",target).put("type",type).put("payload",payload);HttpURLConnection c=(HttpURLConnection)new URL(API+"/api/calls/signal").openConnection();c.setRequestMethod("POST");c.setDoOutput(true);c.setConnectTimeout(5000);c.setReadTimeout(5000);c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","application/json");try(OutputStream o=c.getOutputStream()){o.write(q.toString().getBytes(StandardCharsets.UTF_8));}c.getResponseCode();c.disconnect();}catch(Exception ignored){}}).start();}
+    private void sendSignal(String type,String payload){if(cleaned&&!("end".equals(type)))return;signalIo.execute(()->{try{JSONObject q=new JSONObject().put("to",target).put("type",type).put("payload",payload);HttpURLConnection c=(HttpURLConnection)new URL(API+"/api/calls/signal").openConnection();c.setRequestMethod("POST");c.setDoOutput(true);c.setConnectTimeout(5000);c.setReadTimeout(5000);c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","application/json");try(OutputStream o=c.getOutputStream()){o.write(q.toString().getBytes(StandardCharsets.UTF_8));}c.getResponseCode();c.disconnect();}catch(Exception ignored){}});}
+    private void sendEndSignal(){
+        if(target==null||token.isEmpty())return;
+        HttpURLConnection c=null;
+        try{
+            JSONObject q=new JSONObject().put("to",target).put("type","end").put("payload","{}");
+            c=(HttpURLConnection)new URL(API+"/api/calls/signal").openConnection();
+            c.setRequestMethod("POST");c.setDoOutput(true);c.setConnectTimeout(2500);c.setReadTimeout(2500);
+            c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","application/json");
+            try(OutputStream o=c.getOutputStream()){o.write(q.toString().getBytes(StandardCharsets.UTF_8));}
+            c.getResponseCode();
+        }catch(Exception ignored){}
+        finally{if(c!=null)c.disconnect();}
+    }
     private void fail(String text){if(status!=null)status.setText(text);else toast(text);handler.postDelayed(this::endCall,1800);}
-    private void endCall(){if(cleaned)return;cleaned=true;if(poll!=null)handler.removeCallbacks(poll);if(target!=null&&!token.isEmpty())sendSignal("end","{}");try{if(capturer!=null)capturer.stopCapture();}catch(Exception ignored){}try{if(peer!=null)peer.close();}catch(Exception ignored){}try{if(factory!=null)factory.dispose();}catch(Exception ignored){}try{if(videoSource!=null)videoSource.dispose();}catch(Exception ignored){}try{if(audioSource!=null)audioSource.dispose();}catch(Exception ignored){}try{if(localView!=null)localView.release();if(remoteView!=null)remoteView.release();if(egl!=null)egl.release();}catch(Exception ignored){}if(audioManager!=null){audioManager.setSpeakerphoneOn(previousSpeaker);audioManager.setMode(AudioManager.MODE_NORMAL);}finish();}
+    private void endCall(){if(cleaned)return;cleaned=true;if(poll!=null)handler.removeCallbacks(poll);sendEndSignal();try{if(capturer!=null)capturer.stopCapture();}catch(Exception ignored){}try{if(peer!=null)peer.close();}catch(Exception ignored){}try{if(factory!=null)factory.dispose();}catch(Exception ignored){}try{if(videoSource!=null)videoSource.dispose();}catch(Exception ignored){}try{if(audioSource!=null)audioSource.dispose();}catch(Exception ignored){}try{if(localView!=null)localView.release();if(remoteView!=null)remoteView.release();if(egl!=null)egl.release();}catch(Exception ignored){}pollIo.shutdownNow();signalIo.shutdown();if(audioManager!=null){audioManager.setSpeakerphoneOn(previousSpeaker);audioManager.setMode(AudioManager.MODE_NORMAL);}finish();}
     private void toast(String s){android.widget.Toast.makeText(this,s,android.widget.Toast.LENGTH_LONG).show();}
     @Override public void onRequestPermissionsResult(int r,String[] p,int[] g){super.onRequestPermissionsResult(r,p,g);if(r==PERM_CALL){boolean ok=audioOnly?(g.length>0&&g[0]==PackageManager.PERMISSION_GRANTED): (g.length>=2&&g[0]==PackageManager.PERMISSION_GRANTED&&g[1]==PackageManager.PERMISSION_GRANTED);if(ok)startCall();else{toast(audioOnly?"يجب السماح بالميكروفون للمكالمة":"يجب السماح بالميكروفون والكاميرا للمكالمة");finish();}}}
-    @Override protected void onDestroy(){if(!cleaned&&poll!=null)handler.removeCallbacks(poll);super.onDestroy();}
-    private abstract static class SimpleSdp implements SdpObserver{public void onCreateSuccess(SessionDescription d){}public void onSetSuccess(){}public void onCreateFailure(String s){}public void onSetFailure(String s){}}
+    @Override protected void onDestroy(){if(!cleaned)endCall();else if(poll!=null)handler.removeCallbacks(poll);super.onDestroy();}
+    private abstract static class SimpleSdp implements SdpObserver{public void onCreateSuccess(SessionDescription d){}public void onSetSuccess(){}public void onCreateFailure(String s){}public void onSetFailure(String s){} }
 }

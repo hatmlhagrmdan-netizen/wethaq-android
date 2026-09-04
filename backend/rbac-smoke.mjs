@@ -1,0 +1,17 @@
+const base=`http://127.0.0.1:${process.env.PORT||3100}`;
+const assert=(ok,msg)=>{if(!ok)throw new Error(msg)};
+const req=async(path,opt={})=>{const r=await fetch(base+path,{...opt,headers:{'content-type':'application/json',...(opt.headers||{})}});const text=await r.text();let body={};try{body=JSON.parse(text)}catch{}return{r,body,text}};
+const s=Date.now();
+const identity=async(name,year)=>{const x=await req('/api/identity',{method:'POST',body:JSON.stringify({name,birthYear:year,deviceKey:`device-${name}-${s}`})});assert(x.r.status===201&&x.body.token&&x.body.user?.wethaq_id,`identity failed: ${x.r.status} ${x.text}`);return x.body};
+const founder=await identity('حاتم حسين الحاج رمضان',1995);const executive=await identity(`مدير تنفيذي اختبار ${s}`,1990);const member=await identity(`عضو ادارة اختبار ${s}`,1991);const premium=await identity(`عضو مميز اختبار ${s}`,1992);const other=await identity(`مستخدم اختبار ${s}`,1993);
+let r=await req('/api/admin/assign',{method:'POST',headers:{authorization:`Bearer ${founder.token}`},body:JSON.stringify({wethaqId:executive.user.wethaq_id,role:'executive'})});assert(r.r.status===201&&r.body.role==='executive','founder could not appoint executive');
+r=await req('/api/admin/verify-code',{method:'POST',headers:{authorization:`Bearer ${executive.token}`},body:JSON.stringify({code:r.body.admin_code})});assert(r.r.ok&&r.body.role==='executive','executive admin code failed');
+r=await req('/api/admin/assign',{method:'POST',headers:{authorization:`Bearer ${executive.token}`},body:JSON.stringify({wethaqId:member.user.wethaq_id,role:'admin_member'})});assert(r.r.status===201&&r.body.role==='admin_member','executive could not appoint member');
+r=await req('/api/admin/assign',{method:'POST',headers:{authorization:`Bearer ${executive.token}`},body:JSON.stringify({wethaqId:premium.user.wethaq_id,role:'premium'})});assert(r.r.status===201&&r.body.role==='premium','executive could not appoint premium');
+r=await req('/api/admin/structure',{headers:{authorization:`Bearer ${executive.token}`}});assert(r.r.ok&&r.body.executive?.role==='executive','public structure missing executive');
+r=await req('/api/admin/rbac/ban',{method:'POST',headers:{authorization:`Bearer ${executive.token}`},body:JSON.stringify({wethaqId:other.user.wethaq_id,minutes:10,reason:'smoke'})});assert(r.r.ok&&r.body.ban_type==='temporary','executive temporary ban failed');
+r=await req('/api/admin/rbac/ban',{method:'POST',headers:{authorization:`Bearer ${executive.token}`},body:JSON.stringify({wethaqId:other.user.wethaq_id,minutes:0,reason:'smoke'})});assert(r.r.ok&&r.body.ban_type==='permanent','executive permanent ban failed');
+r=await req('/api/admin/unban',{method:'POST',headers:{authorization:`Bearer ${executive.token}`},body:JSON.stringify({wethaqId:other.user.wethaq_id})});assert(r.r.ok,'executive unban failed');
+r=await req('/api/admin/rbac/ban',{method:'POST',headers:{authorization:`Bearer ${executive.token}`},body:JSON.stringify({wethaqId:founder.user.wethaq_id,minutes:10,reason:'protected founder test'})});assert(r.r.status===403,'executive illegally targeted founder');
+r=await req('/api/admin/rbac/ban',{method:'POST',headers:{authorization:`Bearer ${member.token}`},body:JSON.stringify({wethaqId:premium.user.wethaq_id,minutes:5,reason:'member temporary test'})});assert(r.r.ok&&r.body.ban_type==='temporary','member temporary ban failed');
+console.log('WETHAQ_RBAC_SMOKE_TEST_OK');

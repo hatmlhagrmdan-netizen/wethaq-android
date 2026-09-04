@@ -15,6 +15,7 @@
     <application android:name=".WethaqApp" android:allowBackup="false" android:label="وَثاق — تواصل آمن" android:icon="@drawable/ic_wethaq" android:roundIcon="@drawable/ic_wethaq" android:supportsRtl="true" android:theme="@style/WethaqTheme">
         <activity android:name=".VideoCallActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".AdminActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".PublicAdministrationActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".PremiumActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".ProfessionalConversationActivity" android:exported="false" android:screenOrientation="portrait" />
         <service android:name=".WethaqMessageService" android:exported="false" android:foregroundServiceType="dataSync" />
