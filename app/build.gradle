@@ -21,7 +21,13 @@ android {
                 storeFile file(ks)
                 storePassword System.getenv('WETHAQ_KEYSTORE_PASSWORD')
                 keyAlias System.getenv('WETHAQ_KEY_ALIAS')
-                keyPassword System.getenv('WETHAQ_KEY_PASSWORD')
+                // Prefer explicit key password, but fall back to the keystore password if it's absent or empty.
+                def explicitKeyPassword = System.getenv('WETHAQ_KEY_PASSWORD')
+                if (explicitKeyPassword == null || explicitKeyPassword.trim().length() == 0) {
+                    keyPassword System.getenv('WETHAQ_KEYSTORE_PASSWORD')
+                } else {
+                    keyPassword explicitKeyPassword
+                }
             }
         }
     }
