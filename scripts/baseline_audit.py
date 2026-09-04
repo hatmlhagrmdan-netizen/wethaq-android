@@ -43,16 +43,18 @@ if BUILD.is_file():
         errors.append('VERSION_NAME_MISSING')
 
 if MANIFEST.is_file():
-    ns = {'a': 'http://schemas.android.com/apk/res/android'}
+    android_ns = 'http://schemas.android.com/apk/res/android'
     try:
         root = ET.parse(MANIFEST).getroot()
-        app = root.find('a:application', ns)
+        # <manifest> and <application>/<activity> elements are unqualified XML
+        # elements; only their Android attributes are namespaced.
+        app = root.find('application')
         if app is None:
             errors.append('APPLICATION_MISSING')
         else:
             for tag in ('activity', 'service', 'receiver', 'provider'):
-                for node in app.findall(f'a:{tag}', ns):
-                    name = node.get('{http://schemas.android.com/apk/res/android}name')
+                for node in app.findall(tag):
+                    name = node.get(f'{{{android_ns}}}name')
                     if not name:
                         continue
                     if name.startswith('.'):
