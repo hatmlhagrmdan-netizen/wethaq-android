@@ -15,6 +15,10 @@ s=p.read_text(encoding='utf-8')
 anchor="function receiver(to,res){const u=db.prepare('SELECT id,wethaq_id,name FROM users WHERE wethaq_id=?').get(to);if(!u){res.status(404).json({error:'user_not_found'});return null}return u}"
 if 'function linkContacts(a,b)' not in s:
     s=s.replace(anchor,anchor+"function linkContacts(a,b){db.prepare('INSERT OR IGNORE INTO contacts(user_id,contact_id) VALUES(?,?)').run(a,b);db.prepare('INSERT OR IGNORE INTO contacts(user_id,contact_id) VALUES(?,?)').run(b,a)}")
+# Restore the authenticated contact creation endpoint used by the application and smoke test.
+if "app.post('/api/contacts'" not in s:
+    contact_route="app.post('/api/contacts',auth,(req,res)=>{const wethaqId=String(req.body?.wethaqId||'').trim();if(!wethaqId)return res.status(400).json({error:'invalid_contact'});const u=db.prepare('SELECT * FROM users WHERE wethaq_id=?').get(wethaqId);if(!u)return res.status(404).json({error:'user_not_found'});if(Number(u.id)===Number(req.user.sub))return res.status(400).json({error:'self_contact'});linkContacts(Number(req.user.sub),u.id);res.status(201).json({contact:publicUser(u,true)})});"
+    s=s.replace(anchor,contact_route+anchor,1)
 s=s.replace(".run(req.user.sub,u.id,body,isOnline(u.id)?'delivered':'sent');res.status(201)",".run(req.user.sub,u.id,body,isOnline(u.id)?'delivered':'sent');linkContacts(Number(req.user.sub),u.id);res.status(201)")
 s=s.replace(".run(req.user.sub,u.id,'',mime,audio);res.status(201)",".run(req.user.sub,u.id,'',mime,audio);linkContacts(Number(req.user.sub),u.id);res.status(201)")
 s=s.replace(".run(req.user.sub,u.id,'',mime,image);res.status(201)",".run(req.user.sub,u.id,'',mime,image);linkContacts(Number(req.user.sub),u.id);res.status(201)")
