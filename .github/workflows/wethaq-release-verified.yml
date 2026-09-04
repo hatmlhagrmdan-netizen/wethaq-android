@@ -76,10 +76,9 @@ jobs:
           keytool -list -v -keystore "$WETHAQ_KEYSTORE_PATH" -storepass "$WETHAQ_KEYSTORE_PASSWORD" -alias "$WETHAQ_KEY_ALIAS" >/tmp/wethaq-keytool.txt
           grep -q 'Entry type: PrivateKeyEntry' /tmp/wethaq-keytool.txt
           grep -q 'SHA256: 64:4B:F1:1F:70:99:10:F4:FB:53:16:FB:76:E7:AD:FB:30:4C:03:71:62:69:F0:27:A7:BF:37:F7:45:DF:FE:D3' /tmp/wethaq-keytool.txt
-          rm -f "$RUNNER_TEMP/key-check.p12"
-          keytool -importkeystore -noprompt -srckeystore "$WETHAQ_KEYSTORE_PATH" -srcstoretype JKS -srcstorepass "$WETHAQ_KEYSTORE_PASSWORD" -srcalias "$WETHAQ_KEY_ALIAS" -srckeypass "$WETHAQ_KEY_PASSWORD" -destkeystore "$RUNNER_TEMP/key-check.p12" -deststoretype PKCS12 -deststorepass "$WETHAQ_KEYSTORE_PASSWORD" -destkeypass "$WETHAQ_KEY_PASSWORD" >/tmp/wethaq-key-import.log
-          test -s "$RUNNER_TEMP/key-check.p12"
-          rm -f "$RUNNER_TEMP/key-check.p12" /tmp/wethaq-keytool.txt /tmp/wethaq-key-import.log
+          keytool -certreq -keystore "$WETHAQ_KEYSTORE_PATH" -storepass "$WETHAQ_KEYSTORE_PASSWORD" -alias "$WETHAQ_KEY_ALIAS" -keypass "$WETHAQ_KEY_PASSWORD" -file "$RUNNER_TEMP/wethaq-release.csr" >/tmp/wethaq-key-certreq.log 2>&1
+          test -s "$RUNNER_TEMP/wethaq-release.csr"
+          rm -f "$RUNNER_TEMP/wethaq-release.csr" /tmp/wethaq-keytool.txt /tmp/wethaq-key-certreq.log
       - name: Backend dependency and smoke checks
         shell: bash
         working-directory: backend
