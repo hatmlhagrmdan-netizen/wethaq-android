@@ -115,7 +115,11 @@ jobs:
           APK='app/build/outputs/apk/release/app-release.apk'
           test -s "$APK"
           unzip -t "$APK" >/dev/null
-          apksigner verify --verbose --print-certs "$APK"
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$SDK_ROOT"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
           echo 'WETHAQ_APK_VERIFY_OK'
 
       - name: Upload verified release candidate
