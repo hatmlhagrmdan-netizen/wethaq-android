@@ -28,19 +28,24 @@ for rel in [
 
 if BUILD.is_file():
     build = BUILD.read_text(encoding='utf-8')
-    if 'signingConfig signingConfigs.debug' in build:
-        errors.append('RELEASE_USES_DEBUG_SIGNING')
-    if "signingConfig signingConfigs.release" not in build:
+    release_block = build.split('buildTypes', 1)[1] if 'buildTypes' in build else ''
+    if 'release {' not in release_block:
+        errors.append('RELEASE_BUILD_TYPE_MISSING')
+    if 'signingConfig signingConfigs.release' not in build:
         errors.append('RELEASE_SIGNING_CONFIG_MISSING')
-    m = re.search(r'versionName\s+[\'\"]([^\'\"]+)[\'\"]', build)
-    if not m:
+    if 'release {' in release_block:
+        release_section = release_block.split('ci {', 1)[0]
+        if 'signingConfig signingConfigs.debug' in release_section:
+            errors.append('RELEASE_USES_DEBUG_SIGNING')
+    if 'buildTypes' in build and 'ci {' not in build:
+        errors.append('CI_BUILD_TYPE_MISSING')
+    if not re.search(r'versionName\s+[\'\"]([^\'\"]+)[\'\"]', build):
         errors.append('VERSION_NAME_MISSING')
 
 if MANIFEST.is_file():
     ns = {'a': 'http://schemas.android.com/apk/res/android'}
     try:
         root = ET.parse(MANIFEST).getroot()
-        components = []
         app = root.find('a:application', ns)
         if app is None:
             errors.append('APPLICATION_MISSING')
@@ -48,21 +53,18 @@ if MANIFEST.is_file():
             for tag in ('activity', 'service', 'receiver', 'provider'):
                 for node in app.findall(f'a:{tag}', ns):
                     name = node.get('{http://schemas.android.com/apk/res/android}name')
-                    if name:
-                        components.append((tag, name))
-        for tag, name in components:
-            simple = name.rsplit('.', 1)[-1] if '.' in name else name.lstrip('.')
-            if name.startswith('.'):
-                rel = name[1:]
-                path = JAVA / (rel + '.java')
-            elif name.startswith('com.wethaq.app.'):
-                path = JAVA / (name.removeprefix('com.wethaq.app.') + '.java')
-            else:
-                path = None
-            if path is not None and not path.is_file():
-                errors.append(f'MANIFEST_COMPONENT_MISSING:{tag}:{name}')
-except Exception as exc:
-    errors.append(f'MANIFEST_PARSE_ERROR:{exc}')
+                    if not name:
+                        continue
+                    if name.startswith('.'):
+                        path = JAVA / (name[1:] + '.java')
+                    elif name.startswith('com.wethaq.app.'):
+                        path = JAVA / (name.removeprefix('com.wethaq.app.') + '.java')
+                    else:
+                        path = None
+                    if path is not None and not path.is_file():
+                        errors.append(f'MANIFEST_COMPONENT_MISSING:{tag}:{name}')
+    except Exception as exc:
+        errors.append(f'MANIFEST_PARSE_ERROR:{exc}')
 
 main = JAVA / 'MainActivity.java'
 if main.is_file():
@@ -76,7 +78,7 @@ for secret_path in [BACKEND / '.env', ROOT / 'local.properties']:
     if secret_path.exists():
         errors.append(f'LOCAL_SECRET_FILE_TRACKED_OR_PRESENT:{secret_path.relative_to(ROOT)}')
 
-# Flag likely literal secrets in source while allowing environment-variable reads.
+# Flag likely literal secrets in application/backend source while allowing env reads.
 source_files = list((ROOT / 'app').rglob('*.java')) + list((ROOT / 'backend').glob('*.js')) + list((ROOT / 'backend').glob('*.mjs'))
 secret_re = re.compile(r'(?i)\b(password|secret|api[_-]?key|private[_-]?key)\b\s*[:=]\s*[\'\"][^\'\"]{16,}[\'\"]')
 for path in source_files:
