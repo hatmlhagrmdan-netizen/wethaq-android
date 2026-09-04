@@ -1,4 +1,4 @@
-name: Wethaq Final V2
+name: Wethaq Production Release
 
 on:
   workflow_dispatch:
@@ -6,36 +6,141 @@ on:
 permissions:
   contents: read
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+env:
+  WETHAQ_KEYSTORE_PATH: ${{ runner.temp }}/wethaq-production.jks
 
-      - name: Apply final fixes
-        run: python3 scripts/finalize_v2.py
+jobs:
+  build-production:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate production signing inputs
+        shell: bash
+        env:
+          WETHAQ_PRODUCTION_KEYSTORE_B64: ${{ secrets.WETHAQ_PRODUCTION_KEYSTORE_B64 }}
+          WETHAQ_KEYSTORE_PASSWORD: ${{ secrets.WETHAQ_KEYSTORE_PASSWORD }}
+          WETHAQ_KEY_ALIAS: ${{ secrets.WETHAQ_KEY_ALIAS }}
+          WETHAQ_KEY_PASSWORD: ${{ secrets.WETHAQ_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$WETHAQ_PRODUCTION_KEYSTORE_B64" || { echo 'Missing WETHAQ_PRODUCTION_KEYSTORE_B64 in production environment'; exit 1; }
+          test -n "$WETHAQ_KEYSTORE_PASSWORD" || { echo 'Missing WETHAQ_KEYSTORE_PASSWORD in production environment'; exit 1; }
+          test -n "$WETHAQ_KEY_ALIAS" || { echo 'Missing WETHAQ_KEY_ALIAS in production environment'; exit 1; }
+          test -n "$WETHAQ_KEY_PASSWORD" || { echo 'Missing WETHAQ_KEY_PASSWORD in production environment'; exit 1; }
+          printf '%s' "$WETHAQ_PRODUCTION_KEYSTORE_B64" | base64 --decode > "$WETHAQ_KEYSTORE_PATH"
+          test -s "$WETHAQ_KEYSTORE_PATH"
+          keytool -list -keystore "$WETHAQ_KEYSTORE_PATH" -storepass "$WETHAQ_KEYSTORE_PASSWORD" -alias "$WETHAQ_KEY_ALIAS" >/dev/null
+          chmod 600 "$WETHAQ_KEYSTORE_PATH"
+
+      - name: Apply final repairs and source audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/final_repair.py
+          python3 -m py_compile scripts/final_repair.py
+          node --check backend/server.js
+          git diff --check
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: '8.9'
 
-      - name: Build release
-        run: chmod +x gradlew 2>/dev/null || true; ./gradlew clean assembleRelease
-
-      - name: Verify APK
+      - name: Validate production source
+        shell: bash
         run: |
-          test -s app/build/outputs/apk/release/app-release.apk
-          unzip -t app/build/outputs/apk/release/app-release.apk >/dev/null
-          echo WETHAQ_FINAL_V2_APK_OK
+          set -euo pipefail
+          test -f settings.gradle
+          test -f build.gradle
+          test -f app/build.gradle
+          test -f app/src/main/AndroidManifest.xml
+          test -f app/src/main/java/com/wethaq/app/MainActivity.java
+          test -f app/src/main/java/com/wethaq/app/VideoCallActivity.java
+          test -f app/src/main/java/com/wethaq/app/WethaqMessageService.java
+          test -f app/src/main/java/com/wethaq/app/WethaqBootReceiver.java
+          ! find app -type f -name '*.kt' | grep -q .
+          if grep -RIn --exclude='*.md' --exclude='.env.example' -E '(password|secret|api[_-]?key|private[_-]?key)[[:space:]]*[:=][[:space:]]*["'"'][^"'"']{12,}["'"']' app backend .github 2>/dev/null; then
+            echo 'Potential hard-coded secret detected'
+            exit 1
+          fi
 
-      - name: Upload APK
+      - name: Backend smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd backend
+          npm install --no-audit --no-fund
+          DB_FILE="$RUNNER_TEMP/wethaq-production-smoke.db"
+          LOG_FILE="$RUNNER_TEMP/wethaq-production-backend.log"
+          PORT=3100 DB_PATH="$DB_FILE" JWT_SECRET='wethaq-ci-test-secret-change-me' OWNER_WETHAQ_ID='Hatem_Hussin_Al_Haj_Ramadan1995' node server.js > "$LOG_FILE" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          ready=0
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3100/health >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" -eq 1 || { cat "$LOG_FILE"; exit 1; }
+          PORT=3100 node smoke-test.mjs
+          kill "$SERVER_PID" 2>/dev/null || true
+          wait "$SERVER_PID" 2>/dev/null || true
+
+      - name: Build production APK
+        shell: bash
+        env:
+          WETHAQ_KEYSTORE_PASSWORD: ${{ secrets.WETHAQ_KEYSTORE_PASSWORD }}
+          WETHAQ_KEY_ALIAS: ${{ secrets.WETHAQ_KEY_ALIAS }}
+          WETHAQ_KEY_PASSWORD: ${{ secrets.WETHAQ_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          gradle :app:clean :app:assembleRelease --no-daemon --stacktrace --console=plain
+
+      - name: Verify production APK and certificate
+        shell: bash
+        env:
+          WETHAQ_KEYSTORE_PASSWORD: ${{ secrets.WETHAQ_KEYSTORE_PASSWORD }}
+          WETHAQ_KEY_ALIAS: ${{ secrets.WETHAQ_KEY_ALIAS }}
+          WETHAQ_KEY_PASSWORD: ${{ secrets.WETHAQ_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/apksigner.txt"
+          grep -q 'Number of signers: 1' "$RUNNER_TEMP/apksigner.txt"
+          keytool -list -v -keystore "$WETHAQ_KEYSTORE_PATH" -storepass "$WETHAQ_KEYSTORE_PASSWORD" -alias "$WETHAQ_KEY_ALIAS" > "$RUNNER_TEMP/production-cert.txt"
+          CERT_SHA256=$(awk -F': ' '/Certificate fingerprints/{flag=1;next} flag && /SHA256:/{gsub(" ","",$2); print $2; exit}' "$RUNNER_TEMP/production-cert.txt")
+          test -n "$CERT_SHA256"
+          echo "Production signing certificate SHA-256: $CERT_SHA256"
+          sha256sum "$APK" | tee app/build/outputs/apk/release/SHA256SUMS.txt
+          echo "WETHAQ_PRODUCTION_APK_OK"
+
+      - name: Publish production artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Wethaq-Final-V2-APK
-          path: app/build/outputs/apk/release/app-release.apk
+          name: Wethaq-production-release
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/apk/release/SHA256SUMS.txt
           if-no-files-found: error
+          retention-days: 30
+
+      - name: Secure cleanup
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$WETHAQ_KEYSTORE_PATH" "$RUNNER_TEMP/apksigner.txt" "$RUNNER_TEMP/production-cert.txt"
