@@ -6,6 +6,7 @@ on:
     paths:
       - 'app/**'
       - 'backend/**'
+      - 'scripts/**'
       - 'settings.gradle'
       - 'build.gradle'
       - 'gradle.properties'
@@ -15,21 +16,38 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: wethaq-final-release-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Apply final trusted repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f scripts/final_repair.py
+          python3 scripts/final_repair.py
+          python3 -m py_compile scripts/final_repair.py
+          node --check backend/server.js
+          git diff --check
+
       - name: Setup JDK 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
+
       - name: Setup Gradle 8.9
         uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.9'
+
       - name: Validate final source
         shell: bash
         run: |
@@ -56,6 +74,30 @@ jobs:
             exit 1
           fi
           git diff --check
+
+      - name: Prepare ephemeral CI release signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE="$RUNNER_TEMP/wethaq-ci-release.jks"
+          ALIAS="wethaq-ci"
+          PASS="$(openssl rand -hex 32)"
+          keytool -genkeypair -noprompt \
+            -keystore "$KEYSTORE" \
+            -storepass "$PASS" \
+            -keypass "$PASS" \
+            -alias "$ALIAS" \
+            -keyalg RSA -keysize 2048 -validity 3650 \
+            -dname "CN=Wethaq CI Validation, OU=Wethaq, O=Wethaq, L=CI, ST=CI, C=SY"
+          test -s "$KEYSTORE"
+          keytool -list -keystore "$KEYSTORE" -storepass "$PASS" -alias "$ALIAS" >/dev/null
+          {
+            echo "WETHAQ_KEYSTORE_PATH=$KEYSTORE"
+            echo "WETHAQ_KEYSTORE_PASSWORD=$PASS"
+            echo "WETHAQ_KEY_ALIAS=$ALIAS"
+            echo "WETHAQ_KEY_PASSWORD=$PASS"
+          } >> "$GITHUB_ENV"
+
       - name: Backend smoke test
         shell: bash
         run: |
@@ -63,17 +105,31 @@ jobs:
           cd backend
           npm install --no-audit --no-fund
           DB_FILE="$RUNNER_TEMP/wethaq-smoke.db"
-          PORT=3100 DB_PATH="$DB_FILE" JWT_SECRET='wethaq-ci-test-secret-change-me' OWNER_WETHAQ_ID='Hatem_Hussin_Al_Haj_Ramadan1995' node server.js > "$RUNNER_TEMP/wethaq-backend.log" 2>&1 &
+          LOG_FILE="$RUNNER_TEMP/wethaq-backend.log"
+          PORT=3100 DB_PATH="$DB_FILE" JWT_SECRET='wethaq-ci-test-secret-change-me' OWNER_WETHAQ_ID='Hatem_Hussin_Al_Haj_Ramadan1995' node server.js > "$LOG_FILE" 2>&1 &
           SERVER_PID=$!
           trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          ready=0
           for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:3100/health >/dev/null; then break; fi
+            if curl -fsS http://127.0.0.1:3100/health >/dev/null; then
+              ready=1
+              break
+            fi
             sleep 1
           done
-          curl -fsS http://127.0.0.1:3100/health >/dev/null
-          PORT=3100 node smoke-test.mjs
+          if [ "$ready" -ne 1 ]; then
+            echo 'Backend failed health check.'
+            cat "$LOG_FILE"
+            exit 1
+          fi
+          if ! PORT=3100 node smoke-test.mjs; then
+            echo 'Backend smoke test failed; backend log follows:'
+            cat "$LOG_FILE"
+            exit 1
+          fi
           kill "$SERVER_PID" 2>/dev/null || true
           wait "$SERVER_PID" 2>/dev/null || true
+
       - name: Backend smoke configuration check
         shell: bash
         run: |
@@ -82,9 +138,11 @@ jobs:
           test -f backend/server.js
           grep -q 'wss' app/src/main/java/com/wethaq/app/WethaqMessageService.java
           grep -q '/api/calls/signal' app/src/main/java/com/wethaq/app/VideoCallActivity.java
+
       - name: Build release APK
         shell: bash
         run: gradle :app:clean :app:assembleRelease --no-daemon --stacktrace --console=plain
+
       - name: Verify APK
         shell: bash
         run: |
@@ -95,7 +153,9 @@ jobs:
           sha256sum "$APK" | tee app/build/outputs/apk/release/SHA256SUMS.txt
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
           test -x "$APKSIGNER"
-          "$APKSIGNER" verify --verbose "$APK"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          echo "WETHAQ_FINAL_RELEASE_APK_OK"
+
       - name: Publish final APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -104,4 +164,4 @@ jobs:
             app/build/outputs/apk/release/app-release.apk
             app/build/outputs/apk/release/SHA256SUMS.txt
           if-no-files-found: error
-          retention-days: 90
+          retention-days: 30
