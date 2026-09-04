@@ -18,6 +18,7 @@ jobs:
 
       - name: Apply final repairs
         run: |
+          set -euo pipefail
           python3 scripts/final_repair.py
           python3 scripts/media_repair.py
           python3 scripts/ui_repair.py
@@ -29,6 +30,7 @@ jobs:
 
       - name: Normalize generated Java before compile
         run: |
+          set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           p=Path('app/src/main/java/com/wethaq/app/MainActivity.java')
@@ -42,6 +44,7 @@ jobs:
 
       - name: Validate production feature wiring
         run: |
+          set -euo pipefail
           grep -q 'pendingAudioData' app/src/main/java/com/wethaq/app/MainActivity.java
           grep -q 'pendingImageData' app/src/main/java/com/wethaq/app/MainActivity.java
           grep -q 'startAudioCall' app/src/main/java/com/wethaq/app/MainActivity.java
@@ -51,8 +54,32 @@ jobs:
           grep -q 'audioOnly' app/src/main/java/com/wethaq/app/VideoCallActivity.java
           node --check backend/server.js
 
+      - name: Prepare ephemeral CI release signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE="$RUNNER_TEMP/wethaq-ci-release.jks"
+          ALIAS="wethaq-ci"
+          PASS="$(openssl rand -hex 32)"
+          keytool -genkeypair -noprompt \
+            -keystore "$KEYSTORE" \
+            -storepass "$PASS" \
+            -keypass "$PASS" \
+            -alias "$ALIAS" \
+            -keyalg RSA -keysize 2048 -validity 3650 \
+            -dname "CN=Wethaq CI Validation, OU=Wethaq, O=Wethaq, L=CI, ST=CI, C=SY"
+          test -s "$KEYSTORE"
+          keytool -list -keystore "$KEYSTORE" -storepass "$PASS" -alias "$ALIAS" >/dev/null
+          {
+            echo "WETHAQ_KEYSTORE_PATH=$KEYSTORE"
+            echo "WETHAQ_KEYSTORE_PASSWORD=$PASS"
+            echo "WETHAQ_KEY_ALIAS=$ALIAS"
+            echo "WETHAQ_KEY_PASSWORD=$PASS"
+          } >> "$GITHUB_ENV"
+
       - name: Persist repaired Android source
         run: |
+          set -euo pipefail
           git config user.name "Wethaq Build Bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/VideoCallActivity.java
@@ -74,25 +101,35 @@ jobs:
 
       - name: Verify Android project
         run: |
+          set -euo pipefail
           test -f settings.gradle
           test -f build.gradle
           test -d app
           gradle --version
+          test -s "$WETHAQ_KEYSTORE_PATH"
 
       - name: Build release APK
         run: gradle clean assembleRelease --no-daemon --stacktrace
 
       - name: Verify APK
+        shell: bash
         run: |
-          test -s app/build/outputs/apk/release/app-release.apk
-          unzip -t app/build/outputs/apk/release/app-release.apk >/dev/null
-          ls -lh app/build/outputs/apk/release/app-release.apk
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          sha256sum "$APK" | tee app/build/outputs/apk/release/SHA256SUMS.txt
           echo "WETHAQ_FINAL_RELEASE_APK_OK"
 
       - name: Publish APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: Wethaq-release-APK-Final
-          path: app/build/outputs/apk/release/app-release.apk
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/apk/release/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
