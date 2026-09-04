@@ -1,4 +1,4 @@
-name: Wethaq Final V2 Release
+name: Wethaq CI Validation
 on:
   push:
     branches: [main]
@@ -6,13 +6,14 @@ on:
 permissions:
   contents: read
 jobs:
-  release:
+  validation:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-      - name: Apply production repairs
+        uses: actions/checkout@v5
+      - name: Apply source repairs
         run: |
+          set -euo pipefail
           python3 scripts/final_repair.py
           python3 scripts/media_repair.py
           python3 scripts/ui_repair.py
@@ -22,22 +23,18 @@ jobs:
           python3 -m py_compile scripts/*.py
       - name: Normalize generated Java
         run: |
+          set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import re
           p=Path('app/src/main/java/com/wethaq/app/MainActivity.java')
           s=p.read_text(encoding='utf-8')
-          # Repair scripts can rewrite auth() with stale fn/fy names. Normalize
-          # the whole method header/body variables without mutating lambda captures.
           s=s.replace('n.split("\\s+")','n.split(" ")')
           s=s.replace('!y.matches("\\d{4}")','(y.length()!=4)')
           s=s.replace('q.put("name",fn);q.put("birthYear",Integer.parseInt(fy));','q.put("name",n);q.put("birthYear",Integer.parseInt(y));')
           s=s.replace('u.optString("name",fn)).put(YEAR,fy)','u.optString("name",n)).put(YEAR,y)')
           s=s.replace('final String fn=n.trim(),fy=y.trim();','final String name=n.trim(),year=y.trim();')
           s=s.replace('final String fn=n,fy=y;','final String name=n,year=y;')
-          # If a repair script emitted mutable parameter normalization, use final locals.
-          s=s.replace('private void auth(String n,String y,boolean create){n=n.trim();y=y.trim();', 'private void auth(String n,String y,boolean create){final String name=n.trim(),year=y.trim();')
-          # Normalize references only inside auth's declaration/body patterns.
+          s=s.replace('private void auth(String n,String y,boolean create){n=n.trim();y=y.trim();','private void auth(String n,String y,boolean create){final String name=n.trim(),year=y.trim();')
           start=s.find('private void auth(')
           if start < 0: raise SystemExit('AUTH_METHOD_NOT_FOUND')
           end=s.find('\n private void ', start+1)
@@ -53,44 +50,61 @@ jobs:
           auth=auth.replace('.put(YEAR,y)','.put(YEAR,year)')
           s=s[:start]+auth+s[end:]
           p.write_text(s,encoding='utf-8')
-          text=p.read_text(encoding='utf-8')
-          if any(x in text for x in ['q.put("name",fn)','Integer.parseInt(fy)','optString("name",fn)','.put(YEAR,fy)']):
-              raise SystemExit('STALE_AUTH_IDENTIFIERS_REMAIN')
           print('JAVA_NORMALIZED_OK')
           PY
-      - name: Static Java sanity checks
+      - name: Baseline structural audit
         run: |
-          test -f app/src/main/java/com/wethaq/app/MainActivity.java
-          ! grep -nE 'q\.put\("name",fn\)|Integer\.parseInt\(fy\)|optString\("name",fn\)|put\(YEAR,fy\)' app/src/main/java/com/wethaq/app/MainActivity.java
-          python3 - <<'PY'
-          from pathlib import Path
-          s=Path('app/src/main/java/com/wethaq/app/MainActivity.java').read_text()
-          required=['private void auth(','private void home(','private void searchScreen(','private void contactsScreen(','private void conversation(','private void send()','private HttpResult request(']
-          missing=[x for x in required if x not in s]
-          if missing: raise SystemExit('MISSING_METHODS:'+','.join(missing))
-          print('JAVA_SANITY_OK')
-          PY
+          set -euo pipefail
+          python3 scripts/baseline_audit.py
+          git diff --check
+      - name: Backend native smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd backend
+          npm install --no-audit --no-fund
+          node -e "import('better-sqlite3').then(({default: Database})=>{const db=new Database(':memory:');db.prepare('select 1').get();db.close();console.log('BETTER_SQLITE3_NATIVE_OK')}).catch(e=>{console.error(e);process.exit(1)})"
+          DB_FILE="$RUNNER_TEMP/wethaq-smoke.db"
+          PORT=3100 DB_PATH="$DB_FILE" JWT_SECRET='wethaq-ci-test-secret-change-me' OWNER_WETHAQ_ID='Hatem_Hussin_Al_Haj_Ramadan1995' node server.js > "$RUNNER_TEMP/wethaq-backend.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in {1..30}; do
+            curl -fsS http://127.0.0.1:3100/health >/dev/null && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3100/health >/dev/null
+          PORT=3100 node smoke-test.mjs
+          kill "$SERVER_PID" 2>/dev/null || true
+          wait "$SERVER_PID" 2>/dev/null || true
       - name: Java 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
       - name: Gradle 8.9
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.9'
-      - name: Compile and build release
+      - name: Build CI release candidate
+        run: gradle --no-daemon clean assembleCi
+      - name: Verify CI APK
+        shell: bash
         run: |
-          gradle --no-daemon clean assembleRelease
-      - name: Verify APK
-        run: |
-          test -s app/build/outputs/apk/release/app-release.apk
-          unzip -t app/build/outputs/apk/release/app-release.apk >/dev/null
-          echo "WETHAQ_FINAL_APK_OK"
-      - name: Upload APK
+          set -euo pipefail
+          APK="app/build/outputs/apk/ci/app-ci.apk"
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          sha256sum "$APK" | tee app/build/outputs/apk/ci/SHA256SUMS.txt
+          echo "WETHAQ_CI_APK_OK"
+      - name: Upload CI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Wethaq-Final-Production-APK
-          path: app/build/outputs/apk/release/app-release.apk
+          name: Wethaq-CI-Validation-APK
+          path: |
+            app/build/outputs/apk/ci/app-ci.apk
+            app/build/outputs/apk/ci/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
