@@ -19,15 +19,40 @@ android {
             def ks = System.getenv('WETHAQ_KEYSTORE_PATH')
             if (ks != null && new File(ks).exists()) {
                 storeFile file(ks)
-                storePassword System.getenv('WETHAQ_KEYSTORE_PASSWORD')
-                keyAlias System.getenv('WETHAQ_KEY_ALIAS')
-                // Prefer explicit key password, but fall back to the keystore password if it's absent or empty.
+                def keystorePassword = System.getenv('WETHAQ_KEYSTORE_PASSWORD')
                 def explicitKeyPassword = System.getenv('WETHAQ_KEY_PASSWORD')
-                if (explicitKeyPassword == null || explicitKeyPassword.trim().length() == 0) {
-                    keyPassword System.getenv('WETHAQ_KEYSTORE_PASSWORD')
+                def alias = System.getenv('WETHAQ_KEY_ALIAS')
+                storePassword keystorePassword
+                keyAlias alias
+
+                // Resolve key password robustly: prefer explicit key password, but if it fails to unlock the key, fall back to the keystore password.
+                def resolvedKeyPassword = explicitKeyPassword
+                if (resolvedKeyPassword == null || resolvedKeyPassword.trim().length() == 0) {
+                    resolvedKeyPassword = keystorePassword
                 } else {
-                    keyPassword explicitKeyPassword
+                    try {
+                        def ksObj = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType())
+                        def fis = new java.io.FileInputStream(ks)
+                        try {
+                            ksObj.load(fis, (keystorePassword != null) ? keystorePassword.toCharArray() : null)
+                            def key = ksObj.getKey(alias, resolvedKeyPassword.toCharArray())
+                            if (key == null) {
+                                // explicit password didn't work; fall back
+                                resolvedKeyPassword = keystorePassword
+                            }
+                        } catch (Exception e) {
+                            // any exception means explicit password didn't work; fall back
+                            resolvedKeyPassword = keystorePassword
+                        } finally {
+                            fis.close()
+                        }
+                    } catch (Exception e) {
+                        // if keystore can't be loaded for any reason, keep using keystore password as fallback
+                        resolvedKeyPassword = keystorePassword
+                    }
                 }
+
+                keyPassword resolvedKeyPassword
             }
         }
     }
