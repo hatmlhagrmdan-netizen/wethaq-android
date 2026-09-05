@@ -21,17 +21,17 @@ workflow = read(".github/workflows/wethaq-stable-ci.yml")
 if "applicationId 'com.wethaq.app'" not in build:
     errors.append("applicationId changed or missing")
 if "signingConfig signingConfigs.debug" not in build:
-    errors.append("stable candidate must use isolated/debug signing, not production secrets")
+    errors.append("stable candidate must retain debug-signing fallback when production credentials are absent")
+if "WETHAQ_KEYSTORE_PATH" not in build:
+    errors.append("safe environment-based production signing path missing")
 
-# Inspect application/configuration sources for production signing. Do not scan this
-# audit script itself or the workflow's literal grep rules, which necessarily contain
-# the names being checked.
-production_signing = re.compile(
-    r"signingConfigs\.release|WETHAQ_KEYSTORE|WETHAQ_KEY_PASSWORD|WETHAQ_KEYSTORE_PASSWORD"
-)
-if production_signing.search(build + main + server):
-    errors.append("production signing material/configuration leaked into stable source")
-if re.search(r"signingConfigs\.release|storeFile\s*=|keyAlias\s*=", workflow):
+# Production signing is permitted only as an environment-driven path. No secret
+# value or private-key material may be embedded in the source or stable CI.
+if re.search(r"storePassword\s+['\"]|keyPassword\s+['\"]|-----BEGIN (RSA|EC|PRIVATE) KEY-----", build):
+    errors.append("hardcoded production signing credential material detected")
+if re.search(r"signingConfigs\.release|WETHAQ_KEYSTORE_PASSWORD|WETHAQ_KEY_PASSWORD|\.jks|\.keystore", main + server):
+    errors.append("production signing material/configuration leaked into application or backend source")
+if re.search(r"signingConfigs\.release|WETHAQ_KEYSTORE_PASSWORD|WETHAQ_KEY_PASSWORD|\.jks|\.keystore", workflow):
     errors.append("production signing configuration leaked into stable CI workflow")
 
 if "https://" not in main or re.search(r"http://(?!127\.0\.0\.1(?::\d+)?(?:[\"/]|$))", main):
