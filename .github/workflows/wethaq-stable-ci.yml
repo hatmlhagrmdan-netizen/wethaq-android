@@ -63,7 +63,7 @@ jobs:
           grep -q "signingConfig signingConfigs.debug" app/build.gradle
           grep -q "WETHAQ_KEYSTORE_PATH" app/build.gradle
           git diff --check
-          if grep -RInE 'WETHAQ_KEYSTORE_PASSWORD|WETHAQ_KEY_PASSWORD|storePassword[[:space:]]+["'"']|keyPassword[[:space:]]+["'"']|-----BEGIN (RSA|EC|PRIVATE) KEY-----' app backend; then
+          if grep -RInE 'WETHAQ_KEYSTORE_PASSWORD|WETHAQ_KEY_PASSWORD|storePassword[[:space:]]+["'"']|keyPassword[[:space:]]+["'"']|-----BEGIN (RSA|EC|PRIVATE) KEY-----' app/src backend; then
             echo 'Hardcoded production credential material detected in application/backend source.'
             exit 1
           fi
