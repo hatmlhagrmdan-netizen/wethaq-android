@@ -66,6 +66,10 @@ jobs:
             exit 1
           fi
 
+      - name: Stable architecture and security audit
+        shell: bash
+        run: python3 scripts/stable_architecture_audit.py
+
       - name: Validate backend
         working-directory: backend
         shell: bash
