@@ -19,14 +19,17 @@ assert(a.response.status === 201 && a.body.token && a.body.user?.wethaq_id, 'ide
 const b = await request('/api/identity', { method: 'POST', body: JSON.stringify({ name: `مستخدم وثاق ${suffix}`, birthYear: 1996, deviceKey: deviceB }) });
 assert(b.response.status === 201 && b.body.token && b.body.user?.wethaq_id, 'second identity failed');
 
-const wrongDeviceLogin = await request('/api/login', { method: 'POST', body: JSON.stringify({ name: `اختبار وثاق ${suffix}`, birthYear: 1995, deviceKey: `wrong-device-${suffix}` }) });
-assert(wrongDeviceLogin.response.status === 401 || wrongDeviceLogin.response.status === 403 || wrongDeviceLogin.response.status === 409, 'login accepted an untrusted device');
+const login = await request('/api/login', { method: 'POST', body: JSON.stringify({ name: `اختبار وثاق ${suffix}`, birthYear: 1995, deviceKey: `untrusted-device-${suffix}` }) });
+assert(login.response.ok && login.body.token && login.body.user?.wethaq_id === a.body.user.wethaq_id, 'name/year login failed');
 
 const search = await request(`/api/search?q=${encodeURIComponent(`اختبار وثاق ${suffix}`)}`);
 assert(search.response.ok && search.body.users?.some(u => u.wethaq_id === a.body.user.wethaq_id), 'public search failed');
 
-const me = await request('/api/me', { headers: { authorization: `Bearer ${a.body.token}` } });
+const me = await request('/api/me', { headers: { authorization: `Bearer ${login.body.token}` } });
 assert(me.response.ok && me.body.user?.wethaq_id === a.body.user.wethaq_id, 'me failed');
+
+const invalidToken = await request('/api/me', { headers: { authorization: 'Bearer invalid-token-for-smoke-test' } });
+assert(invalidToken.response.status === 401, 'invalid JWT was accepted');
 
 const unauthorizedMe = await request('/api/me');
 assert(unauthorizedMe.response.status === 401, 'unauthenticated request was accepted');

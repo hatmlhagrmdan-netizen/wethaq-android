@@ -1,0 +1,1 @@
+CI trigger marker: validate the exact current mainline source without application-source rewriting.
