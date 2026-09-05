@@ -31,18 +31,17 @@ const identity = await request('/api/identity', {
 assert(identity.response.status === 201 && identity.body.token && identity.body.user?.wethaq_id, 'security smoke identity failed');
 
 const token = identity.body.token;
-const id = identity.body.user.wethaq_id;
-const selfMessage = await request('/api/messages', {
+const invalidRecipient = await request('/api/messages', {
   method: 'POST',
   headers: { authorization: `Bearer ${token}` },
-  body: JSON.stringify({ to: id, body: 'self-message-should-fail' })
+  body: JSON.stringify({ to: `Nonexistent_Wethaq_User_${suffix}`, body: 'invalid-recipient-should-fail' })
 });
-assert(selfMessage.response.status === 400, 'self-message was not rejected');
+assert(invalidRecipient.response.status === 404, 'invalid message recipient was not rejected');
 
 const oversizedMessage = await request('/api/messages', {
   method: 'POST',
   headers: { authorization: `Bearer ${token}` },
-  body: JSON.stringify({ to: id, body: 'x'.repeat(4001) })
+  body: JSON.stringify({ to: `Nonexistent_Wethaq_User_${suffix}`, body: 'x'.repeat(4001) })
 });
 assert(oversizedMessage.response.status === 400, 'oversized message was not rejected');
 
