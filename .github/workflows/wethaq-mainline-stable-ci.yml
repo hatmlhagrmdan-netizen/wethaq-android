@@ -3,6 +3,7 @@ name: Wethaq Mainline Stable CI
 on:
   push:
     branches:
+      - main
       - foundation/mainline-stable-20260905
   pull_request:
     branches:
