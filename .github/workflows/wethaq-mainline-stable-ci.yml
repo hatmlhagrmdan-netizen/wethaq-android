@@ -62,7 +62,7 @@ jobs:
           test -f backend/security-smoke-test.mjs
           test -f scripts/mainline_stable_audit.py
           git diff --check
-          if grep -RInE '-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY-----|storePassword[[:space:]]+["'"'][^"'"']+["'"']|keyPassword[[:space:]]+["'"'][^"'"']+["'"']' app/src backend scripts; then
+          if grep -RInE -- '-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY-----|storePassword[[:space:]]+["'"'][^"'"']+["'"']|keyPassword[[:space:]]+["'"'][^"'"']+["'"']' app/src backend scripts; then
             echo 'Hardcoded private-key or credential material detected outside build configuration.'
             exit 1
           fi
