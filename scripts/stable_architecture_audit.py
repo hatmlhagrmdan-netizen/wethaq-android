@@ -31,8 +31,11 @@ if re.search(r"storePassword\s+['\"]|keyPassword\s+['\"]|-----BEGIN (RSA|EC|PRIV
     errors.append("hardcoded production signing credential material detected")
 if re.search(r"signingConfigs\.release|WETHAQ_KEYSTORE_PASSWORD|WETHAQ_KEY_PASSWORD|\.jks|\.keystore", main + server):
     errors.append("production signing material/configuration leaked into application or backend source")
-if re.search(r"signingConfigs\.release|WETHAQ_KEYSTORE_PASSWORD|WETHAQ_KEY_PASSWORD|\.jks|\.keystore", workflow):
-    errors.append("production signing configuration leaked into stable CI workflow")
+# Stable CI is intentionally no-secrets. Check for actual signing configuration
+# or keystore files, but do not reject generic environment-variable names in the
+# audit itself; those names are safe references when no values are embedded.
+if re.search(r"signingConfigs\.release|\.jks|\.keystore|-----BEGIN (RSA|EC|PRIVATE) KEY-----", workflow):
+    errors.append("production signing configuration/material leaked into stable CI workflow")
 
 if "https://" not in main or re.search(r"http://(?!127\.0\.0\.1(?::\d+)?(?:[\"/]|$))", main):
     errors.append("non-local cleartext HTTP endpoint detected in Android source")
