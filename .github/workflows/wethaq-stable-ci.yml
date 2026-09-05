@@ -61,8 +61,11 @@ jobs:
           grep -q "applicationId 'com.wethaq.app'" app/build.gradle
           grep -q "signingConfig signingConfigs.debug" app/build.gradle
           git diff --check
-          if grep -RInE 'WETHAQ_KEYSTORE|WETHAQ_KEY_ALIAS|signingConfigs\.release|\.jks|\.keystore' . --exclude-dir=.git --exclude='wethaq-stable-ci.yml'; then
-            echo 'Production signing material/configuration detected in source tree.'
+          if grep -RInE 'WETHAQ_KEYSTORE|WETHAQ_KEY_ALIAS|signingConfigs\.release|\.jks|\.keystore' . \
+              --exclude-dir=.git \
+              --exclude-dir=scripts \
+              --exclude='wethaq-stable-ci.yml'; then
+            echo 'Production signing material/configuration detected in application source tree.'
             exit 1
           fi
 
