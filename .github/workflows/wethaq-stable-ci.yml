@@ -139,3 +139,4 @@ jobs:
           retention-days: 14
 
 # Stable foundation: source is fixed before CI; CI never rewrites application code.
+# CI trigger audit: corrected credential scan must execute on this exact branch head.
