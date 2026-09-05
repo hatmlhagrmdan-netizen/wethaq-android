@@ -140,3 +140,4 @@ jobs:
 
 # Stable foundation: source is fixed before CI; CI never rewrites application code.
 # CI trigger audit: corrected credential scan must execute on this exact branch head.
+# CI execution sentinel: this workflow file is intentionally touched to force a fresh branch push run after audit fixes.
