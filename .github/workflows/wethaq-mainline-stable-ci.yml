@@ -105,8 +105,8 @@ jobs:
           done
           curl -fsS --max-time 5 http://127.0.0.1:3100/health
           echo
-          node security-smoke-test.mjs
-          PORT=3100 node smoke-test.mjs
+          timeout 90s node security-smoke-test.mjs
+          timeout 90s env PORT=3100 node smoke-test.mjs
           echo 'WETHAQ_BACKEND_HEALTH_SECURITY_AND_FUNCTIONAL_SMOKE_OK'
 
       - name: Build CI release candidate
