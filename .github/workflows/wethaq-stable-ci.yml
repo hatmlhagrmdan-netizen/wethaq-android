@@ -61,12 +61,14 @@ jobs:
           test -f backend/security-smoke-test.mjs
           grep -q "applicationId 'com.wethaq.app'" app/build.gradle
           grep -q "signingConfig signingConfigs.debug" app/build.gradle
+          grep -q "WETHAQ_KEYSTORE_PATH" app/build.gradle
           git diff --check
-          if grep -RInE 'WETHAQ_KEYSTORE|WETHAQ_KEY_ALIAS|signingConfigs\.release|\.jks|\.keystore' . \
+          if grep -RInE 'WETHAQ_KEYSTORE_PASSWORD|WETHAQ_KEY_PASSWORD|storePassword[[:space:]]+["'"']|keyPassword[[:space:]]+["'"']|-----BEGIN (RSA|EC|PRIVATE) KEY-----' . \
               --exclude-dir=.git \
               --exclude-dir=scripts \
-              --exclude='wethaq-stable-ci.yml'; then
-            echo 'Production signing material/configuration detected in application source tree.'
+              --exclude='wethaq-stable-ci.yml' \
+              --exclude='wethaq-production-release.yml'; then
+            echo 'Hardcoded production credential material detected in source tree.'
             exit 1
           fi
 
