@@ -1,10 +1,11 @@
 name: Wethaq Minimal Java Release
 
 # Production release build for every main update.
+# Recovery branch is included so the verified baseline can be rebuilt before further changes.
 # Premium UI build verification.
 on:
   push:
-    branches: [main]
+    branches: [main, recovery/stable-20260905]
     paths:
       - 'app/**'
       - 'backend/**'
