@@ -22,11 +22,11 @@ if "applicationId 'com.wethaq.app'" not in build:
     errors.append("applicationId changed or missing")
 if "signingConfig signingConfigs.debug" not in build:
     errors.append("stable candidate must use isolated/debug signing, not production secrets")
-if re.search(r"signingConfigs\\.release|WETHAQ_KEYSTORE|WETHAQ_KEY_PASSWORD|WETHAQ_KEYSTORE_PASSWORD", build + workflow + main + server):
+if re.search(r"signingConfigs\.release|WETHAQ_KEYSTORE|WETHAQ_KEY_PASSWORD|WETHAQ_KEYSTORE_PASSWORD", build + workflow + main + server):
     errors.append("production signing material/configuration leaked into stable source or CI")
-if "https://" not in main or "http://" in re.sub(r"http://127\\.0\\.0\\.1", "", main):
+if "https://" not in main or re.search(r"http://(?!127\.0\.0\.1(?::\d+)?(?:[\"/]|$))", main):
     errors.append("non-local cleartext HTTP endpoint detected in Android source")
-if "Bearer "+"" not in main or "private String auth()" not in main:
+if "Bearer " not in main or "private String auth()" not in main:
     errors.append("authenticated API helper missing")
 if "function auth(req,res,next)" not in server:
     errors.append("backend authentication middleware missing")
