@@ -58,6 +58,7 @@ jobs:
           test -f app/src/main/java/com/wethaq/app/MainActivity.java
           test -f backend/package.json
           test -f backend/server.js
+          test -f backend/security-smoke-test.mjs
           grep -q "applicationId 'com.wethaq.app'" app/build.gradle
           grep -q "signingConfig signingConfigs.debug" app/build.gradle
           git diff --check
@@ -80,9 +81,10 @@ jobs:
           set -euo pipefail
           npm install --no-audit --no-fund
           node --check server.js
+          node --check security-smoke-test.mjs
           node --input-type=commonjs -e "const Database=require('better-sqlite3'); const db=new Database(':memory:'); db.prepare('select 1').get(); db.close(); console.log('BETTER_SQLITE3_NATIVE_OK')"
 
-      - name: Backend health smoke
+      - name: Backend health and security smoke
         working-directory: backend
         shell: bash
         run: |
@@ -107,7 +109,8 @@ jobs:
           done
           curl -fsS --max-time 5 http://127.0.0.1:3100/health
           echo
-          echo 'WETHAQ_BACKEND_HEALTH_OK'
+          node security-smoke-test.mjs
+          echo 'WETHAQ_BACKEND_HEALTH_AND_SECURITY_OK'
 
       - name: Build release candidate
         shell: bash
