@@ -41,7 +41,7 @@ sha256sum Wethaq-v1.0.0.apk
 git tag -a v1.0.0 -m "Wethaq v1.0.0 - First Production Release"
 git push origin v1.0.0
 
-# نشر على GitHub Releases
+# نشر عبى GitHub Releases
 # Upload: Wethaq-v1.0.0.apk
 # Upload: wethaq-v1.0.0-sha256.txt
 ```
@@ -112,7 +112,7 @@ node final-acceptance.mjs
 
 **الأخطاء التقنية:** اتصل بفريق التطوير  
 **الأسئلة العامة:** اتصل عبر تطبيق وثاق  
-**الإبلاغ عن الأمان:** تواصل سري مع المؤسس  
+**الإبلاغ عن الأمان:** توصل سري مع المؤسس  
 
 ---
 
