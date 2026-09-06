@@ -165,3 +165,5 @@ jobs:
             app/build/outputs/apk/release/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
+
+      # Mainline validation marker: this file change intentionally triggers the final gate on current main.
