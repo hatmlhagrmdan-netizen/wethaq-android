@@ -1,0 +1,3 @@
+Wethaq release gate trigger marker
+Validation target: latest main commit
+APK verification is performed by .github/workflows/wethaq-release.yml
