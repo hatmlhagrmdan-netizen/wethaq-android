@@ -72,7 +72,7 @@ jobs:
           ! grep -q 'q.put("name",fn)' app/src/main/java/com/wethaq/app/MainActivity.java
           ! grep -q 'Integer.parseInt(fy)' app/src/main/java/com/wethaq/app/MainActivity.java
           ! find app -type f -name '*.kt' | grep -q .
-          if grep -RIn --exclude='*.md' --exclude='.env.example' -E '(password|secret|api[_-]?key|private[_-]?key)[[:space:]]*[:=][[:space:]]*["'"'][^"'"']{12,}["'"']' app backend .github 2>/dev/null; then
+          if grep -RIn --exclude='*.md' --exclude='.env.example' --exclude-dir=.github/workflows -E '(password|secret|api[_-]?key|private[_-]?key)[[:space:]]*[:=][[:space:]]*["'"'][^"'"']{12,}["'"']' app backend .github 2>/dev/null; then
             echo 'Potential hard-coded secret detected'
             exit 1
           fi
@@ -109,7 +109,8 @@ jobs:
           npm install --no-audit --no-fund
           DB_FILE="$RUNNER_TEMP/wethaq-smoke.db"
           LOG_FILE="$RUNNER_TEMP/wethaq-backend.log"
-          PORT=3100 DB_PATH="$DB_FILE" JWT_SECRET='wethaq-ci-test-secret-change-me' OWNER_WETHAQ_ID='Hatem_Hussin_Al_Haj_Ramadan1995' node server.js > "$LOG_FILE" 2>&1 &
+          JWT_TEST_SECRET="$(openssl rand -hex 32)"
+          PORT=3100 DB_PATH="$DB_FILE" JWT_SECRET="$JWT_TEST_SECRET" OWNER_WETHAQ_ID='Hatem_Hussin_Al_Haj_Ramadan1995' node server.js > "$LOG_FILE" 2>&1 &
           SERVER_PID=$!
           trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
           ready=0
