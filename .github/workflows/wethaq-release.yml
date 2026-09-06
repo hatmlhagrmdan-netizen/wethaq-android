@@ -65,6 +65,9 @@ jobs:
           grep -q 'incomingOffer' app/src/main/java/com/wethaq/app/VideoCallActivity.java
           grep -q 'showIncomingCall(id,name,audioOnly,payload)' app/src/main/java/com/wethaq/app/WethaqMessageService.java
           grep -q 'notification_target' app/src/main/java/com/wethaq/app/WethaqMessageService.java
+          grep -q 'q.put("name",n)' app/src/main/java/com/wethaq/app/MainActivity.java
+          grep -q 'q.put("birthYear",Integer.parseInt(y))' app/src/main/java/com/wethaq/app/MainActivity.java
+          grep -q 'u.optString("name",n)).put(YEAR,y)' app/src/main/java/com/wethaq/app/MainActivity.java
           ! grep -q 'final String fn=n,fy=y' app/src/main/java/com/wethaq/app/MainActivity.java
           ! grep -q 'q.put("name",fn)' app/src/main/java/com/wethaq/app/MainActivity.java
           ! grep -q 'Integer.parseInt(fy)' app/src/main/java/com/wethaq/app/MainActivity.java
