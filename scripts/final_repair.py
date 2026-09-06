@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 p=Path('app/src/main/java/com/wethaq/app/MainActivity.java')
 s=p.read_text(encoding='utf-8')
@@ -14,20 +15,22 @@ p=Path('backend/server.js')
 s=p.read_text(encoding='utf-8')
 anchor="function receiver(to,res){const u=db.prepare('SELECT id,wethaq_id,name FROM users WHERE wethaq_id=?').get(to);if(!u){res.status(404).json({error:'user_not_found'});return null}return u}"
 if 'function linkContacts(a,b)' not in s:
-    s=s.replace(anchor,anchor+"function linkContacts(a,b){db.prepare('INSERT OR IGNORE INTO contacts(user_id,contact_id) VALUES(?,?)').run(a,b);db.prepare('INSERT OR IGNORE INTO contacts(user_id,contact_id) VALUES(?,?)').run(b,a)}")
+    s=s.replace(anchor,anchor+"function linkContacts(a,b){if(!a||!b||Number(a)===Number(b))return;db.prepare('INSERT OR IGNORE INTO contacts(user_id,contact_id) VALUES(?,?)').run(Number(a),Number(b));db.prepare('INSERT OR IGNORE INTO contacts(user_id,contact_id) VALUES(?,?)').run(Number(b),Number(a))}")
 # Restore the authenticated contact creation endpoint used by the application and smoke test.
 if "app.post('/api/contacts'" not in s:
     contact_route="app.post('/api/contacts',auth,(req,res)=>{const wethaqId=String(req.body?.wethaqId||'').trim();if(!wethaqId)return res.status(400).json({error:'invalid_contact'});const u=db.prepare('SELECT * FROM users WHERE wethaq_id=?').get(wethaqId);if(!u)return res.status(404).json({error:'user_not_found'});if(Number(u.id)===Number(req.user.sub))return res.status(400).json({error:'self_contact'});linkContacts(Number(req.user.sub),u.id);res.status(201).json({contact:publicUser(u,true)})});"
-    s=s.replace(anchor,contact_route+anchor,1)
-s=s.replace(".run(req.user.sub,u.id,body,isOnline(u.id)?'delivered':'sent');res.status(201)",".run(req.user.sub,u.id,body,isOnline(u.id)?'delivered':'sent');linkContacts(Number(req.user.sub),u.id);res.status(201)")
-s=s.replace(".run(req.user.sub,u.id,'',mime,audio);res.status(201)",".run(req.user.sub,u.id,'',mime,audio);linkContacts(Number(req.user.sub),u.id);res.status(201)")
-s=s.replace(".run(req.user.sub,u.id,'',mime,image);res.status(201)",".run(req.user.sub,u.id,'',mime,image);linkContacts(Number(req.user.sub),u.id);res.status(201)")
-# Enforce device binding during name+birthYear login. Identity creation already binds the first device;
-# login must never mint a token for a different device.
-old="app.post('/api/login',(req,res)=>{const x=identityInput(req,res);if(!x)return;let u=db.prepare('SELECT * FROM users WHERE name=? AND birth_year=?').get(x.name,x.birthYear);if(!u)return res.status(404).json({error:'user_not_found'});const ban=activeBan(u.id);if(ban)return res.status(403).json({error:'user_banned',ban_type:ban.ban_type,expires_at:ban.expires_at||null,reason:ban.reason||''});db.prepare('UPDATE users SET last_seen=? WHERE id=?').run(now(),u.id);u=db.prepare('SELECT * FROM users WHERE id=?').get(u.id);res.json({user:publicUser(u),token:tokenFor(u)})});"
-new="app.post('/api/login',(req,res)=>{const x=identityInput(req,res);if(!x)return;let u=db.prepare('SELECT * FROM users WHERE name=? AND birth_year=?').get(x.name,x.birthYear);if(!u)return res.status(404).json({error:'user_not_found'});if(u.device_key&&u.device_key!==x.deviceKey)return res.status(401).json({error:'untrusted_device'});const ban=activeBan(u.id);if(ban)return res.status(403).json({error:'user_banned',ban_type:ban.ban_type,expires_at:ban.expires_at||null,reason:ban.reason||''});db.prepare('UPDATE users SET last_seen=? WHERE id=?').run(now(),u.id);u=db.prepare('SELECT * FROM users WHERE id=?').get(u.id);res.json({user:publicUser(u),token:tokenFor(u)})});"
-if old not in s:
-    raise SystemExit('LOGIN_BLOCK_NOT_FOUND')
-s=s.replace(old,new,1)
+    insert_at=s.find("app.post('/api/messages'")
+    if insert_at>=0:s=s[:insert_at]+contact_route+s[insert_at:]
+# Keep message/media contact linking enabled without duplicating existing calls.
+if "app.post('/api/messages',auth" in s and "linkContacts(req.user.sub,u.id);const z=db.prepare(\"INSERT INTO messages" not in s:
+    s=s.replace("const sender=db.prepare('SELECT id,wethaq_id,name FROM users WHERE id=?').get(req.user.sub);", "const sender=db.prepare('SELECT id,wethaq_id,name FROM users WHERE id=?').get(req.user.sub);linkContacts(req.user.sub,u.id);",1)
+# Enforce device binding during name+birthYear login. Replace the whole login route by boundaries,
+# rather than relying on one exact minified source string; this makes the repair idempotent.
+login=re.compile(r"app\.post\('/api/login'.*?\}\);app\.get\('/api/me'", re.S)
+login_route="app.post('/api/login',(req,res)=>{const x=identityInput(req,res);if(!x)return;let u=db.prepare('SELECT * FROM users WHERE name=? AND birth_year=?').get(x.name,x.birthYear);if(!u)return res.status(404).json({error:'user_not_found'});if(u.device_key&&u.device_key!==x.deviceKey)return res.status(401).json({error:'untrusted_device'});const ban=activeBan(u.id);if(ban)return res.status(403).json({error:'user_banned',ban_type:ban.ban_type,expires_at:ban.expires_at||null,reason:ban.reason||''});db.prepare('UPDATE users SET last_seen=? WHERE id=?').run(now(),u.id);u=db.prepare('SELECT * FROM users WHERE id=?').get(u.id);res.json({user:publicUser(u),token:tokenFor(u)})});app.get('/api/me'"
+if login.search(s):
+    s=login.sub(login_route,s,count=1)
+else:
+    raise SystemExit('LOGIN_ROUTE_NOT_FOUND')
 p.write_text(s,encoding='utf-8')
 print('OK')
