@@ -1,4 +1,5 @@
 name: Wethaq Advanced Features
+# Final release-gate verification after persisted production repairs.
 
 on:
   push:
