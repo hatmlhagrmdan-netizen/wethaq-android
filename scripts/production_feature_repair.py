@@ -61,6 +61,19 @@ needle='Button call=btn("📹 مكالمة فيديو");content.addView(call,lp(
 if needle in s and 'Button audioCall=btn("📞 مكالمة صوتية")' not in s:
     s=s.replace(needle,needle+'Button audioCall=btn("📞 مكالمة صوتية");content.addView(audioCall,lp(-1,76,6));audioCall.setOnClickListener(v->{click();startAudioCall();});')
 
+# Collapse accidental whitespace-only line accumulation so the repair pass is idempotent.
+lines=s.splitlines()
+normalized=[]
+blank=False
+for line in lines:
+    if not line.strip():
+        if blank: continue
+        normalized.append('')
+        blank=True
+    else:
+        normalized.append(line.rstrip())
+        blank=False
+s='\n'.join(normalized).rstrip()+'\n'
 MAIN.write_text(s,encoding='utf-8')
 
 v=VIDEO.read_text(encoding='utf-8')
