@@ -130,6 +130,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/VideoCallActivity.java
           if ! git diff --cached --quiet; then
-            git commit -m "fix: persist Wethaq production feature repairs [skip ci]"
+            git commit -m "fix: persist Wethaq production feature repairs"
             git push
           fi
