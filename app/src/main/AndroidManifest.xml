@@ -18,6 +18,7 @@
         <activity android:name=".PremiumActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".ProfessionalConversationActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".PublicAdministrationActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".AdminAccessActivity" android:exported="false" android:screenOrientation="portrait" />
         <service android:name=".WethaqMessageService" android:exported="false" android:foregroundServiceType="dataSync" />
         <receiver android:name=".WethaqBootReceiver" android:enabled="true" android:exported="false">
             <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>
