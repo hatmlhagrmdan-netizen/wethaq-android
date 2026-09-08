@@ -11,47 +11,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-      - name: Apply source repairs
+      - name: Validate committed source
+        shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/final_repair.py
-          python3 scripts/media_repair.py
-          python3 scripts/ui_repair.py
-          python3 scripts/video_repair.py
-          python3 scripts/contact_repair.py
-          python3 scripts/functional_repair.py
           python3 -m py_compile scripts/*.py
-      - name: Normalize generated Java
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('app/src/main/java/com/wethaq/app/MainActivity.java')
-          s=p.read_text(encoding='utf-8')
-          s=s.replace('n.split("\\s+")','n.split(" ")')
-          s=s.replace('!y.matches("\\d{4}")','(y.length()!=4)')
-          s=s.replace('q.put("name",fn);q.put("birthYear",Integer.parseInt(fy));','q.put("name",n);q.put("birthYear",Integer.parseInt(y));')
-          s=s.replace('u.optString("name",fn)).put(YEAR,fy)','u.optString("name",n)).put(YEAR,y)')
-          s=s.replace('final String fn=n.trim(),fy=y.trim();','final String name=n.trim(),year=y.trim();')
-          s=s.replace('final String fn=n,fy=y;','final String name=n,year=y;')
-          s=s.replace('private void auth(String n,String y,boolean create){n=n.trim();y=y.trim();','private void auth(String n,String y,boolean create){final String name=n.trim(),year=y.trim();')
-          start=s.find('private void auth(')
-          if start < 0: raise SystemExit('AUTH_METHOD_NOT_FOUND')
-          end=s.find('\n private void ', start+1)
-          if end < 0: end=s.find('\n}', start)
-          auth=s[start:end]
-          auth=auth.replace('q.put("name",fn);','q.put("name",name);')
-          auth=auth.replace('q.put("name",n);','q.put("name",name);')
-          auth=auth.replace('Integer.parseInt(fy)','Integer.parseInt(year)')
-          auth=auth.replace('Integer.parseInt(y)','Integer.parseInt(year)')
-          auth=auth.replace('u.optString("name",fn)','u.optString("name",name)')
-          auth=auth.replace('u.optString("name",n)','u.optString("name",name)')
-          auth=auth.replace('.put(YEAR,fy)','.put(YEAR,year)')
-          auth=auth.replace('.put(YEAR,y)','.put(YEAR,year)')
-          s=s[:start]+auth+s[end:]
-          p.write_text(s,encoding='utf-8')
-          print('JAVA_NORMALIZED_OK')
-          PY
+          node --check backend/server.js
+          grep -q 'personalCode' app/src/main/java/com/wethaq/app/MainActivity.java
+          grep -q 'personal_code_hash' backend/server.js
+          grep -q "auth:'name_birth_year_personal_code'" backend/server.js
+          grep -q 'invalid_personal_code' backend/server.js
+          grep -q 'scryptSync' backend/server.js
+          grep -q 'timingSafeEqual' backend/server.js
+          git diff --check
       - name: Baseline structural audit
         run: |
           set -euo pipefail
@@ -65,7 +37,7 @@ jobs:
           npm install --no-audit --no-fund
           node -e "import('better-sqlite3').then(({default: Database})=>{const db=new Database(':memory:');db.prepare('select 1').get();db.close();console.log('BETTER_SQLITE3_NATIVE_OK')}).catch(e=>{console.error(e);process.exit(1)})"
           DB_FILE="$RUNNER_TEMP/wethaq-smoke.db"
-          PORT=3100 DB_PATH="$DB_FILE" JWT_SECRET='wethaq-ci-test-secret-change-me' OWNER_WETHAQ_ID='Hatem_Hussin_Al_Haj_Ramadan1995' node server.js > "$RUNNER_TEMP/wethaq-backend.log" 2>&1 &
+          PORT=3100 DB_PATH="$DB_FILE" JWT_SECRET="$(openssl rand -hex 32)" OWNER_WETHAQ_ID='Hatem_Hussin_Al_Haj_Ramadan1995' node server.js > "$RUNNER_TEMP/wethaq-backend.log" 2>&1 &
           SERVER_PID=$!
           trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
           for i in {1..30}; do
