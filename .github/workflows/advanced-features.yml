@@ -1,5 +1,5 @@
 name: Wethaq Advanced Features
-# Final release-gate verification after persisted production repairs.
+# Final release-gate verification of the committed production source.
 
 on:
   push:
@@ -14,47 +14,24 @@ jobs:
   build-release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout exact source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
 
-      - name: Apply final repairs
+      - name: Validate committed source without mutation
+        shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/final_repair.py
-          python3 scripts/media_repair.py
-          python3 scripts/ui_repair.py
-          python3 scripts/video_repair.py
-          python3 scripts/contact_repair.py
-          python3 scripts/notification_contact_video_repair.py
-          python3 scripts/production_feature_repair.py
+          echo "SOURCE_COMMIT=$GITHUB_SHA"
           python3 -m py_compile scripts/*.py
-
-      - name: Require committed source to be repair-clean
-        run: |
-          set -euo pipefail
-          if ! git diff --quiet -- app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/VideoCallActivity.java; then
-            echo 'Release gate failed: repair scripts still modify committed Android source.'
-            git diff -- app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/VideoCallActivity.java
-            exit 1
-          fi
-
-      - name: Normalize generated Java before compile
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('app/src/main/java/com/wethaq/app/MainActivity.java')
-          s=p.read_text(encoding='utf-8')
-          s=s.replace('q.put("name",fn);q.put("birthYear",Integer.parseInt(fy));','q.put("name",n);q.put("birthYear",Integer.parseInt(y));')
-          s=s.replace('q.put("name",fn);', 'q.put("name",n);')
-          s=s.replace('Integer.parseInt(fy)', 'Integer.parseInt(y)')
-          p.write_text(s,encoding='utf-8')
-          PY
-          ! grep -q '\bfn\b\|\bfy\b' app/src/main/java/com/wethaq/app/MainActivity.java
-
-      - name: Validate production feature wiring
-        run: |
-          set -euo pipefail
+          node --check backend/server.js
+          grep -q 'personalCode' app/src/main/java/com/wethaq/app/MainActivity.java
+          grep -q 'personal_code_hash' backend/server.js
+          grep -q "auth:'name_birth_year_personal_code'" backend/server.js
+          grep -q 'invalid_personal_code' backend/server.js
+          grep -q 'scryptSync' backend/server.js
+          grep -q 'timingSafeEqual' backend/server.js
           grep -q 'pendingAudioData' app/src/main/java/com/wethaq/app/MainActivity.java
           grep -q 'pendingImageData' app/src/main/java/com/wethaq/app/MainActivity.java
           grep -q 'startAudioCall' app/src/main/java/com/wethaq/app/MainActivity.java
@@ -62,7 +39,9 @@ jobs:
           grep -q 'audioBase64' app/src/main/java/com/wethaq/app/MainActivity.java
           grep -q 'imageBase64' app/src/main/java/com/wethaq/app/MainActivity.java
           grep -q 'audioOnly' app/src/main/java/com/wethaq/app/VideoCallActivity.java
-          node --check backend/server.js
+          grep -q 'AdminAccessActivity' app/src/main/AndroidManifest.xml
+          grep -q 'PublicAdministrationActivity' app/src/main/AndroidManifest.xml
+          git diff --check
 
       - name: Prepare ephemeral CI release signing
         shell: bash
@@ -71,13 +50,7 @@ jobs:
           KEYSTORE="$RUNNER_TEMP/wethaq-ci-release.jks"
           ALIAS="wethaq-ci"
           PASS="$(openssl rand -hex 32)"
-          keytool -genkeypair -noprompt \
-            -keystore "$KEYSTORE" \
-            -storepass "$PASS" \
-            -keypass "$PASS" \
-            -alias "$ALIAS" \
-            -keyalg RSA -keysize 2048 -validity 3650 \
-            -dname "CN=Wethaq CI Validation, OU=Wethaq, O=Wethaq, L=CI, ST=CI, C=SY"
+          keytool -genkeypair -noprompt -keystore "$KEYSTORE" -storepass "$PASS" -keypass "$PASS" -alias "$ALIAS" -keyalg RSA -keysize 2048 -validity 3650 -dname "CN=Wethaq CI Validation, OU=Wethaq, O=Wethaq, L=CI, ST=CI, C=SY"
           test -s "$KEYSTORE"
           keytool -list -keystore "$KEYSTORE" -storepass "$PASS" -alias "$ALIAS" >/dev/null
           {
@@ -94,7 +67,7 @@ jobs:
           java-version: '17'
 
       - name: Set up Gradle 8.9
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.9'
 
@@ -103,12 +76,12 @@ jobs:
           set -euo pipefail
           test -f settings.gradle
           test -f build.gradle
-          test -d app
+          test -f app/build.gradle
           gradle --version
           test -s "$WETHAQ_KEYSTORE_PATH"
 
       - name: Build release APK
-        run: gradle clean assembleRelease --no-daemon --stacktrace
+        run: gradle clean assembleRelease --no-daemon --stacktrace --console=plain
 
       - name: Verify APK
         shell: bash
@@ -121,6 +94,7 @@ jobs:
           test -x "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
           sha256sum "$APK" | tee app/build/outputs/apk/release/SHA256SUMS.txt
+          echo "WETHAQ_FINAL_RELEASE_SOURCE=$GITHUB_SHA" > app/build/outputs/apk/release/PROVENANCE.txt
           echo "WETHAQ_FINAL_RELEASE_APK_OK"
 
       - name: Publish APK artifact
@@ -130,5 +104,6 @@ jobs:
           path: |
             app/build/outputs/apk/release/app-release.apk
             app/build/outputs/apk/release/SHA256SUMS.txt
+            app/build/outputs/apk/release/PROVENANCE.txt
           if-no-files-found: error
           retention-days: 30
