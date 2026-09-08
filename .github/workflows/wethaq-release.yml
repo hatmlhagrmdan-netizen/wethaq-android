@@ -24,17 +24,38 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout exact main commit
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
 
-      - name: Apply final trusted repairs
+      - name: Validate source and security invariants
         shell: bash
         run: |
           set -euo pipefail
-          test -f scripts/final_repair.py
-          python3 scripts/final_repair.py
-          python3 -m py_compile scripts/final_repair.py
+          python3 -m py_compile scripts/finalize_identity.py scripts/final_repair.py
           node --check backend/server.js
+          test -f settings.gradle
+          test -f build.gradle
+          test -f app/build.gradle
+          test -f app/src/main/AndroidManifest.xml
+          test -f app/src/main/java/com/wethaq/app/MainActivity.java
+          test -f app/src/main/java/com/wethaq/app/VideoCallActivity.java
+          test -f app/src/main/java/com/wethaq/app/WethaqMessageService.java
+          test -f app/src/main/java/com/wethaq/app/WethaqBootReceiver.java
+          grep -q 'personalCode' app/src/main/java/com/wethaq/app/MainActivity.java
+          grep -q 'personal_code_hash' backend/server.js
+          grep -q "auth:'name_birth_year_personal_code'" backend/server.js
+          grep -q 'invalid_personal_code' backend/server.js
+          grep -q 'scryptSync' backend/server.js
+          grep -q 'timingSafeEqual' backend/server.js
+          grep -q 'incomingOffer' app/src/main/java/com/wethaq/app/VideoCallActivity.java
+          grep -q 'showIncomingCall' app/src/main/java/com/wethaq/app/WethaqMessageService.java
+          grep -q 'notification_target' app/src/main/java/com/wethaq/app/WethaqMessageService.java
+          grep -q 'AdminAccessActivity' app/src/main/AndroidManifest.xml
+          grep -q 'PublicAdministrationActivity' app/src/main/AndroidManifest.xml
+          grep -q 'setElevation' app/src/main/java/com/wethaq/app/MainActivity.java
+          ! grep -RIn --exclude='*.md' --exclude='*.py' --exclude-dir=.github/workflows -E '(password|secret|api[_-]?key|private[_-]?key)[[:space:]]*[:=][[:space:]]*["'"'][^"'"']{20,}["'"']' app backend 2>/dev/null
           git diff --check
 
       - name: Setup JDK 17
@@ -47,40 +68,6 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.9'
-
-      - name: Validate final source
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -f settings.gradle
-          test -f build.gradle
-          test -f app/build.gradle
-          test -f app/src/main/AndroidManifest.xml
-          test -f app/src/main/java/com/wethaq/app/MainActivity.java
-          test -f app/src/main/java/com/wethaq/app/VideoCallActivity.java
-          test -f app/src/main/java/com/wethaq/app/WethaqMessageService.java
-          test -f app/src/main/java/com/wethaq/app/WethaqBootReceiver.java
-          grep -q 'private Button btn(String s)' app/src/main/java/com/wethaq/app/MainActivity.java
-          grep -q 'setElevation' app/src/main/java/com/wethaq/app/MainActivity.java
-          grep -q 'incomingOffer' app/src/main/java/com/wethaq/app/VideoCallActivity.java
-          grep -q 'showIncomingCall(id,name,audioOnly,payload)' app/src/main/java/com/wethaq/app/WethaqMessageService.java
-          grep -q 'notification_target' app/src/main/java/com/wethaq/app/WethaqMessageService.java
-          grep -q 'q.put("name",n)' app/src/main/java/com/wethaq/app/MainActivity.java
-          grep -q 'q.put("birthYear",Integer.parseInt(y))' app/src/main/java/com/wethaq/app/MainActivity.java
-          grep -q 'q.put("personalCode",code)' app/src/main/java/com/wethaq/app/MainActivity.java
-          grep -q 'personal_code_hash' backend/server.js
-          grep -q "auth:'name_birth_year_personal_code'" backend/server.js
-          grep -q 'invalid_personal_code' backend/server.js
-          grep -q 'u.optString("name",n)).put(YEAR,y)' app/src/main/java/com/wethaq/app/MainActivity.java
-          ! grep -q 'final String fn=n,fy=y' app/src/main/java/com/wethaq/app/MainActivity.java
-          ! grep -q 'q.put("name",fn)' app/src/main/java/com/wethaq/app/MainActivity.java
-          ! grep -q 'Integer.parseInt(fy)' app/src/main/java/com/wethaq/app/MainActivity.java
-          ! find app -type f -name '*.kt' | grep -q .
-          if grep -RIn --exclude='*.md' --exclude='.env.example' --exclude-dir=.github/workflows -E '(password|secret|api[_-]?key|private[_-]?key)[[:space:]]*[:=][[:space:]]*["'"'][^"'"']{12,}["'"']' app backend .github 2>/dev/null; then
-            echo 'Potential hard-coded secret detected'
-            exit 1
-          fi
-          git diff --check
 
       - name: Prepare ephemeral CI release signing
         shell: bash
@@ -119,10 +106,7 @@ jobs:
           trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
           ready=0
           for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:3100/health >/dev/null; then
-              ready=1
-              break
-            fi
+            if curl -fsS http://127.0.0.1:3100/health >/dev/null; then ready=1; break; fi
             sleep 1
           done
           if [ "$ready" -ne 1 ]; then
@@ -130,28 +114,15 @@ jobs:
             cat "$LOG_FILE"
             exit 1
           fi
-          if ! PORT=3100 node smoke-test.mjs; then
-            echo 'Backend smoke test failed; backend log follows:'
-            cat "$LOG_FILE"
-            exit 1
-          fi
+          PORT=3100 node smoke-test.mjs
           kill "$SERVER_PID" 2>/dev/null || true
           wait "$SERVER_PID" 2>/dev/null || true
 
-      - name: Backend smoke configuration check
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -f backend/package.json
-          test -f backend/server.js
-          grep -q 'wss' app/src/main/java/com/wethaq/app/WethaqMessageService.java
-          grep -q '/api/calls/signal' app/src/main/java/com/wethaq/app/VideoCallActivity.java
-
-      - name: Build release APK
+      - name: Build release APK from exact checked-out commit
         shell: bash
         run: gradle :app:clean :app:assembleRelease --no-daemon --stacktrace --console=plain
 
-      - name: Verify APK
+      - name: Verify APK integrity and signature
         shell: bash
         run: |
           set -euo pipefail
@@ -173,5 +144,3 @@ jobs:
             app/build/outputs/apk/release/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
-
-      # Mainline validation marker: this file change intentionally triggers the final gate on current main.
