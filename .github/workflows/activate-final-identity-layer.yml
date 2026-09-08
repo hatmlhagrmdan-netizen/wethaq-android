@@ -1,0 +1,41 @@
+name: Activate Final Identity Layer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/finalize_identity.py'
+      - '.github/workflows/activate-final-identity-layer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Apply identity hardening
+        run: |
+          set -euo pipefail
+          python3 scripts/finalize_identity.py
+          python3 -m py_compile scripts/finalize_identity.py
+          node --check backend/server.js
+          grep -q 'personal_code_hash' backend/server.js
+          grep -q 'personalCode' app/src/main/java/com/wethaq/app/MainActivity.java
+          git diff --check
+      - name: Commit activated source
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- backend/server.js app/src/main/java/com/wethaq/app/MainActivity.java; then
+            echo 'Identity layer already active.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/server.js app/src/main/java/com/wethaq/app/MainActivity.java
+          git commit -m 'feat: activate personal identity code authentication'
+          git push origin HEAD:main
