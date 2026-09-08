@@ -15,34 +15,75 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
           fetch-depth: 1
-      - name: Harden identity creation semantics
+      - name: Harden production security and identity semantics
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
+          import json
           from pathlib import Path
+
+          # Identity immutability
           p=Path('backend/server.js')
           s=p.read_text(encoding='utf-8')
           old="db.prepare('UPDATE users SET device_key=?,name=?,birth_year=?,personal_code_hash=?,last_seen=? WHERE id=?').run(deviceKey,name,birthYear,hashPersonalCode(personalCode),now(),u.id)"
           new="db.prepare('UPDATE users SET device_key=?,last_seen=? WHERE id=?').run(deviceKey,now(),u.id)"
-          if old not in s:
-              raise SystemExit('identity update pattern not found')
-          p.write_text(s.replace(old,new),encoding='utf-8')
+          if old in s:
+              s=s.replace(old,new,1)
+
+          # Production JWT must be explicitly provisioned; development/CI keeps the generated fallback.
+          old="const db=new Database(process.env.DB_PATH||'wethaq.db'),PORT=Number(process.env.PORT||3000),JWT_SECRET=process.env.JWT_SECRET||crypto.randomBytes(32).toString('hex');"
+          new="const db=new Database(process.env.DB_PATH||'wethaq.db'),PORT=Number(process.env.PORT||3000),configuredJwtSecret=String(process.env.JWT_SECRET||'').trim(),isProduction=process.env.NODE_ENV==='production';\nif(isProduction&&configuredJwtSecret.length<32)throw new Error('JWT_SECRET must be configured with at least 32 characters in production');\nconst JWT_SECRET=configuredJwtSecret||crypto.randomBytes(32).toString('hex');"
+          if old in s:
+              s=s.replace(old,new,1)
+
+          # Native Android clients normally send no Origin; browser callers must be explicitly allowed.
+          old="app.disable('x-powered-by');app.set('trust proxy',1);app.use(cors({origin:(_o,c)=>c(null,true)}));app.use(express.json({limit:'12mb'}));"
+          new="app.disable('x-powered-by');app.set('trust proxy',1);const allowedOrigins=new Set(String(process.env.ALLOWED_ORIGINS||'').split(',').map(v=>v.trim()).filter(Boolean));app.use(cors({origin:(origin,callback)=>callback(null,!origin||allowedOrigins.has(origin))}));app.use(express.json({limit:'12mb'}));"
+          if old in s:
+              s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8')
+
+          # Dependency and explicit audit gate.
+          p=Path('backend/package.json')
+          data=json.loads(p.read_text(encoding='utf-8'))
+          data.setdefault('dependencies',{})['express']='^5.2.1'
+          data.setdefault('scripts',{})['security:audit']='npm audit --omit=dev --audit-level=high'
+          p.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+
+          # CI gates: audit must run after installation.
+          for workflow in ['.github/workflows/wethaq-mainline-stable-ci.yml','.github/workflows/wethaq-release.yml']:
+              p=Path(workflow)
+              t=p.read_text(encoding='utf-8')
+              marker='npm install --no-audit --no-fund\n'
+              if marker in t and 'npm audit --omit=dev --audit-level=high' not in t:
+                  t=t.replace(marker,marker+'          npm audit --omit=dev --audit-level=high\n',1)
+                  p.write_text(t,encoding='utf-8')
           PY
           node --check backend/server.js
           grep -q "UPDATE users SET device_key=?,last_seen=? WHERE id=?" backend/server.js
-          ! grep -q "UPDATE users SET device_key=?,name=?,birth_year=?,personal_code_hash=?,last_seen=? WHERE id=?" backend/server.js
+          grep -q "configuredJwtSecret" backend/server.js
+          grep -q "allowedOrigins" backend/server.js
+          grep -q '"express": "^5.2.1"' backend/package.json
+      - name: Validate dependency audit
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-fund
+          npm audit --omit=dev --audit-level=high
+          node --check server.js
       - name: Commit hardening fix to PR branch
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'Wethaq CI'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          if git diff --quiet; then
+          git add backend/server.js backend/package.json .github/workflows/wethaq-mainline-stable-ci.yml .github/workflows/wethaq-release.yml
+          if git diff --cached --quiet; then
             echo 'HARDENING_ALREADY_PRESENT=true' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          git add backend/server.js
-          git commit -m 'fix: keep personal identity fields immutable'
+          git commit -m 'fix: harden production security and dependency audit'
           git push origin "HEAD:${{ github.head_ref }}"
           echo 'HARDENING_COMMITTED=true' >> "$GITHUB_STEP_SUMMARY"
