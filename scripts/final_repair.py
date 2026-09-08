@@ -8,16 +8,15 @@ s = s.replace(
     'content.addView(c,lp(-1,76,14));content.addView(tv("المؤسس:',
     'content.addView(c,lp(-1,76,14));l.bringToFront();c.bringToFront();l.setEnabled(true);c.setEnabled(true);content.addView(tv("المؤسس:'
 )
-# Keep authentication values immutable inside the executor by capturing the method arguments directly.
-s = s.replace('n=n.trim();y=y.trim();', 'n=n.trim();y=y.trim();', 1)
-s = s.replace('q.put("name",fn);q.put("birthYear",Integer.parseInt(fy));', 'q.put("name",n);q.put("birthYear",Integer.parseInt(y));', 1)
-s = s.replace('q.put("name",fn);q.put("birthYear",Integer.parseInt(fy));', 'q.put("name",n);q.put("birthYear",Integer.parseInt(y));', 1)
-s = s.replace('u.optString("name",fn)).put(YEAR,fy)', 'u.optString("name",n)).put(YEAR,y)', 1)
+# Do not rewrite the authentication method: the production identity contract is name + birth year + personal code.
+# Keep defensive source cleanup limited to legacy compiler issues.
+s = s.replace('n.split("\\s+")', 'n.split(" ")')
+s = s.replace('!y.matches("\\d{4}")', '(y.length()!=4)')
 # Defensive cleanup for any legacy repair output that may already exist in a checked-out source tree.
-s = re.sub(r'final String fn=n\.trim\(\),fy=y\.trim\(\);', 'n=n.trim();y=y.trim();', s, count=1)
-s = s.replace('q.put("name",fn);', 'q.put("name",n);')
-s = s.replace('q.put("birthYear",Integer.parseInt(fy));', 'q.put("birthYear",Integer.parseInt(y));')
-s = s.replace('u.optString("name",fn)).put(YEAR,fy)', 'u.optString("name",n)).put(YEAR,y)')
+s = re.sub(r'final String fn=n\.trim\(\),fy=y\.trim\(\);', 'final String name=n.trim(),year=y.trim();', s, count=1)
+s = s.replace('q.put("name",fn);', 'q.put("name",name);')
+s = s.replace('q.put("birthYear",Integer.parseInt(fy));', 'q.put("birthYear",Integer.parseInt(year));')
+s = s.replace('u.optString("name",fn)).put(YEAR,fy)', 'u.optString("name",name)).put(YEAR,year)')
 if 'q.put("name",fn)' in s or 'Integer.parseInt(fy)' in s or 'optString("name",fn)' in s:
     raise SystemExit('AUTH_REPAIR_OUTPUT_INVALID')
 p.write_text(s, encoding='utf-8')
@@ -40,11 +39,12 @@ if "app.post('/api/messages',auth" in s and "linkContacts(req.user.sub,u.id);" n
         "const sender=db.prepare('SELECT id,wethaq_id,name FROM users WHERE id=?').get(req.user.sub);linkContacts(req.user.sub,u.id);",
         1
     )
+# Legacy repair must never downgrade the identity contract back to device-only authentication.
 login = re.compile(r"app\.post\('/api/login'.*?\}\);app\.get\('/api/me'", re.S)
-login_route = "app.post('/api/login',(req,res)=>{const x=identityInput(req,res);if(!x)return;let u=db.prepare('SELECT * FROM users WHERE name=? AND birth_year=?').get(x.name,x.birthYear);if(!u)return res.status(404).json({error:'user_not_found'});if(u.device_key&&u.device_key!==x.deviceKey)return res.status(401).json({error:'untrusted_device'});const ban=activeBan(u.id);if(ban)return res.status(403).json({error:'user_banned',ban_type:ban.ban_type,expires_at:ban.expires_at||null,reason:ban.reason||''});db.prepare('UPDATE users SET last_seen=? WHERE id=?').run(now(),u.id);u=db.prepare('SELECT * FROM users WHERE id=?').get(u.id);res.json({user:publicUser(u),token:tokenFor(u)})});app.get('/api/me'"
+login_route = "app.post('/api/login',(req,res)=>{const x=identityInput(req,res);if(!x)return;let u=db.prepare('SELECT * FROM users WHERE name=? AND birth_year=?').get(x.name,x.birthYear);if(!u)return res.status(404).json({error:'user_not_found'});if(!u.personal_code_hash)return res.status(409).json({error:'personal_code_not_set'});if(!verifyPersonalCode(x.personalCode,u.personal_code_hash))return res.status(401).json({error:'invalid_personal_code'});const ban=activeBan(u.id);if(ban)return res.status(403).json({error:'user_banned',ban_type:ban.ban_type,expires_at:ban.expires_at||null,reason:ban.reason||''});db.prepare('UPDATE users SET device_key=?,last_seen=? WHERE id=?').run(x.deviceKey,now(),u.id);u=db.prepare('SELECT * FROM users WHERE id=?').get(u.id);res.json({user:publicUser(u),token:tokenFor(u)});});app.get('/api/me'"
 if login.search(s):
     s = login.sub(login_route, s, count=1)
 else:
     raise SystemExit('LOGIN_ROUTE_NOT_FOUND')
 p.write_text(s, encoding='utf-8')
-print('OK')
+print('FINAL_REPAIR_PRESERVES_IDENTITY_SECURITY')
