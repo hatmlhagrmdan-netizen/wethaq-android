@@ -16,25 +16,32 @@ const request = async (path, options = {}) => {
 
 const health = await request('/health');
 assert(health.response.ok && health.body.ok === true, 'health failed');
+assert(health.body.auth === 'name_birth_year_personal_code', 'health auth mode is not personal-code based');
 
 const suffix = Date.now();
 const deviceA = `aaaaaaaaaaaaaaaaaaaaaaaa${suffix}`;
 const deviceB = `bbbbbbbbbbbbbbbbbbbbbbbb${suffix}`;
-const a = await request('/api/identity', { method: 'POST', body: JSON.stringify({ name: `اختبار وثاق ${suffix}`, birthYear: 1995, deviceKey: deviceA }) });
+const personalCode = '583104';
+const a = await request('/api/identity', { method: 'POST', body: JSON.stringify({ name: `اختبار وثاق ${suffix}`, birthYear: 1995, personalCode, deviceKey: deviceA }) });
 assert(a.response.status === 201 && a.body.token && a.body.user?.wethaq_id, 'identity failed');
-const b = await request('/api/identity', { method: 'POST', body: JSON.stringify({ name: `مستخدم وثاق ${suffix}`, birthYear: 1996, deviceKey: deviceB }) });
+const b = await request('/api/identity', { method: 'POST', body: JSON.stringify({ name: `مستخدم وثاق ${suffix}`, birthYear: 1996, personalCode: '641205', deviceKey: deviceB }) });
 assert(b.response.status === 201 && b.body.token && b.body.user?.wethaq_id, 'second identity failed');
 
-const trustedLogin = await request('/api/login', { method: 'POST', body: JSON.stringify({ name: `اختبار وثاق ${suffix}`, birthYear: 1995, deviceKey: deviceA }) });
-assert(trustedLogin.response.ok && trustedLogin.body.token && trustedLogin.body.user?.wethaq_id === a.body.user.wethaq_id, 'trusted-device login failed');
+const trustedLogin = await request('/api/login', { method: 'POST', body: JSON.stringify({ name: `اختبار وثاق ${suffix}`, birthYear: 1995, personalCode, deviceKey: deviceA }) });
+assert(trustedLogin.response.ok && trustedLogin.body.token && trustedLogin.body.user?.wethaq_id === a.body.user.wethaq_id, 'personal-code login failed');
 
-const untrustedLogin = await request('/api/login', { method: 'POST', body: JSON.stringify({ name: `اختبار وثاق ${suffix}`, birthYear: 1995, deviceKey: `untrusted-device-${suffix}` }) });
-assert(untrustedLogin.response.status === 401, 'login accepted an untrusted device');
+const wrongCode = await request('/api/login', { method: 'POST', body: JSON.stringify({ name: `اختبار وثاق ${suffix}`, birthYear: 1995, personalCode: '583105', deviceKey: deviceA }) });
+assert(wrongCode.response.status === 401 && wrongCode.body.error === 'invalid_personal_code', 'wrong personal code was accepted');
+
+const newDeviceLogin = await request('/api/login', { method: 'POST', body: JSON.stringify({ name: `اختبار وثاق ${suffix}`, birthYear: 1995, personalCode, deviceKey: `new-device-${suffix}` }) });
+assert(newDeviceLogin.response.ok && newDeviceLogin.body.user?.wethaq_id === a.body.user.wethaq_id, 'cross-device identity login failed');
 
 const search = await request(`/api/search?q=${encodeURIComponent(`اختبار وثاق ${suffix}`)}`);
 assert(search.response.ok && search.body.users?.some(u => u.wethaq_id === a.body.user.wethaq_id), 'public search failed');
+assert(search.body.users.every(u => !Object.prototype.hasOwnProperty.call(u, 'personal_code_hash')), 'private auth material leaked in search');
+assert(search.body.users.every(u => !Object.prototype.hasOwnProperty.call(u, 'birth_year')), 'birth year leaked in public search');
 
-const me = await request('/api/me', { headers: { authorization: `Bearer ${trustedLogin.body.token}` } });
+const me = await request('/api/me', { headers: { authorization: `Bearer ${newDeviceLogin.body.token}` } });
 assert(me.response.ok && me.body.user?.wethaq_id === a.body.user.wethaq_id, 'me failed');
 
 const invalidToken = await request('/api/me', { headers: { authorization: 'Bearer invalid-token-for-smoke-test' } });
