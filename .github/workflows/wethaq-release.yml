@@ -11,6 +11,8 @@ on:
       - 'build.gradle'
       - 'gradle.properties'
       - '.github/workflows/wethaq-release.yml'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
