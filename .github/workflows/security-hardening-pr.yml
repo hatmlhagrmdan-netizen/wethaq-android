@@ -1,0 +1,98 @@
+name: Wethaq Security Hardening
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wethaq-security-hardening-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  harden:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          fetch-depth: 1
+          clean: true
+
+      - name: Apply security hardening
+        shell: python3 {0}
+        run: |
+          import json
+          from pathlib import Path
+
+          changed = []
+
+          p = Path('backend/package.json')
+          data = json.loads(p.read_text())
+          data.setdefault('dependencies', {})['express'] = '^5.2.1'
+          data.setdefault('scripts', {})['security:audit'] = 'npm audit --omit=dev --audit-level=high'
+          new = json.dumps(data, ensure_ascii=False, indent=2) + '\n'
+          if p.read_text() != new:
+              p.write_text(new)
+              changed.append(str(p))
+
+          s = Path('backend/server.js')
+          text = s.read_text()
+          old = "const db=new Database(process.env.DB_PATH||'wethaq.db'),PORT=Number(process.env.PORT||3000),JWT_SECRET=process.env.JWT_SECRET||crypto.randomBytes(32).toString('hex');"
+          new = "const db=new Database(process.env.DB_PATH||'wethaq.db'),PORT=Number(process.env.PORT||3000),configuredJwtSecret=String(process.env.JWT_SECRET||'').trim(),isProduction=process.env.NODE_ENV==='production';\nif(isProduction&&configuredJwtSecret.length<32)throw new Error('JWT_SECRET must be configured with at least 32 characters in production');\nconst JWT_SECRET=configuredJwtSecret||crypto.randomBytes(32).toString('hex');"
+          if old not in text:
+              raise SystemExit('Expected JWT initialization pattern not found')
+          text = text.replace(old, new, 1)
+
+          old = "app.disable('x-powered-by');app.set('trust proxy',1);app.use(cors({origin:(_o,c)=>c(null,true)}));app.use(express.json({limit:'12mb'}));"
+          new = "app.disable('x-powered-by');app.set('trust proxy',1);const allowedOrigins=new Set(String(process.env.ALLOWED_ORIGINS||'').split(',').map(v=>v.trim()).filter(Boolean));app.use(cors({origin:(origin,callback)=>callback(null,!origin||allowedOrigins.has(origin))}));app.use(express.json({limit:'12mb'}));"
+          if old not in text:
+              raise SystemExit('Expected CORS initialization pattern not found')
+          text = text.replace(old, new, 1)
+          s.write_text(text)
+          changed.append(str(s))
+
+          for workflow in ['.github/workflows/wethaq-mainline-stable-ci.yml','.github/workflows/wethaq-release.yml']:
+              p = Path(workflow)
+              text = p.read_text()
+              needle = 'npm install --no-audit --no-fund\n'
+              if needle in text and 'npm audit --omit=dev --audit-level=high' not in text:
+                  text = text.replace(needle, needle + '          npm audit --omit=dev --audit-level=high\n', 1)
+                  p.write_text(text)
+                  changed.append(workflow)
+
+          if not changed:
+              print('SECURITY_HARDENING_ALREADY_APPLIED')
+          else:
+              print('SECURITY_HARDENING_CHANGED=' + ','.join(changed))
+
+      - name: Validate hardened backend
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-fund
+          npm audit --omit=dev --audit-level=high
+          node --check server.js
+
+      - name: Commit hardening changes
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/package.json backend/server.js .github/workflows/wethaq-mainline-stable-ci.yml .github/workflows/wethaq-release.yml
+          if git diff --cached --quiet; then
+            echo 'No hardening changes to commit.'
+            exit 0
+          fi
+          git commit -m 'fix: harden production security and dependency audit'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
