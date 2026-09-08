@@ -1,0 +1,38 @@
+name: Wethaq activate admin layer
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply embedded admin layer safely
+        shell: python
+        run: |
+          from pathlib import Path
+          import re, subprocess
+          backend=Path('backend/server.js')
+          source=Path('.github/workflows/apply-admin-access-layer.yml').read_text(encoding='utf-8')
+          s=backend.read_text(encoding='utf-8')
+          marker='// WETHAQ_ADMIN_ACCESS_LAYER_V1'
+          if marker in s:
+              print('Admin layer already present')
+              raise SystemExit(0)
+          m=re.search(r"block=r'''(.*?)'''", source, re.S)
+          if not m:
+              raise SystemExit('Could not extract embedded admin layer')
+          block=m.group(1)
+          needle="server.listen(PORT,'0.0.0.0',()=>console.log(`Wethaq backend listening on ${PORT}`));"
+          if needle not in s:
+              raise SystemExit('server.listen marker not found')
+          backend.write_text(s.replace(needle,block+'\n'+needle,1),encoding='utf-8')
+          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
+          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
+          subprocess.run(['git','add','backend/server.js'],check=True)
+          subprocess.run(['git','commit','-m','fix: activate verified Wethaq admin RBAC layer'],check=True)
+          subprocess.run(['git','push'],check=True)
+      - name: Verify marker
+        run: grep -q "WETHAQ_ADMIN_ACCESS_LAYER_V1" backend/server.js
