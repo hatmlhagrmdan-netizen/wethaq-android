@@ -1,0 +1,48 @@
+name: Wethaq PR Hardening
+
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 1
+      - name: Harden identity creation semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('backend/server.js')
+          s=p.read_text(encoding='utf-8')
+          old="db.prepare('UPDATE users SET device_key=?,name=?,birth_year=?,personal_code_hash=?,last_seen=? WHERE id=?').run(deviceKey,name,birthYear,hashPersonalCode(personalCode),now(),u.id)"
+          new="db.prepare('UPDATE users SET device_key=?,last_seen=? WHERE id=?').run(deviceKey,now(),u.id)"
+          if old not in s:
+              raise SystemExit('identity update pattern not found')
+          p.write_text(s.replace(old,new),encoding='utf-8')
+          PY
+          node --check backend/server.js
+          grep -q "UPDATE users SET device_key=?,last_seen=? WHERE id=?" backend/server.js
+          ! grep -q "UPDATE users SET device_key=?,name=?,birth_year=?,personal_code_hash=?,last_seen=? WHERE id=?" backend/server.js
+      - name: Commit hardening fix to PR branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Wethaq CI'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git diff --quiet; then
+            echo 'HARDENING_ALREADY_PRESENT=true' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git add backend/server.js
+          git commit -m 'fix: keep personal identity fields immutable'
+          git push origin "HEAD:${{ github.head_ref }}"
+          echo 'HARDENING_COMMITTED=true' >> "$GITHUB_STEP_SUMMARY"
