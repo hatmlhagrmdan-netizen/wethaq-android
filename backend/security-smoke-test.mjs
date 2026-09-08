@@ -20,15 +20,23 @@ const invalidToken = await request('/api/me', {
 assert(invalidToken.response.status === 401, 'invalid JWT was not rejected');
 
 const suffix = Date.now();
+const personalCode = '731204';
 const identity = await request('/api/identity', {
   method: 'POST',
   body: JSON.stringify({
     name: `أمان وثاق ${suffix}`,
     birthYear: 1995,
+    personalCode,
     deviceKey: `aaaaaaaaaaaaaaaaaaaaaaaa${suffix}`
   })
 });
 assert(identity.response.status === 201 && identity.body.token && identity.body.user?.wethaq_id, 'security smoke identity failed');
+
+const wrongCode = await request('/api/login', {
+  method: 'POST',
+  body: JSON.stringify({ name: `أمان وثاق ${suffix}`, birthYear: 1995, personalCode: '731205', deviceKey: `bbbbbbbbbbbbbbbbbbbbbbbb${suffix}` })
+});
+assert(wrongCode.response.status === 401 && wrongCode.body.error === 'invalid_personal_code', 'wrong personal code was accepted');
 
 const token = identity.body.token;
 const invalidRecipient = await request('/api/messages', {
