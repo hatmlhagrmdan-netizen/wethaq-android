@@ -9,8 +9,10 @@ jobs:
   validation:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout exact commit
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
       - name: Validate committed source
         shell: bash
         run: |
@@ -21,8 +23,11 @@ jobs:
           grep -q 'personal_code_hash' backend/server.js
           grep -q "auth:'name_birth_year_personal_code'" backend/server.js
           grep -q 'invalid_personal_code' backend/server.js
+          grep -q 'personal_code_not_set' backend/server.js
           grep -q 'scryptSync' backend/server.js
           grep -q 'timingSafeEqual' backend/server.js
+          grep -q 'AdminAccessActivity' app/src/main/AndroidManifest.xml
+          grep -q 'PublicAdministrationActivity' app/src/main/AndroidManifest.xml
           git diff --check
       - name: Baseline structural audit
         run: |
@@ -40,11 +45,12 @@ jobs:
           PORT=3100 DB_PATH="$DB_FILE" JWT_SECRET="$(openssl rand -hex 32)" OWNER_WETHAQ_ID='Hatem_Hussin_Al_Haj_Ramadan1995' node server.js > "$RUNNER_TEMP/wethaq-backend.log" 2>&1 &
           SERVER_PID=$!
           trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          ready=0
           for i in {1..30}; do
-            curl -fsS http://127.0.0.1:3100/health >/dev/null && break
+            if curl -fsS http://127.0.0.1:3100/health >/dev/null; then ready=1; break; fi
             sleep 1
           done
-          curl -fsS http://127.0.0.1:3100/health >/dev/null
+          test "$ready" -eq 1
           PORT=3100 node smoke-test.mjs
           kill "$SERVER_PID" 2>/dev/null || true
           wait "$SERVER_PID" 2>/dev/null || true
