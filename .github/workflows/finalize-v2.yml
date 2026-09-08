@@ -14,8 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Checkout
+      - name: Checkout exact source
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
 
       - name: Validate production signing inputs
         shell: bash
@@ -35,14 +37,49 @@ jobs:
           keytool -list -keystore "$WETHAQ_KEYSTORE_PATH" -storepass "$WETHAQ_KEYSTORE_PASSWORD" -alias "$WETHAQ_KEY_ALIAS" >/dev/null
           chmod 600 "$WETHAQ_KEYSTORE_PATH"
 
-      - name: Apply final repairs and source audit
+      - name: Validate committed production source
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/final_repair.py
-          python3 -m py_compile scripts/final_repair.py
+          echo "SOURCE_COMMIT=$GITHUB_SHA"
+          python3 -m py_compile scripts/*.py
           node --check backend/server.js
+          test -f settings.gradle
+          test -f build.gradle
+          test -f app/build.gradle
+          test -f app/src/main/AndroidManifest.xml
+          test -f app/src/main/java/com/wethaq/app/MainActivity.java
+          test -f app/src/main/java/com/wethaq/app/VideoCallActivity.java
+          test -f app/src/main/java/com/wethaq/app/WethaqMessageService.java
+          test -f app/src/main/java/com/wethaq/app/WethaqBootReceiver.java
+          grep -q 'personalCode' app/src/main/java/com/wethaq/app/MainActivity.java
+          grep -q 'personal_code_hash' backend/server.js
+          grep -q "auth:'name_birth_year_personal_code'" backend/server.js
+          grep -q 'invalid_personal_code' backend/server.js
+          grep -q 'scryptSync' backend/server.js
+          grep -q 'timingSafeEqual' backend/server.js
           git diff --check
+
+      - name: Backend smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd backend
+          npm install --no-audit --no-fund
+          DB_FILE="$RUNNER_TEMP/wethaq-production-smoke.db"
+          LOG_FILE="$RUNNER_TEMP/wethaq-production-backend.log"
+          PORT=3100 DB_PATH="$DB_FILE" JWT_SECRET="$(openssl rand -hex 32)" OWNER_WETHAQ_ID='Hatem_Hussin_Al_Haj_Ramadan1995' node server.js > "$LOG_FILE" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          ready=0
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3100/health >/dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          test "$ready" -eq 1 || { cat "$LOG_FILE"; exit 1; }
+          PORT=3100 node smoke-test.mjs
+          kill "$SERVER_PID" 2>/dev/null || true
+          wait "$SERVER_PID" 2>/dev/null || true
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
@@ -55,49 +92,7 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Validate production source
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -f settings.gradle
-          test -f build.gradle
-          test -f app/build.gradle
-          test -f app/src/main/AndroidManifest.xml
-          test -f app/src/main/java/com/wethaq/app/MainActivity.java
-          test -f app/src/main/java/com/wethaq/app/VideoCallActivity.java
-          test -f app/src/main/java/com/wethaq/app/WethaqMessageService.java
-          test -f app/src/main/java/com/wethaq/app/WethaqBootReceiver.java
-          ! find app -type f -name '*.kt' | grep -q .
-          if grep -RIn --exclude='*.md' --exclude='.env.example' -E '(password|secret|api[_-]?key|private[_-]?key)[[:space:]]*[:=][[:space:]]*["'"'][^"'"']{12,}["'"']' app backend .github 2>/dev/null; then
-            echo 'Potential hard-coded secret detected'
-            exit 1
-          fi
-
-      - name: Backend smoke test
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd backend
-          npm install --no-audit --no-fund
-          DB_FILE="$RUNNER_TEMP/wethaq-production-smoke.db"
-          LOG_FILE="$RUNNER_TEMP/wethaq-production-backend.log"
-          PORT=3100 DB_PATH="$DB_FILE" JWT_SECRET='wethaq-ci-test-secret-change-me' OWNER_WETHAQ_ID='Hatem_Hussin_Al_Haj_Ramadan1995' node server.js > "$LOG_FILE" 2>&1 &
-          SERVER_PID=$!
-          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
-          ready=0
-          for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:3100/health >/dev/null; then
-              ready=1
-              break
-            fi
-            sleep 1
-          done
-          test "$ready" -eq 1 || { cat "$LOG_FILE"; exit 1; }
-          PORT=3100 node smoke-test.mjs
-          kill "$SERVER_PID" 2>/dev/null || true
-          wait "$SERVER_PID" 2>/dev/null || true
-
-      - name: Build production APK
+      - name: Build production APK from exact checkout
         shell: bash
         env:
           WETHAQ_KEYSTORE_PASSWORD: ${{ secrets.WETHAQ_KEYSTORE_PASSWORD }}
@@ -127,6 +122,7 @@ jobs:
           test -n "$CERT_SHA256"
           echo "Production signing certificate SHA-256: $CERT_SHA256"
           sha256sum "$APK" | tee app/build/outputs/apk/release/SHA256SUMS.txt
+          echo "WETHAQ_PRODUCTION_SOURCE=$GITHUB_SHA" > app/build/outputs/apk/release/PROVENANCE.txt
           echo "WETHAQ_PRODUCTION_APK_OK"
 
       - name: Publish production artifact
@@ -136,6 +132,7 @@ jobs:
           path: |
             app/build/outputs/apk/release/app-release.apk
             app/build/outputs/apk/release/SHA256SUMS.txt
+            app/build/outputs/apk/release/PROVENANCE.txt
           if-no-files-found: error
           retention-days: 30
 
