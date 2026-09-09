@@ -1,0 +1,49 @@
+name: Wethaq fix admin records v3
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-admin-records-v3.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Patch admin records implementation
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p=Path('backend/server.js')
+          s=p.read_text(encoding='utf-8')
+          # Ensure admin position table is created at process startup, not lazily during an assignment.
+          s=s.replace("db.exec(`CREATE TABLE IF NOT EXISTS user_login_log(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,login_type TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,ip_address TEXT,user_agent TEXT,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);CREATE INDEX IF NOT EXISTS idx_user_login_log_created ON user_login_log(created_at DESC);`);", "db.exec(`CREATE TABLE IF NOT EXISTS user_login_log(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,login_type TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,ip_address TEXT,user_agent TEXT,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);CREATE INDEX IF NOT EXISTS idx_user_login_log_created ON user_login_log(created_at DESC);CREATE TABLE IF NOT EXISTS admin_position_history(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,role TEXT NOT NULL,appointed_by INTEGER,appointed_by_role TEXT,appointed_at TEXT NOT NULL,expires_at TEXT,ended_at TEXT,code_version INTEGER NOT NULL DEFAULT 1,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,FOREIGN KEY(appointed_by) REFERENCES users(id) ON DELETE SET NULL);CREATE INDEX IF NOT EXISTS idx_admin_position_history_user ON admin_position_history(user_id,id DESC);`);")
+          # Remove invalid aliases p.label/p.icon from the position history endpoint.
+          old="const rows=db.prepare(`SELECT h.*,u.name,u.wethaq_id,p.label role_label,p.icon,ab.name appointed_by_name FROM admin_position_history h JOIN users u ON u.id=h.user_id LEFT JOIN users ab ON ab.id=h.appointed_by JOIN (SELECT ? role) q ON 1=1 ORDER BY h.id DESC LIMIT ?`).all('',limit);const policy=typeof ADMIN_POLICY!=='undefined'?ADMIN_POLICY:{};"
+          new="const rows=db.prepare(`SELECT h.*,u.name,u.wethaq_id,ab.name appointed_by_name FROM admin_position_history h JOIN users u ON u.id=h.user_id LEFT JOIN users ab ON ab.id=h.appointed_by ORDER BY h.id DESC LIMIT ?`).all(limit);const policy=typeof ADMIN_POLICY!=='undefined'?ADMIN_POLICY:{};"
+          if old in s: s=s.replace(old,new,1)
+          # Record appointment history after a successful assignment transaction.
+          old2="tx();const actor={id:req.adminRow.user_id,name:req.adminRow.name,role:req.adminRow.role};sendAdminAppointmentMessage(target,assignmentCard(target,targetRole,code,actor));"
+          new2="tx();recordAssignHistory(target.id,targetRole,req.adminRow.user_id,req.adminRow.role,now(),expires,1);const actor={id:req.adminRow.user_id,name:req.adminRow.name,role:req.adminRow.role};sendAdminAppointmentMessage(target,assignmentCard(target,targetRole,code,actor));"
+          if old2 in s: s=s.replace(old2,new2,1)
+          # Record position closure on removal.
+          old3="db.prepare('UPDATE admin_roles SET active=0 WHERE user_id=?').run(target.id);audit(req.adminRow.user_id,target.id,'remove_role',current.role,'');res.json({ok:true});});"
+          new3="db.prepare('UPDATE admin_roles SET active=0 WHERE user_id=?').run(target.id);closePositionHistory(target.id,current.role,now());audit(req.adminRow.user_id,target.id,'remove_role',current.role,'');res.json({ok:true});});"
+          if old3 in s: s=s.replace(old3,new3,1)
+          p.write_text(s,encoding='utf-8')
+          print('patched server.js')
+          PY
+          node --check backend/server.js
+          grep -q '/api/admin/position-history' backend/server.js
+          grep -q 'recordAssignHistory(target.id,targetRole' backend/server.js
+          grep -q 'closePositionHistory(target.id,current.role' backend/server.js
+          git diff --check
+      - name: Commit patch
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/server.js
+          git commit -m 'fix: persist and query admin position history'
+          git push
