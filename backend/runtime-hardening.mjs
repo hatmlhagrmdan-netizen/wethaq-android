@@ -13,7 +13,6 @@ function insertOnce(anchor,insert,label){
   s=s.replace(anchor,insert+anchor);
 }
 
-// Keep the production runtime authoritative: the service executes this patcher immediately before server.js.
 replaceOnce("app.get('/api/admin/policy',(_req,res)=>", "app.get('/api/admin/policy',adminAuth,(_req,res)=>", 'admin policy protection');
 replaceOnce("app.get('/api/admin/structure',(_req,res)=>", "app.get('/api/admin/structure',adminAuth,(req,res,next)=>{if(!['founder','executive','deputy1','deputy2','deputy3','supervisor'].includes(req.adminRow.role))return res.status(403).json({error:'structure_access_denied'});next();},(_req,res)=>", 'admin structure protection');
 replaceOnce("app.get('/api/admin/audit-log',adminAuth,(req,res)=>{const rows=", "app.get('/api/admin/audit-log',adminAuth,(req,res)=>{if(req.adminRow.role!=='founder')return res.status(403).json({error:'founder_only'});const rows=", 'audit founder-only policy');
@@ -46,7 +45,7 @@ replaceOnce("app.get('/api/calls/signals/:wethaqId',auth,(req,res)=>{", "app.get
 const adminGuard="const __CAP_GUARD=(name)=>(req,res,next)=>{const c=CAPABILITIES[req.adminRow?.role]||{};if(!c[name])return res.status(403).json({error:`capability_${name}_denied`});next();};\n";
 insertOnce("const ADMIN_CODE_LIMIT=64;",adminGuard,'capability guard');
 replaceOnce("app.post('/api/admin/rbac/ban',adminAuth,(req,res)=>{", "app.post('/api/admin/rbac/ban',adminAuth,__CAP_GUARD('manageUsers'),(req,res,next)=>{const mins=Math.max(0,Number(req.body?.minutes||0));const c=CAPABILITIES[req.adminRow.role]||{};if(mins>0&&!c.banTemporary)return res.status(403).json({error:'temporary_ban_denied'});if(mins===0&&!c.banPermanent)return res.status(403).json({error:'permanent_ban_denied'});next();},(req,res)=>{", 'ban capabilities');
-replaceOnce("app.post('/api/admin/unban',adminAuth,(req,res)=>{", "app.post('/api/admin/unban',adminAuth,__CAP_GUARD('unban'),(req,res)=>{", 'unban capabilities');
+replaceOnce("app.post('/api/admin/unban',auth,admin,(req,res)=>{", "app.post('/api/admin/unban',adminAuth,__CAP_GUARD('unban'),(req,res)=>{", 'unban capabilities');
 replaceOnce("app.post('/api/admin/alert',adminAuth,(req,res)=>{", "app.post('/api/admin/alert',adminAuth,__CAP_GUARD('warn'),(req,res)=>{", 'alert capabilities');
 replaceOnce("app.post('/api/admin/remove-role',adminAuth,(req,res)=>{", "app.post('/api/admin/remove-role',adminAuth,__CAP_GUARD('removeRole'),(req,res)=>{", 'remove role capability');
 
