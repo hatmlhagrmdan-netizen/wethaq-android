@@ -21,6 +21,7 @@ jobs:
           set -euo pipefail
           python3 -m py_compile scripts/*.py
           node --check backend/server.js
+          node --check backend/hardening.mjs
           grep -q 'personalCode' app/src/main/java/com/wethaq/app/MainActivity.java
           grep -q 'personal_code_hash' backend/server.js
           grep -q "auth:'name_birth_year_personal_code'" backend/server.js
@@ -36,7 +37,7 @@ jobs:
           set -euo pipefail
           python3 scripts/baseline_audit.py
           git diff --check
-      - name: Backend native smoke test
+      - name: Backend hardened smoke test
         shell: bash
         run: |
           set -euo pipefail
@@ -44,7 +45,7 @@ jobs:
           npm install --no-audit --no-fund
           node -e "import('better-sqlite3').then(({default: Database})=>{const db=new Database(':memory:');db.prepare('select 1').get();db.close();console.log('BETTER_SQLITE3_NATIVE_OK')}).catch(e=>{console.error(e);process.exit(1)})"
           DB_FILE="$RUNNER_TEMP/wethaq-smoke.db"
-          PORT=3100 DB_PATH="$DB_FILE" JWT_SECRET="$(openssl rand -hex 32)" OWNER_WETHAQ_ID='Hatem_Hussin_Al_Haj_Ramadan1995' node server.js > "$RUNNER_TEMP/wethaq-backend.log" 2>&1 &
+          PORT=3100 DB_PATH="$DB_FILE" JWT_SECRET="$(openssl rand -hex 32)" OWNER_WETHAQ_ID='Hatem_Hussin_Al_Haj_Ramadan1995' node --import ./hardening.mjs server.js > "$RUNNER_TEMP/wethaq-backend.log" 2>&1 &
           SERVER_PID=$!
           trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
           ready=0
@@ -53,7 +54,7 @@ jobs:
             sleep 1
           done
           test "$ready" -eq 1
-          PORT=3100 node smoke-test.mjs
+          PORT=3100 node hardening-smoke.mjs
           kill "$SERVER_PID" 2>/dev/null || true
           wait "$SERVER_PID" 2>/dev/null || true
       - name: Java 17
