@@ -1,0 +1,53 @@
+name: Wethaq finalize administration control boards
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/finalize-admin-control-boards.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply role-aware UI routing and permissions
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          changed=[]
+          p=Path('app/src/main/java/com/wethaq/app/MainActivity.java')
+          s=p.read_text(encoding='utf-8')
+          old='private void adminScreen(){startActivity(new Intent(this,AdminActivity.class));}'
+          new='private void adminScreen(){startActivity(new Intent(this,AdminAccessActivity.class));}'
+          if old in s:
+              s=s.replace(old,new,1); changed.append(str(p))
+          elif new not in s:
+              raise SystemExit('MainActivity adminScreen anchor not found')
+          p.write_text(s,encoding='utf-8')
+
+          p=Path('app/src/main/java/com/wethaq/app/AdminAccessActivity.java')
+          s=p.read_text(encoding='utf-8')
+          old='String[] labels={"اختر المنصب","🏛 المدير التنفيذي","🥇 النائب الأول","🥈 النائب الثاني","🥉 النائب الثالث","🛡 المشرف","👥 عضو الإدارة","⭐ عضو مميز"};String[] keys={"","executive","deputy1","deputy2","deputy3","supervisor","admin_member","premium"};ArrayAdapter<String> adapter=new ArrayAdapter<String>(this,android.R.layout.simple_spinner_item,labels){@Override public android.view.View getView(int p,android.view.View v,android.view.ViewGroup parent){TextView t=(TextView)super.getView(p,v,parent);t.setTextColor(Color.WHITE);t.setTextSize(17);t.setGravity(Gravity.RIGHT);t.setPadding(dp(8),dp(8),dp(8),dp(8));return t;}@Override public android.view.View getDropDownView(int p,android.view.View v,android.view.ViewGroup parent){TextView t=(TextView)super.getDropDownView(p,v,parent);t.setTextColor(Color.WHITE);t.setTextSize(17);t.setGravity(Gravity.RIGHT);t.setBackgroundColor(Color.rgb(24,24,26));t.setPadding(dp(12),dp(10),dp(12),dp(10));return t;}};adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);roles.setAdapter(adapter);'
+          new='java.util.ArrayList<String> labelsList=new java.util.ArrayList<>(),keysList=new java.util.ArrayList<>();labelsList.add("اختر المنصب");keysList.add("");JSONArray allowed=role.optJSONArray("appoints");String[][] all={{"executive","🏛 المدير التنفيذي"},{"deputy1","🥇 النائب الأول"},{"deputy2","🥈 النائب الثاني"},{"deputy3","🥉 النائب الثالث"},{"supervisor","🛡 المشرف"},{"admin_member","👥 عضو الإدارة"},{"premium","⭐ عضو مميز"}};for(String[] item:all){boolean ok=false;if(allowed!=null)for(int i=0;i<allowed.length();i++)if(item[0].equals(allowed.optString(i))){ok=true;break;}if(ok){keysList.add(item[0]);labelsList.add(item[1]);}}ArrayAdapter<String> adapter=new ArrayAdapter<String>(this,android.R.layout.simple_spinner_item,labelsList){@Override public android.view.View getView(int p,android.view.View v,android.view.ViewGroup parent){TextView t=(TextView)super.getView(p,v,parent);t.setTextColor(Color.WHITE);t.setTextSize(17);t.setGravity(Gravity.RIGHT);t.setPadding(dp(8),dp(8),dp(8),dp(8));return t;}@Override public android.view.View getDropDownView(int p,android.view.View v,android.view.ViewGroup parent){TextView t=(TextView)super.getDropDownView(p,v,parent);t.setTextColor(Color.WHITE);t.setTextSize(17);t.setGravity(Gravity.RIGHT);t.setBackgroundColor(Color.rgb(24,24,26));t.setPadding(dp(12),dp(10),dp(12),dp(10));return t;}};adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);roles.setAdapter(adapter);'
+          if old in s:
+              s=s.replace(old,new,1); changed.append(str(p))
+          elif 'labelsList=new java.util.ArrayList' not in s:
+              raise SystemExit('AdminAccess role selector anchor not found')
+          old2='public void onItemSelected(AdapterView<?> p,android.view.View v,int pos,long id){selectedRole=keys[pos];}'
+          new2='public void onItemSelected(AdapterView<?> p,android.view.View v,int pos,long id){selectedRole=keysList.get(pos);}'
+          if old2 in s:s=s.replace(old2,new2,1)
+          p.write_text(s,encoding='utf-8')
+          print('changed:',','.join(changed) if changed else 'none')
+          PY
+      - name: Commit and push
+        run: |
+          if git diff --quiet; then
+            echo 'No changes required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/wethaq/app/MainActivity.java app/src/main/java/com/wethaq/app/AdminAccessActivity.java
+          git commit -m 'feat: route founder board and enforce role-aware assignment UI'
+          git push
