@@ -86,9 +86,7 @@ function capabilityGuard(name) {
     next();
   };
 }
-function rolePayload(role) {
-  return CAPABILITIES[role] || {};
-}
+function rolePayload(role) { return CAPABILITIES[role] || {}; }
 
 const originalGet = express.application.get;
 const originalPost = express.application.post;
@@ -119,6 +117,22 @@ express.application.get = function(path, ...handlers) {
   return originalGet.call(this, path, ...handlers);
 };
 express.application.post = function(path, ...handlers) {
+  if (path === '/api/admin/login') return originalPost.call(this, path, ...handlers.slice(0, Math.max(0, handlers.length-1)), (req,res,next)=>{
+    const oldJson=res.json.bind(res);
+    res.json=(body)=>{
+      if(body&&body.token){
+        try {
+          const claims=jwt.verify(body.token,JWT_SECRET);
+          const row=activeRole(Number(claims.sub));
+          if(row){
+            body.token=jwt.sign({sub:row.user_id,wethaqId:row.wethaq_id,admin:true,role:row.role,codeVersion:Number(row.code_version||1)},JWT_SECRET,{expiresIn:'30d'});
+          }
+        } catch {}
+      }
+      return oldJson(body);
+    };
+    next();
+  }, ...handlers.slice(-1));
   if (path === '/api/admin/assign') return originalPost.call(this, path, ...handlers.slice(0, 1), assignmentIdentityGuard, ...handlers.slice(1));
   if (path === '/api/admin/remove-role') return originalPost.call(this, path, ...handlers.slice(0, 1), nonFounderTargetGuard, capabilityGuard('removeRole'), ...handlers.slice(1));
   if (path === '/api/admin/rbac/ban') return originalPost.call(this, path, ...handlers.slice(0, 1), capabilityGuard('manageUsers'), (req,res,next)=>{
