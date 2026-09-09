@@ -16,9 +16,7 @@ public final class WethaqMessageService extends Service {
     private static final String SERVICE_CHANNEL="wethaq_service";
     private static final String MESSAGE_CHANNEL="wethaq_messages";
     private static final String CALL_CHANNEL="wethaq_calls";
-    private final LinkedHashSet<String> seenMessageIds=new LinkedHashSet<String>(){
-        @Override protected boolean removeEldestEntryIfNeeded(){return false;}
-    };
+    private final LinkedHashSet<String> seenMessageIds=new LinkedHashSet<>();
     private OkHttpClient client;
     private WebSocket socket;
     private boolean stopping;
