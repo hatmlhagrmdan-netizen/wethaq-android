@@ -9,7 +9,7 @@ function replaceOnce(a,b,label){
   s=s.replace(a,b);
 }
 
-replaceOnce("app.get('/api/admin/users',auth,admin,", "app.get('/api/admin/users',adminAuth,", 'admin users middleware');
+// /api/admin/users is declared before adminAuth exists in server.js, so do not rewrite its middleware here.
 replaceOnce("app.get('/api/admin/policy',(_req,res)=>", "app.get('/api/admin/policy',adminAuth,(_req,res)=>", 'admin policy protection');
 replaceOnce("app.get('/api/admin/structure',(_req,res)=>", "app.get('/api/admin/structure',adminAuth,(_req,res)=>", 'admin structure protection');
 replaceOnce("app.get('/api/admin/audit-log',adminAuth,(req,res)=>{const rows=", "app.get('/api/admin/audit-log',adminAuth,(req,res)=>{if(req.adminRow.role!=='founder')return res.status(403).json({error:'founder_only'});const rows=", 'audit founder-only policy');
