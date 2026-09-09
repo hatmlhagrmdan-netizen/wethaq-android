@@ -90,7 +90,7 @@ jobs:
           export PORT=3100
           export DB_PATH="$RUNNER_TEMP/wethaq-mainline-ci.sqlite"
           export JWT_SECRET='wethaq-mainline-ci-only-secret'
-          export OWNER_WETHAQ_ID='ci-owner'
+          export OWNER_WETHAQ_ID='Hatem_Hussin_Al_Haj_Ramadan1995'
           rm -f "$DB_PATH" "$RUNNER_TEMP/wethaq-mainline-backend.log"
           node server.js > "$RUNNER_TEMP/wethaq-mainline-backend.log" 2>&1 &
           pid=$!
