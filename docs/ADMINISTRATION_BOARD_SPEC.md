@@ -24,3 +24,4 @@ This document records the intended production behavior of the administration boa
 
 ## CI verification state
 - Administration board UI, public holder display, login history, and position history are now included in the production verification path.
+- This commit is intentionally a source-level validation trigger after the `TextView` compilation fix, so the current `main` revision is rebuilt rather than relying on the failed pre-fix run.
