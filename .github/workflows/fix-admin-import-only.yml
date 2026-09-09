@@ -1,0 +1,36 @@
+name: Wethaq repair admin dashboard import
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-admin-import-only.yml'
+permissions:
+  contents: write
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Add missing TextView import safely
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/main/java/com/wethaq/app/AdminAccessActivity.java')
+          s=p.read_text(encoding='utf-8')
+          if 'import android.widget.TextView;' not in s:
+              s=s.replace('import android.widget.ScrollView;\n','import android.widget.ScrollView;\nimport android.widget.TextView;\n',1)
+              p.write_text(s,encoding='utf-8')
+              print('TEXTVIEW_IMPORT_ADDED')
+          else:
+              print('TEXTVIEW_IMPORT_ALREADY_PRESENT')
+          PY
+          grep -q 'import android.widget.TextView;' app/src/main/java/com/wethaq/app/AdminAccessActivity.java
+          git diff --check
+      - name: Commit repair
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/wethaq/app/AdminAccessActivity.java
+          git commit -m 'fix: add missing TextView import to admin dashboard'
+          git push
