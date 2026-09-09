@@ -21,3 +21,6 @@ This document records the intended production behavior of the administration boa
 - `admin_position_history` records appointments and closes the active record when a position is removed.
 - Access to login and position history is founder-only.
 - Server-side RBAC remains authoritative; hiding an action in the Android UI does not replace backend authorization.
+
+## CI verification state
+- Administration board UI, public holder display, login history, and position history are now included in the production verification path.
