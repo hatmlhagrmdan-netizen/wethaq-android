@@ -10,7 +10,7 @@ on:
       - 'settings.gradle'
       - 'build.gradle'
       - 'gradle.properties'
-      - '.github/workflows/wethaq-release.yml'
+      - '.github/workflows/**'
   pull_request:
     branches: [main]
   workflow_dispatch:
