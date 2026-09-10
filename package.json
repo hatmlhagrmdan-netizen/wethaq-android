@@ -1,12 +1,13 @@
 {
   "name": "wethaq-backend-host",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "packageManager": "npm@10.9.2",
   "engines": {
-    "node": ">=22"
+    "node": "22.23.2"
   },
   "scripts": {
-    "install": "npm --prefix backend install",
+    "install": "npm --prefix backend ci",
     "start": "npm --prefix backend start"
   }
 }
