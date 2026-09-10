@@ -39,6 +39,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: '22'
+          package-manager-cache: false
 
       - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v5
