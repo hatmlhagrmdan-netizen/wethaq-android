@@ -27,19 +27,14 @@ jobs:
           server = Path('backend/server.js')
           s = server.read_text(encoding='utf-8')
 
-          # Public administration structure must never expose birth year or auth material.
-          s2 = re.sub(
-              r"function publicAdminMember\(row\)\{.*?\}",
-              "function publicAdminMember(row){return{name:row.name,wethaq_id:row.wethaq_id,role:row.role,appointedBy:row.appointed_by_name?`${row.appointed_by_name} — ${row.appointed_by_role||''}`.trim():'',appointedAt:row.appointed_at||null}}",
-              s,
-              count=1,
-              flags=re.S,
-          )
-          if s2 == s:
-              raise SystemExit('publicAdminMember definition not found')
-          s = s2
+          old_member = "function publicAdminMember(row){return{name:row.name,wethaq_id:row.wethaq_id,birth_year:row.birth_year,role:row.role,appointedBy:row.appointed_by_name?`${row.appointed_by_name} — ${row.appointed_by_role||''}`.trim():'',appointedAt:row.appointed_at||null}}"
+          new_member = "function publicAdminMember(row){return{name:row.name,wethaq_id:row.wethaq_id,role:row.role,appointedBy:row.appointed_by_name?`${row.appointed_by_name} — ${row.appointed_by_role||''}`.trim():'',appointedAt:row.appointed_at||null}}"
+          if old_member not in s:
+              if new_member not in s:
+                  raise SystemExit('publicAdminMember definition not found')
+          else:
+              s = s.replace(old_member, new_member, 1)
 
-          # Audit log is founder-only. Replace any existing route body or insert a canonical route.
           audit_route = "app.get('/api/admin/audit-log',adminAuth,(req,res)=>{if(req.adminRow.role!=='founder')return res.status(403).json({error:'founder_only'});const limit=Math.min(200,Math.max(1,Number(req.query.limit||200)));const rows=db.prepare(`SELECT a.created_at,a.action,a.role,a.details,u.name actor_name,u.wethaq_id actor_wethaq_id FROM admin_audit_log a LEFT JOIN users u ON u.id=a.actor_user_id ORDER BY a.id DESC LIMIT ?`).all(limit);res.json({entries:rows})});"
           route_re = r"app\.get\('/api/admin/audit-log'.*?(?=\napp\.|\Z)"
           if re.search(route_re, s, flags=re.S):
