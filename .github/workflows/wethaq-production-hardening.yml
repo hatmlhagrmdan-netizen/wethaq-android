@@ -70,3 +70,5 @@ jobs:
           git add backend/server.js
           git commit -m 'fix: harden admin audit authorization and public privacy'
           git push
+
+# Triggered repair gate: keep this workflow idempotent and self-validating.
