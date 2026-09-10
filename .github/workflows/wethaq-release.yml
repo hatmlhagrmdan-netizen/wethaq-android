@@ -62,6 +62,12 @@ jobs:
           ! grep -RIn --exclude='*.md' --exclude='*.py' --exclude-dir=.github/workflows -E '(password|secret|api[_-]?key|private[_-]?key)[[:space:]]*[:=][[:space:]]*["'"'][^"'"']{20,}["'"']' app backend 2>/dev/null
           git diff --check
 
+      - name: Validate production backend hardening contract
+        shell: bash
+        env:
+          NODE_ENV: production
+        run: node backend/runtime-hardening.mjs
+
       - name: Setup JDK 17
         uses: actions/setup-java@v5
         with:
@@ -147,6 +153,6 @@ jobs:
           path: |
             app/build/outputs/apk/release/app-release.apk
             app/build/outputs/apk/release/SHA256SUMS.txt
-            app/build/outputs/apk/release/PROVENANCE.txt
+            app/build/outputs/release/PROVENANCE.txt
           if-no-files-found: error
           retention-days: 30
