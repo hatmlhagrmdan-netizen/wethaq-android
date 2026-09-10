@@ -17,6 +17,8 @@ const request = async (path, options = {}) => {
 const health = await request('/health');
 assert(health.response.ok && health.body.ok === true, 'health failed');
 assert(health.body.auth === 'name_birth_year_personal_code', 'health auth mode is not personal-code based');
+assert(health.body.search === 'public', 'public search contract changed unexpectedly');
+assert(health.body.websocket === '/ws', 'websocket contract missing');
 
 const suffix = Date.now();
 const deviceA = `aaaaaaaaaaaaaaaaaaaaaaaa${suffix}`;
@@ -63,6 +65,15 @@ assert(sent.response.status === 201 && sent.body.message?.body === 'رسالة �
 const history = await request(`/api/messages/${encodeURIComponent(b.body.user.wethaq_id)}`, { headers: { authorization: `Bearer ${a.body.token}` } });
 assert(history.response.ok && history.body.messages?.some(m => m.id === sent.body.message.id), 'message history failed');
 
+const reverseHistory = await request(`/api/messages/${encodeURIComponent(a.body.user.wethaq_id)}`, { headers: { authorization: `Bearer ${b.body.token}` } });
+assert(reverseHistory.response.ok && reverseHistory.body.messages?.some(m => m.id === sent.body.message.id), 'receiver message history failed');
+
+// Normal users must never reach administrative capabilities.
+for (const path of ['/api/admin/role', '/api/admin/structure', '/api/admin/audit-log', '/api/admin/login-history', '/api/admin/position-history']) {
+  const denied = await request(path, { headers: { authorization: `Bearer ${a.body.token}` } });
+  assert(denied.response.status === 401 || denied.response.status === 403, `normal user reached ${path}`);
+}
+
 // Founder bootstrap and admin-code separation.
 const founder = await request('/api/identity', { method: 'POST', body: JSON.stringify({ name: founderName, birthYear: founderYear, personalCode: founderPersonalCode, deviceKey: `founder-device-${suffix}` }) });
 assert(founder.response.status === 201 && founder.body.token && founder.body.user?.wethaq_id === 'Hatem_Hussin_Al_Haj_Ramadan1995', 'founder identity bootstrap failed');
@@ -86,9 +97,12 @@ assert(typeof assignment.body.adminCode === 'string' && assignment.body.adminCod
 
 const structure = await request('/api/admin/structure');
 assert(structure.response.ok && Array.isArray(structure.body.roles), 'public admin structure failed');
+assert(structure.body.roles.some(r => r.role === 'founder' && Number(r.capacity) === 1), 'founder capacity invariant missing');
 for (const role of structure.body.roles) {
   for (const member of role.members || []) {
     assert(!Object.prototype.hasOwnProperty.call(member, 'birth_year'), 'admin structure leaked birth year');
+    assert(!Object.prototype.hasOwnProperty.call(member, 'admin_code'), 'admin structure leaked admin code');
+    assert(!Object.prototype.hasOwnProperty.call(member, 'personal_code_hash'), 'admin structure leaked personal auth material');
   }
 }
 
@@ -101,6 +115,18 @@ assert(assigneePersonalLogin.response.ok && assigneePersonalLogin.body.token && 
 
 const unauthorizedAdminRole = await request('/api/admin/role', { headers: { authorization: `Bearer ${a.body.token}` } });
 assert(unauthorizedAdminRole.response.status === 403, 'normal user accessed admin role endpoint');
+
+// A lower-level admin must not be able to remove or control a higher/equal protected role.
+const memberStructure = await request('/api/admin/structure', { headers: { authorization: `Bearer ${assigneeAdminLogin.body.token}` } });
+assert(memberStructure.response.status === 403, 'admin_member received protected structure access');
+const memberAudit = await request('/api/admin/audit-log', { headers: { authorization: `Bearer ${assigneeAdminLogin.body.token}` } });
+assert(memberAudit.response.status === 403, 'admin_member received protected audit access');
+
+// Founder must be protected from administrative mutation attempts, even by the founder itself.
+for (const role of ['admin_member', 'premium', 'supervisor']) {
+  const protectedAttempt = await request('/api/admin/assign', { method: 'POST', headers: { authorization: `Bearer ${founderAdminLogin.body.token}` }, body: JSON.stringify({ wethaqId: founder.body.user.wethaq_id, role }) });
+  assert(protectedAttempt.response.status === 403 && protectedAttempt.body.error === 'founder_protected', `founder protection failed for assign:${role}`);
+}
 
 const removal = await request('/api/admin/remove-role', { method: 'POST', headers: { authorization: `Bearer ${founderAdminLogin.body.token}` }, body: JSON.stringify({ wethaqId: assignee.body.user.wethaq_id }) });
 assert(removal.response.ok && removal.body.ok === true, 'admin role removal failed');
