@@ -1,37 +1,52 @@
-name: Wethaq activate admin layer
+name: Wethaq administrative hardening gate
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/activate-admin-layer-now.yml'
+      - 'backend/server.js'
   workflow_dispatch:
 permissions:
   contents: write
 jobs:
-  activate:
+  harden:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Apply embedded admin layer safely
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+      - name: Enforce founder-only audit and public privacy
         shell: python
         run: |
           from pathlib import Path
           import re, subprocess
           backend=Path('backend/server.js')
-          source=Path('.github/workflows/apply-admin-access-layer.yml').read_text(encoding='utf-8')
           s=backend.read_text(encoding='utf-8')
-          marker='// WETHAQ_ADMIN_ACCESS_LAYER_V1'
-          if marker in s:
-              print('Admin layer already present')
-              raise SystemExit(0)
-          m=re.search(r"block=r'''(.*?)'''", source, re.S)
-          if not m:
-              raise SystemExit('Could not extract embedded admin layer')
-          block=m.group(1)
-          needle="server.listen(PORT,'0.0.0.0',()=>console.log(`Wethaq backend listening on ${PORT}`));"
-          if needle not in s:
-              raise SystemExit('server.listen marker not found')
-          backend.write_text(s.replace(needle,block+'\n'+needle,1),encoding='utf-8')
+          old="function publicAdminMember(row){return{name:row.name,wethaq_id:row.wethaq_id,birth_year:row.birth_year,role:row.role,appointedBy:row.appointed_by_name?`${row.appointed_by_name} — ${row.appointed_by_role||''}`.trim():'',appointedAt:row.appointed_at||null}}"
+          new="function publicAdminMember(row){return{name:row.name,wethaq_id:row.wethaq_id,role:row.role,appointedBy:row.appointed_by_name?`${row.appointed_by_name} — ${row.appointed_by_role||''}`.trim():'',appointedAt:row.appointed_at||null}}"
+          if old in s:
+              s=s.replace(old,new,1)
+          elif new not in s:
+              raise SystemExit('publicAdminMember definition not found')
+          route="app.get('/api/admin/audit-log',adminAuth,(req,res)=>{if(req.adminRow.role!=='founder')return res.status(403).json({error:'founder_only'});const limit=Math.min(200,Math.max(1,Number(req.query.limit||200)));const rows=db.prepare(`SELECT a.created_at,a.action,a.role,a.details,u.name actor_name,u.wethaq_id actor_wethaq_id FROM admin_audit_log a LEFT JOIN users u ON u.id=a.actor_user_id ORDER BY a.id DESC LIMIT ?`).all(limit);res.json({entries:rows})});"
+          pattern=r"app\.get\('/api/admin/audit-log'.*?(?=\napp\.|\Z)"
+          if re.search(pattern,s,re.S):
+              s=re.sub(pattern,route,s,count=1,flags=re.S)
+          else:
+              anchor="app.get('/health'"
+              if anchor not in s: raise SystemExit('health anchor not found')
+              s=s.replace(anchor,route+'\n'+anchor,1)
+          backend.write_text(s,encoding='utf-8')
+          subprocess.run(['node','--check','backend/server.js'],check=True)
+          subprocess.run(['git','diff','--check'],check=True)
           subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
           subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
           subprocess.run(['git','add','backend/server.js'],check=True)
-          subprocess.run(['git','commit','-m','fix: activate verified Wethaq admin RBAC layer'],check=True)
-          subprocess.run(['git','push'],check=True)
-      - name: Verify marker
-        run: grep -q "WETHAQ_ADMIN_ACCESS_LAYER_V1" backend/server.js
+          p=subprocess.run(['git','diff','--cached','--quiet'])
+          if p.returncode==1:
+              subprocess.run(['git','commit','-m','fix: enforce founder-only audit access and public admin privacy'],check=True)
+              subprocess.run(['git','push'],check=True)
+          else:
+              print('HARDENING_ALREADY_APPLIED')
+      - name: Verify backend syntax
+        run: node --check backend/server.js
