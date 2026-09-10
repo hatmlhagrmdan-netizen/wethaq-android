@@ -1,10 +1,10 @@
 {
   "name": "wethaq-backend",
-  "version": "4.2.2",
+  "version": "4.2.1",
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.js",
+    "start": "node --import ./hardening.mjs server.js",
     "test:smoke": "node smoke-test.mjs",
     "security:audit": "npm audit --omit=dev --audit-level=high"
   },
