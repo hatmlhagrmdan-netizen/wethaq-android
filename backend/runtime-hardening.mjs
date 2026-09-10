@@ -7,7 +7,7 @@ const s = fs.readFileSync(path, 'utf8');
 const required = [
   ['admin RBAC definitions', 'const ADMIN_RANK='],
   ['admin authentication', 'function adminAuth'],
-  ['active admin role lookup', 'function activeAdminRole'],
+  ['active admin role lookup', 'const activeAdminRole='],
   ['admin role storage', 'CREATE TABLE IF NOT EXISTS admin_roles'],
   ['health endpoint', "app.get('/health'"]
 ];
