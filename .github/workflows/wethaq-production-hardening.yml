@@ -1,0 +1,72 @@
+name: Wethaq Production Hardening Repair
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/wethaq-production-hardening.yml'
+      - 'backend/server.js'
+      - 'backend/smoke-test.mjs'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+      - name: Apply authorization and privacy hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          server = Path('backend/server.js')
+          s = server.read_text(encoding='utf-8')
+
+          # Public administration structure must never expose birth year or auth material.
+          s2 = re.sub(
+              r"function publicAdminMember\(row\)\{.*?\}",
+              "function publicAdminMember(row){return{name:row.name,wethaq_id:row.wethaq_id,role:row.role,appointedBy:row.appointed_by_name?`${row.appointed_by_name} — ${row.appointed_by_role||''}`.trim():'',appointedAt:row.appointed_at||null}}",
+              s,
+              count=1,
+              flags=re.S,
+          )
+          if s2 == s:
+              raise SystemExit('publicAdminMember definition not found')
+          s = s2
+
+          # Audit log is founder-only. Replace any existing route body or insert a canonical route.
+          audit_route = "app.get('/api/admin/audit-log',adminAuth,(req,res)=>{if(req.adminRow.role!=='founder')return res.status(403).json({error:'founder_only'});const limit=Math.min(200,Math.max(1,Number(req.query.limit||200)));const rows=db.prepare(`SELECT a.created_at,a.action,a.role,a.details,u.name actor_name,u.wethaq_id actor_wethaq_id FROM admin_audit_log a LEFT JOIN users u ON u.id=a.actor_user_id ORDER BY a.id DESC LIMIT ?`).all(limit);res.json({entries:rows})});"
+          route_re = r"app\.get\('/api/admin/audit-log'.*?(?=\napp\.|\Z)"
+          if re.search(route_re, s, flags=re.S):
+              s = re.sub(route_re, audit_route, s, count=1, flags=re.S)
+          else:
+              anchor = "app.get('/health'"
+              if anchor not in s:
+                  raise SystemExit('health route anchor not found for audit route insertion')
+              s = s.replace(anchor, audit_route + "\n" + anchor, 1)
+
+          server.write_text(s, encoding='utf-8')
+          PY
+
+          node --check backend/server.js
+          node --check backend/smoke-test.mjs
+          git diff --check
+
+      - name: Commit repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'WETHAQ_HARDENING_NO_CHANGE'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/server.js
+          git commit -m 'fix: harden admin audit authorization and public privacy'
+          git push
