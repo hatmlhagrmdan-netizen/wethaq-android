@@ -26,12 +26,14 @@ jobs:
           WETHAQ_KEYSTORE_PASSWORD: ${{ secrets.WETHAQ_KEYSTORE_PASSWORD }}
           WETHAQ_KEY_ALIAS: ${{ secrets.WETHAQ_KEY_ALIAS }}
           WETHAQ_KEY_PASSWORD: ${{ secrets.WETHAQ_KEY_PASSWORD }}
+          WETHAQ_CERT_SHA256: ${{ secrets.WETHAQ_CERT_SHA256 }}
         run: |
           set -euo pipefail
           test -n "$WETHAQ_PRODUCTION_KEYSTORE_B64" || { echo 'Missing WETHAQ_PRODUCTION_KEYSTORE_B64 in production environment'; exit 1; }
           test -n "$WETHAQ_KEYSTORE_PASSWORD" || { echo 'Missing WETHAQ_KEYSTORE_PASSWORD in production environment'; exit 1; }
           test -n "$WETHAQ_KEY_ALIAS" || { echo 'Missing WETHAQ_KEY_ALIAS in production environment'; exit 1; }
           test -n "$WETHAQ_KEY_PASSWORD" || { echo 'Missing WETHAQ_KEY_PASSWORD in production environment'; exit 1; }
+          test -n "$WETHAQ_CERT_SHA256" || { echo 'Missing WETHAQ_CERT_SHA256 in production environment'; exit 1; }
           printf '%s' "$WETHAQ_PRODUCTION_KEYSTORE_B64" | base64 --decode > "$WETHAQ_KEYSTORE_PATH"
           test -s "$WETHAQ_KEYSTORE_PATH"
           keytool -list -keystore "$WETHAQ_KEYSTORE_PATH" -storepass "$WETHAQ_KEYSTORE_PASSWORD" -alias "$WETHAQ_KEY_ALIAS" >/dev/null
@@ -108,6 +110,7 @@ jobs:
           WETHAQ_KEYSTORE_PASSWORD: ${{ secrets.WETHAQ_KEYSTORE_PASSWORD }}
           WETHAQ_KEY_ALIAS: ${{ secrets.WETHAQ_KEY_ALIAS }}
           WETHAQ_KEY_PASSWORD: ${{ secrets.WETHAQ_KEY_PASSWORD }}
+          WETHAQ_CERT_SHA256: ${{ secrets.WETHAQ_CERT_SHA256 }}
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/release/app-release.apk"
@@ -120,7 +123,10 @@ jobs:
           keytool -list -v -keystore "$WETHAQ_KEYSTORE_PATH" -storepass "$WETHAQ_KEYSTORE_PASSWORD" -alias "$WETHAQ_KEY_ALIAS" > "$RUNNER_TEMP/production-cert.txt"
           CERT_SHA256=$(awk -F': ' '/Certificate fingerprints/{flag=1;next} flag && /SHA256:/{gsub(" ","",$2); print $2; exit}' "$RUNNER_TEMP/production-cert.txt")
           test -n "$CERT_SHA256"
-          echo "Production signing certificate SHA-256: $CERT_SHA256"
+          EXPECTED_CERT=$(printf '%s' "$WETHAQ_CERT_SHA256" | tr -d ' :\t\r\n' | tr '[:lower:]' '[:upper:]')
+          NORMALIZED_CERT=$(printf '%s' "$CERT_SHA256" | tr -d ' :\t\r\n' | tr '[:lower:]' '[:upper:]')
+          test "$NORMALIZED_CERT" = "$EXPECTED_CERT" || { echo 'Production signing certificate fingerprint mismatch'; exit 1; }
+          echo 'Production signing certificate fingerprint matches the protected production secret.'
           sha256sum "$APK" | tee app/build/outputs/apk/release/SHA256SUMS.txt
           echo "WETHAQ_PRODUCTION_SOURCE=$GITHUB_SHA" > app/build/outputs/apk/release/PROVENANCE.txt
           echo "WETHAQ_PRODUCTION_APK_OK"
