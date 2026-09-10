@@ -1,67 +1,16 @@
 name: Patch founder backend v3
+
+# Retired automation: kept only for historical/manual recovery.
+# It must not mutate production backend automatically on pushes.
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/patch-founder-backend-v3.yml'
   workflow_dispatch:
+
 permissions:
-  contents: write
+  contents: read
+
 jobs:
-  patch:
+  retired:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Patch backend
-        run: |
-          python3 <<'PY'
-          from pathlib import Path
-          import re
-          p=Path('backend/server.js')
-          s=p.read_text(encoding='utf-8')
-          changed=False
-
-          if 'WETHAQ_FOUNDER_SESSION_V3' not in s:
-              anchor="app.post('/api/admin/login'"
-              i=s.find(anchor)
-              if i<0: raise SystemExit('cannot locate admin login endpoint')
-              block="""// WETHAQ_FOUNDER_SESSION_V3
-app.post('/api/admin/founder-session',auth,(req,res)=>{if(req.user?.wethaqId!==OWNER_WETHAQ_ID)return res.status(403).json({error:'founder_only'});const u=db.prepare('SELECT id,name,wethaq_id,birth_year FROM users WHERE id=?').get(Number(req.user.sub));if(!u)return res.status(404).json({error:'user_not_found'});db.prepare(`INSERT INTO admin_roles(user_id,role,code_hash,subscription_expires_at,appointed_by,appointed_by_role,appointed_at,active,code_version) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET role='founder',subscription_expires_at=NULL,appointed_by=NULL,appointed_by_role=NULL,appointed_at=excluded.appointed_at,active=1`).run(u.id,'founder',null,null,null,null,now(),1,1);const r=activeAdminRole(u.id);res.json({ok:true,token:adminTokenFor(r),role:'founder',label:ADMIN_POLICY.founder.label});});
-"""
-              s=s[:i]+block+s[i:];changed=True
-
-          if 'WETHAQ_ADMIN_WARN_V3' not in s:
-              anchor="app.post('/api/admin/rbac/ban'"
-              i=s.find(anchor)
-              if i<0: raise SystemExit('cannot locate rbac ban endpoint')
-              block="""// WETHAQ_ADMIN_WARN_V3
-app.post('/api/admin/rbac/warn',adminAuth,(req,res)=>{const targetId=String(req.body?.wethaqId||'').trim(),message=safeMessage(req.body?.message||'تنبيه من إدارة وَثاق');const target=db.prepare('SELECT id,name,wethaq_id FROM users WHERE wethaq_id=?').get(targetId);if(!target)return res.status(404).json({error:'user_not_found'});if(target.wethaq_id===OWNER_WETHAQ_ID)return res.status(400).json({error:'cannot_warn_owner'});const actor=db.prepare('SELECT id,name,wethaq_id FROM users WHERE id=?').get(req.adminRow.user_id);const body='⚠️ تنبيه إداري من '+(actor?.name||'إدارة وَثاق')+'\\n\\n'+message;const z=db.prepare(\"INSERT INTO messages(sender_id,receiver_id,body,status,message_type) VALUES(?,?,?,?,'admin_warning')\").run(actor.id,target.id,body,isOnline(target.id)?'delivered':'sent');const saved=db.prepare('SELECT * FROM messages WHERE id=?').get(z.lastInsertRowid);pushMessage(saved,actor,target);audit(actor.id,target.id,'warn',req.adminRow.role,message);res.status(201).json({ok:true,message_id:z.lastInsertRowid});});
-"""
-              s=s[:i]+block+s[i:];changed=True
-
-          # Make the existing assignment endpoint verify the three identity fields when supplied.
-          if 'WETHAQ_ASSIGN_IDENTITY_CHECK_V3' not in s:
-              pat=r"const targetId=String\(req\.body\?\.wethaqId\|\|''\)\.trim\(\),targetRole=String\(req\.body\?\.role\|\|''\)\.trim\(\);"
-              m=re.search(pat,s)
-              if not m: raise SystemExit('cannot locate assignment identity declaration')
-              repl="// WETHAQ_ASSIGN_IDENTITY_CHECK_V3\nconst targetId=String(req.body?.wethaqId||'').trim(),targetRole=String(req.body?.role||'').trim(),suppliedName=safeName(req.body?.name||''),suppliedBirth=Number(req.body?.birthYear||0),suppliedPersonal=String(req.body?.personalCode||'').trim();"
-              s=s[:m.start()]+repl+s[m.end():]
-              changed=True
-          if 'WETHAQ_ASSIGN_IDENTITY_GUARD_V3' not in s:
-              anchor="if(!target)return res.status(404).json({error:'user_not_found'});"
-              i=s.find(anchor,s.find('WETHAQ_ASSIGN_IDENTITY_CHECK_V3'))
-              if i<0: raise SystemExit('cannot locate assignment target guard')
-              guard="if(!target)return res.status(404).json({error:'user_not_found'});if(suppliedName&&target.name!==suppliedName)return res.status(401).json({error:'assignment_name_mismatch'});if(suppliedBirth&&target.birth_year!==suppliedBirth)return res.status(401).json({error:'assignment_birth_mismatch'});if(suppliedPersonal){const ph=db.prepare('SELECT personal_code_hash FROM users WHERE id=?').get(target.id)?.personal_code_hash;if(!verifyPersonalCode(suppliedPersonal,ph))return res.status(401).json({error:'assignment_personal_code_invalid'});} // WETHAQ_ASSIGN_IDENTITY_GUARD_V3"
-              s=s[:i]+guard+s[i+len(anchor):]
-              changed=True
-          if changed:p.write_text(s,encoding='utf-8')
-          print('changed=',changed)
-          PY
-      - name: Commit backend patch
-        run: |
-          git config user.name 'wethaq-founder-repair'
-          git config user.email 'actions@users.noreply.github.com'
-          git add backend/server.js
-          if git diff --cached --quiet; then echo 'No backend changes'; exit 0; fi
-          git commit -m 'Add founder session warning and assignment identity guards'
-          git push
+      - name: Explain retirement
+        run: echo 'Patch founder backend v3 is retired; use the reviewed RBAC implementation in backend/server.js.'
