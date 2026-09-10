@@ -153,6 +153,6 @@ jobs:
           path: |
             app/build/outputs/apk/release/app-release.apk
             app/build/outputs/apk/release/SHA256SUMS.txt
-            app/build/outputs/release/PROVENANCE.txt
+            app/build/outputs/apk/release/PROVENANCE.txt
           if-no-files-found: error
           retention-days: 30
