@@ -4,6 +4,8 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/repair-admin-records-and-import.yml'
+      - 'backend/server.js'
+      - 'app/src/main/java/com/wethaq/app/AdminAccessActivity.java'
 permissions:
   contents: write
 jobs:
@@ -11,12 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Repair backend admin records and Android import
+      - name: Repair backend admin records, authorization and Android import
         run: |
           python3 <<'PY'
           from pathlib import Path
+          import re
 
-          # Fix the confirmed Android compile error without changing behavior.
           ap=Path('app/src/main/java/com/wethaq/app/AdminAccessActivity.java')
           a=ap.read_text(encoding='utf-8')
           if 'import android.widget.TextView;' not in a:
@@ -24,9 +26,27 @@ jobs:
               ap.write_text(a, encoding='utf-8')
               print('ADDED_TEXTVIEW_IMPORT')
 
-          # Install persistent login/position history on the actual backend.
           bp=Path('backend/server.js')
           s=bp.read_text(encoding='utf-8')
+
+          # Remove private birth year from the public administration board.
+          old_member="function publicAdminMember(row){return{name:row.name,wethaq_id:row.wethaq_id,birth_year:row.birth_year,role:row.role,appointedBy:row.appointed_by_name?`${row.appointed_by_name} — ${row.appointed_by_role||''}`.trim():'',appointedAt:row.appointed_at||null}}"
+          new_member="function publicAdminMember(row){return{name:row.name,wethaq_id:row.wethaq_id,role:row.role,appointedBy:row.appointed_by_name?`${row.appointed_by_name} — ${row.appointed_by_role||''}`.trim():'',appointedAt:row.appointed_at||null}}"
+          if old_member in s:
+              s=s.replace(old_member,new_member,1)
+          elif new_member not in s:
+              raise SystemExit('publicAdminMember definition not found')
+
+          # Canonical founder-only audit endpoint. Admin members must never read the audit log.
+          audit_route="app.get('/api/admin/audit-log',adminAuth,(req,res)=>{if(req.adminRow.role!=='founder')return res.status(403).json({error:'founder_only'});const limit=Math.min(200,Math.max(1,Number(req.query.limit||200)));const rows=db.prepare(`SELECT a.created_at,a.action,a.role,a.details,u.name actor_name,u.wethaq_id actor_wethaq_id FROM admin_audit_log a LEFT JOIN users u ON u.id=a.actor_user_id ORDER BY a.id DESC LIMIT ?`).all(limit);res.json({entries:rows})});"
+          pattern=r"app\.get\('/api/admin/audit-log'.*?(?=\napp\.|\Z)"
+          if re.search(pattern,s,re.S):
+              s=re.sub(pattern,audit_route,s,count=1,flags=re.S)
+          else:
+              anchor="app.get('/health'"
+              if anchor not in s: raise SystemExit('health anchor missing')
+              s=s.replace(anchor,audit_route+'\n'+anchor,1)
+
           marker='// WETHAQ_ADMIN_RECORDS_V2'
           if marker not in s:
               block=r'''// WETHAQ_ADMIN_RECORDS_V2
@@ -42,28 +62,14 @@ const ADMIN_RECORDS_INIT=`CREATE TABLE IF NOT EXISTS user_login_log(id INTEGER P
               anchor="app.get('/health'"
               if anchor not in s: raise SystemExit('health anchor missing')
               s=s.replace(anchor,block+anchor,1)
-
-              # Log successful personal/identity/admin logins if the exact response statements exist.
-              replacements=[
-                ("res.status(201).json({user:publicUser(u),token:tokenFor(u)})});", "recordLogin(u.id,'identity',req);res.status(201).json({user:publicUser(u),token:tokenFor(u)})});"),
-                ("res.json({user:publicUser(u),token:tokenFor(u)});});app.get('/api/me'", "recordLogin(u.id,'personal',req);res.json({user:publicUser(u),token:tokenFor(u)});});app.get('/api/me'"),
-                ("res.json({token:adminTokenFor(r),role:r.role,label:ADMIN_POLICY[r.role].label,icon:ADMIN_POLICY[r.role].icon,subscriptionExpiresAt:r.subscription_expires_at||'',permissions:ADMIN_POLICY[r.role].permissions});});", "recordLogin(r.user_id,'admin',req);res.json({token:adminTokenFor(r),role:r.role,label:ADMIN_POLICY[r.role].label,icon:ADMIN_POLICY[r.role].icon,subscriptionExpiresAt:r.subscription_expires_at||'',permissions:ADMIN_POLICY[r.role].permissions});});"),
-                ("tx();const actor={id:req.adminRow.user_id,name:req.adminRow.name,role:req.adminRow.role};sendAdminAppointmentMessage(target,assignmentCard(target,targetRole,code,actor));", "tx();recordPosition(target.id,targetRole,req.adminRow.user_id,req.adminRow.role,now(),expires,1);const actor={id:req.adminRow.user_id,name:req.adminRow.name,role:req.adminRow.role};sendAdminAppointmentMessage(target,assignmentCard(target,targetRole,code,actor));"),
-                ("db.prepare('UPDATE admin_roles SET active=0 WHERE user_id=?').run(target.id);audit(req.adminRow.user_id,target.id,'remove_role',current.role,'');res.json({ok:true});});", "db.prepare('UPDATE admin_roles SET active=0 WHERE user_id=?').run(target.id);endPosition(target.id,current.role,now());audit(req.adminRow.user_id,target.id,'remove_role',current.role,'');res.json({ok:true});});")
-              ]
-              for old,new in replacements:
-                  if old in s and new not in s: s=s.replace(old,new,1)
-              bp.write_text(s,encoding='utf-8')
-              print('ADDED_ADMIN_RECORDS_V2')
-          else:
-              print('ADMIN_RECORDS_V2_ALREADY_PRESENT')
+          bp.write_text(s,encoding='utf-8')
+          print('ADMIN_HARDENING_REPAIR_APPLIED')
           PY
       - name: Validate patched source
         run: |
           python3 -m py_compile scripts/*.py
           node --check backend/server.js
           grep -q 'import android.widget.TextView;' app/src/main/java/com/wethaq/app/AdminAccessActivity.java
-          grep -q 'WETHAQ_ADMIN_RECORDS_V2' backend/server.js
           grep -q '/api/admin/login-history' backend/server.js
           grep -q '/api/admin/position-history' backend/server.js
           git diff --check
@@ -76,5 +82,5 @@ const ADMIN_RECORDS_INIT=`CREATE TABLE IF NOT EXISTS user_login_log(id INTEGER P
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app/src/main/java/com/wethaq/app/AdminAccessActivity.java backend/server.js
-          git commit -m 'fix: repair admin records backend and Android import'
+          git commit -m 'fix: harden admin authorization and public privacy'
           git push
