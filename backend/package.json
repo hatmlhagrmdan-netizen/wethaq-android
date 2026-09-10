@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node --import ./hardening.mjs server.js",
+    "start": "node server.js",
     "test:smoke": "node smoke-test.mjs",
     "security:audit": "npm audit --omit=dev --audit-level=high"
   },
