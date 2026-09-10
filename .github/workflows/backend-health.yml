@@ -30,14 +30,20 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Start backend with production hardening
+      - name: Validate production hardening contract
         env:
+          NODE_ENV: production
+        run: node runtime-hardening.mjs
+
+      - name: Start backend from committed production server
+        env:
+          NODE_ENV: production
           PORT: 3100
           DB_PATH: ${{ runner.temp }}/wethaq-test.db
           JWT_SECRET: ci-test-secret-change-me-please-32-chars-minimum
           OWNER_WETHAQ_ID: Hatem_Hussin_Al_Haj_Ramadan1995
         run: |
-          node --import ./hardening.mjs server.js > /tmp/wethaq-backend.log 2>&1 &
+          node server.js > /tmp/wethaq-backend.log 2>&1 &
           echo $! > /tmp/wethaq-backend.pid
 
       - name: Wait for health endpoint
@@ -51,7 +57,7 @@ jobs:
           grep -q '"ok":true' /tmp/health.json
           grep -q '"search":"public"' /tmp/health.json
 
-      - name: Run hardened admin and identity smoke test
+      - name: Run admin and identity smoke test
         run: node hardening-smoke.mjs
 
       - name: Stop backend
