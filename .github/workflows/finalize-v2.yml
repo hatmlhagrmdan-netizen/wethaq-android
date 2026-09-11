@@ -25,24 +25,20 @@ jobs:
         with:
           fetch-depth: 1
           clean: true
-
       - name: Set up Java 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-
       - name: Set up Node 22
         uses: actions/setup-node@v5
         with:
           node-version: '22'
           package-manager-cache: false
-
       - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.9'
-
       - name: Repository integrity and source audit
         shell: bash
         run: |
@@ -57,20 +53,20 @@ jobs:
           test -f app/src/main/java/com/wethaq/app/WethaqBootReceiver.java
           test -f backend/package.json
           test -f backend/server.js
+          test -f backend/audit-access-guard.mjs
           test -f backend/smoke-test.mjs
           test -f backend/security-smoke-test.mjs
           test -f scripts/mainline_stable_audit.py
           test -f backend/runtime-hardening.mjs
           python3 -m py_compile scripts/mainline_stable_audit.py
           node --check backend/server.js
+          node --check backend/audit-access-guard.mjs
           node --check backend/runtime-hardening.mjs
           node --check backend/smoke-test.mjs
           node --check backend/security-smoke-test.mjs
           git diff --check
-
       - name: Mainline architecture and security audit
         run: python3 scripts/mainline_stable_audit.py
-
       - name: Reject committed secret material
         shell: bash
         run: |
@@ -79,7 +75,6 @@ jobs:
             echo 'Private-key material detected in runtime source.'
             exit 1
           fi
-
       - name: Backend install and security smoke
         working-directory: backend
         shell: bash
@@ -91,7 +86,7 @@ jobs:
           export JWT_SECRET="$(openssl rand -hex 32)"
           export OWNER_WETHAQ_ID='Hatem_Hussin_Al_Haj_Ramadan1995'
           rm -f "$DB_PATH" "$RUNNER_TEMP/wethaq-unified-backend.log"
-          node server.js > "$RUNNER_TEMP/wethaq-unified-backend.log" 2>&1 &
+          npm start > "$RUNNER_TEMP/wethaq-unified-backend.log" 2>&1 &
           pid=$!
           trap 'kill "$pid" 2>/dev/null || true' EXIT
           for i in {1..60}; do
@@ -107,10 +102,8 @@ jobs:
           timeout 90s node security-smoke-test.mjs
           timeout 90s env PORT=3100 node smoke-test.mjs
           echo 'WETHAQ_BACKEND_SECURITY_FUNCTIONAL_OK'
-
       - name: Build CI APK
         run: gradle --no-daemon clean test assembleCi --stacktrace --console=plain
-
       - name: Verify CI APK
         shell: bash
         run: |
@@ -123,7 +116,6 @@ jobs:
           "$APKSIGNER" verify --verbose --print-certs "$APK"
           sha256sum "$APK" | tee app/build/outputs/apk/ci/SHA256SUMS.txt
           echo "WETHAQ_CI_SOURCE=$GITHUB_SHA" > app/build/outputs/apk/ci/PROVENANCE.txt
-
       - name: Publish CI artifact
         uses: actions/upload-artifact@v4
         with:
@@ -148,11 +140,9 @@ jobs:
         with:
           fetch-depth: 1
           clean: true
-
       - name: Initialize protected keystore path
         shell: bash
         run: echo "WETHAQ_KEYSTORE_PATH=$RUNNER_TEMP/wethaq-production.jks" >> "$GITHUB_ENV"
-
       - name: Validate protected production secrets
         shell: bash
         env:
@@ -171,13 +161,13 @@ jobs:
           printf '%s' "$WETHAQ_PRODUCTION_KEYSTORE_B64" | base64 --decode > "$WETHAQ_KEYSTORE_PATH"
           chmod 600 "$WETHAQ_KEYSTORE_PATH"
           keytool -list -keystore "$WETHAQ_KEYSTORE_PATH" -storepass "$WETHAQ_KEYSTORE_PASSWORD" -alias "$WETHAQ_KEY_ALIAS" >/dev/null
-
       - name: Validate production source
         shell: bash
         run: |
           set -euo pipefail
           python3 -m py_compile scripts/mainline_stable_audit.py
           node --check backend/server.js
+          node --check backend/audit-access-guard.mjs
           node --check backend/runtime-hardening.mjs
           grep -q 'personal_code_hash' backend/server.js
           grep -q 'scryptSync' backend/server.js
@@ -185,24 +175,20 @@ jobs:
           grep -q 'AdminAccessActivity' app/src/main/AndroidManifest.xml
           grep -q 'PublicAdministrationActivity' app/src/main/AndroidManifest.xml
           git diff --check
-
       - name: Set up Java 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-
       - name: Set up Node 22
         uses: actions/setup-node@v5
         with:
           node-version: '22'
           package-manager-cache: false
-
       - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.9'
-
       - name: Backend production smoke
         working-directory: backend
         shell: bash
@@ -211,7 +197,7 @@ jobs:
           npm install --no-audit --no-fund
           DB_FILE="$RUNNER_TEMP/wethaq-production-smoke.db"
           LOG_FILE="$RUNNER_TEMP/wethaq-production-backend.log"
-          PORT=3100 DB_PATH="$DB_FILE" JWT_SECRET="$(openssl rand -hex 32)" OWNER_WETHAQ_ID='Hatem_Hussin_Al_Haj_Ramadan1995' node server.js > "$LOG_FILE" 2>&1 &
+          PORT=3100 DB_PATH="$DB_FILE" JWT_SECRET="$(openssl rand -hex 32)" OWNER_WETHAQ_ID='Hatem_Hussin_Al_Haj_Ramadan1995' npm start > "$LOG_FILE" 2>&1 &
           pid=$!
           trap 'kill "$pid" 2>/dev/null || true' EXIT
           for i in {1..60}; do
@@ -222,25 +208,12 @@ jobs:
           NODE_ENV=production node runtime-hardening.mjs
           timeout 90s env PORT=3100 node security-smoke-test.mjs
           timeout 90s env PORT=3100 node smoke-test.mjs
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle 8.9
-        uses: gradle/actions/setup-gradle@v5
-        with:
-          gradle-version: '8.9'
-
       - name: Build protected production APK
         env:
           WETHAQ_KEYSTORE_PASSWORD: ${{ secrets.WETHAQ_KEYSTORE_PASSWORD }}
           WETHAQ_KEY_ALIAS: ${{ secrets.WETHAQ_KEY_ALIAS }}
           WETHAQ_KEY_PASSWORD: ${{ secrets.WETHAQ_KEY_PASSWORD }}
         run: gradle :app:clean :app:assembleRelease --no-daemon --stacktrace --console=plain
-
       - name: Verify protected certificate and APK
         shell: bash
         env:
@@ -265,7 +238,6 @@ jobs:
           sha256sum "$APK" | tee app/build/outputs/apk/release/SHA256SUMS.txt
           echo "WETHAQ_PRODUCTION_SOURCE=$GITHUB_SHA" > app/build/outputs/apk/release/PROVENANCE.txt
           echo 'WETHAQ_PRODUCTION_APK_VERIFIED'
-
       - name: Publish protected production artifact
         uses: actions/upload-artifact@v4
         with:
@@ -276,9 +248,7 @@ jobs:
             app/build/outputs/apk/release/PROVENANCE.txt
           if-no-files-found: error
           retention-days: 30
-
       - name: Secure cleanup
         if: always()
         shell: bash
-        run: |
-          rm -f "$WETHAQ_KEYSTORE_PATH" "$RUNNER_TEMP/apksigner.txt" "$RUNNER_TEMP/production-cert.txt"
+        run: rm -f "$WETHAQ_KEYSTORE_PATH" "$RUNNER_TEMP/apksigner.txt" "$RUNNER_TEMP/production-cert.txt"
