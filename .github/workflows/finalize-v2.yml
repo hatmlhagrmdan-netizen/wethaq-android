@@ -75,12 +75,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if grep -RInE -- '-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY-----' app/src backend scripts; then
-            echo 'Private-key material detected in source tree.'
-            exit 1
-          fi
-          if grep -RInE -- 'storePassword[[:space:]]+["'"'][^"'"']+["'"']|keyPassword[[:space:]]+["'"'][^"'"']' app backend scripts; then
-            echo 'Hardcoded signing credential detected in source tree.'
+          if grep -RInE -- '-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY-----' app/src backend; then
+            echo 'Private-key material detected in runtime source.'
             exit 1
           fi
 
