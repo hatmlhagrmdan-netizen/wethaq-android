@@ -1,1 +1,0 @@
-CI trigger marker B: rerun exact current mainline validation after smoke contract correction.
