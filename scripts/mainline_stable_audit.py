@@ -17,10 +17,8 @@ def read(path: str) -> str:
 build = read("app/build.gradle")
 main = read("app/src/main/java/com/wethaq/app/MainActivity.java")
 server = read("backend/server.js")
-workflow = read(".github/workflows/wethaq-mainline-stable-ci.yml")
+workflow = read(".github/workflows/finalize-v2.yml")
 
-# Android release/CI contract: verify the contracts that actually exist in
-# current main rather than asserting an inferred Gradle task name.
 for needle, message in [
     ("applicationId 'com.wethaq.app'", "applicationId changed or missing"),
     ("compileSdk 35", "compileSdk 35 is missing"),
@@ -39,20 +37,17 @@ for needle, message in [
 if re.search(r"storePassword\s+['\"]|keyPassword\s+['\"]|-----BEGIN (RSA|EC|PRIVATE) KEY-----", build):
     errors.append("hardcoded production signing credential material detected in Gradle configuration")
 
-# Never allow private-key or hardcoded signing material in runtime source.
 source_text = "\n".join([main, server, read("backend/security-smoke-test.mjs")])
 if re.search(r"-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY-----", source_text):
     errors.append("private-key material detected in runtime source")
 if re.search(r"(?:storePassword|keyPassword)\s+['\"][^'\"]+['\"]", source_text):
     errors.append("hardcoded signing password detected in runtime source")
 
-# Android source must use the production HTTPS backend.
 if "https://wethaq-backend-production.up.railway.app" not in main:
     errors.append("expected HTTPS Wethaq backend endpoint missing")
 if re.search(r"http://(?!127\.0\.0\.1(?::\d+)?(?:[\"/]|$))", main):
     errors.append("non-local cleartext HTTP endpoint detected in Android source")
 
-# Backend security invariants aligned with the current implementation.
 for needle, message in [
     ("function auth(", "backend authentication middleware missing"),
     ("jwt.verify(", "JWT verification missing"),
@@ -64,7 +59,6 @@ for needle, message in [
     if needle not in server:
         errors.append(message)
 
-# Stable workflow must be deterministic and must not mutate application source.
 for needle, message in [
     ("actions/checkout@v5", "checkout action pin missing"),
     ("actions/setup-java@v5", "Java setup pin missing"),
@@ -81,10 +75,13 @@ for needle, message in [
     if needle not in workflow:
         errors.append(message)
 
-if re.search(r"secrets\.(WETHAQ_KEYSTORE_B64|WETHAQ_KEYSTORE_PASSWORD|WETHAQ_KEY_ALIAS|WETHAQ_KEY_PASSWORD)", workflow):
-    errors.append("production secrets must not be referenced by stable no-secrets CI")
+if re.search(r"secrets\.WETHAQ_(PRODUCTION_KEYSTORE_B64|KEYSTORE_PASSWORD|KEY_ALIAS|KEY_PASSWORD|CERT_SHA256)", workflow):
+    # These secrets belong only to the protected production job. Ensure the
+    # non-production validation job remains secret-free by checking its scope.
+    validation = workflow.split("  production:", 1)[0]
+    if "secrets." in validation:
+        errors.append("production secrets leaked into the validation job")
 
-# Obvious committed secret-bearing files are prohibited.
 for p in ROOT.rglob("*"):
     if not p.is_file() or ".git" in p.parts:
         continue
