@@ -1,8 +1,12 @@
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // Wethaq production guard: validation-only. Runtime source mutation is prohibited.
-const path = 'backend/server.js';
-const s = fs.readFileSync(path, 'utf8');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const serverPath = path.join(__dirname, 'server.js');
+const s = fs.readFileSync(serverPath, 'utf8');
 
 const required = [
   ['admin RBAC definitions', 'const ADMIN_RANK='],
@@ -19,8 +23,7 @@ for (const [label, marker] of required) {
   }
 }
 
-// The production RBAC is now committed source code. Do not reject historical marker text;
-// validate the actual implementation shape instead of a comment/marker name.
+// The production RBAC is committed source code. Runtime source mutation is forbidden.
 const forbiddenRuntimeMutation = /(?:writeFileSync|appendFileSync|renameSync|rmSync)\([^\n]*(?:server\.js|backend\/server\.js)/;
 if (forbiddenRuntimeMutation.test(s)) {
   throw new Error('production validation failed: runtime source mutation detected');
