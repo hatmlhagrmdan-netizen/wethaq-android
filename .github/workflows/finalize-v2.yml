@@ -112,21 +112,6 @@ jobs:
           timeout 90s env PORT=3100 node smoke-test.mjs
           echo 'WETHAQ_BACKEND_SECURITY_FUNCTIONAL_OK'
 
-      - name: Prepare ephemeral CI signing
-        shell: bash
-        run: |
-          set -euo pipefail
-          KEYSTORE="$RUNNER_TEMP/wethaq-ci-release.jks"
-          ALIAS='wethaq-ci'
-          PASS="$(openssl rand -hex 32)"
-          keytool -genkeypair -noprompt -keystore "$KEYSTORE" -storepass "$PASS" -keypass "$PASS" -alias "$ALIAS" -keyalg RSA -keysize 2048 -validity 3650 -dname 'CN=Wethaq CI Validation, OU=Wethaq, O=Wethaq, L=CI, ST=CI, C=SY'
-          test -s "$KEYSTORE"
-          keytool -list -keystore "$KEYSTORE" -storepass "$PASS" -alias "$ALIAS" >/dev/null
-          echo "WETHAQ_KEYSTORE_PATH=$KEYSTORE" >> "$GITHUB_ENV"
-          echo "WETHAQ_KEYSTORE_PASSWORD=$PASS" >> "$GITHUB_ENV"
-          echo "WETHAQ_KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
-          echo "WETHAQ_KEY_PASSWORD=$PASS" >> "$GITHUB_ENV"
-
       - name: Build CI APK
         run: gradle --no-daemon clean test assembleCi --stacktrace --console=plain
 
@@ -161,14 +146,16 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 35
-    env:
-      WETHAQ_KEYSTORE_PATH: ${{ runner.temp }}/wethaq-production.jks
     steps:
       - name: Checkout exact source
         uses: actions/checkout@v5
         with:
           fetch-depth: 1
           clean: true
+
+      - name: Initialize protected keystore path
+        shell: bash
+        run: echo "WETHAQ_KEYSTORE_PATH=$RUNNER_TEMP/wethaq-production.jks" >> "$GITHUB_ENV"
 
       - name: Validate protected production secrets
         shell: bash
@@ -239,6 +226,17 @@ jobs:
           NODE_ENV=production node runtime-hardening.mjs
           timeout 90s env PORT=3100 node security-smoke-test.mjs
           timeout 90s env PORT=3100 node smoke-test.mjs
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: '8.9'
 
       - name: Build protected production APK
         env:
