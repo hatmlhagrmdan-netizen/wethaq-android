@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.js",
+    "start": "node --import ./audit-access-guard.mjs server.js",
     "test:smoke": "node smoke-test.mjs",
     "security:audit": "npm audit --omit=dev --audit-level=high"
   },
