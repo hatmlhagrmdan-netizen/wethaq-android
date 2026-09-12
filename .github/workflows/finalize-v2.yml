@@ -231,14 +231,14 @@ jobs:
           test -x "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/apksigner.txt"
           grep -q 'Number of signers: 1' "$RUNNER_TEMP/apksigner.txt"
-          APK_CERT_SHA256=$(sed -nE 's/^.*certificate SHA-256 digest:[[:space:]]*([0-9A-Fa-f:]+).*$/\1/p' "$RUNNER_TEMP/apksigner.txt" | head -n1 | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+          APK_CERT_SHA256=$(sed -nE 's/^.*certificate SHA-256 digest:[[:space:]]*([0-9A-Fa-f:]+).*$/\1/p' "$RUNNER_TEMP/apksigner.txt" | head -n1 | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')
           test -n "$APK_CERT_SHA256" || { echo 'Unable to extract APK signer SHA-256 from apksigner output'; exit 1; }
-          EXPECTED=$(printf '%s' "$WETHAQ_CERT_SHA256" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+          EXPECTED=$(printf '%s' "$WETHAQ_CERT_SHA256" | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')
           test "$APK_CERT_SHA256" = "$EXPECTED" || { echo 'Production APK signer certificate fingerprint mismatch.'; echo "Expected: $EXPECTED"; echo "Actual:   $APK_CERT_SHA256"; exit 1; }
           keytool -list -v -keystore "$WETHAQ_KEYSTORE_PATH" -storepass "$WETHAQ_KEYSTORE_PASSWORD" -alias "$WETHAQ_KEY_ALIAS" > "$RUNNER_TEMP/production-cert.txt"
           CERT_SHA256=$(awk -F': ' '/SHA256:/{gsub(" ","",$2); print $2; exit}' "$RUNNER_TEMP/production-cert.txt")
           test -n "$CERT_SHA256"
-          ACTUAL_KEYSTORE=$(printf '%s' "$CERT_SHA256" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+          ACTUAL_KEYSTORE=$(printf '%s' "$CERT_SHA256" | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')
           test "$ACTUAL_KEYSTORE" = "$EXPECTED" || { echo 'Production keystore certificate fingerprint mismatch.'; exit 1; }
           test "$APK_CERT_SHA256" = "$ACTUAL_KEYSTORE" || { echo 'APK signer and keystore certificate mismatch.'; exit 1; }
           sha256sum "$APK" | tee app/build/outputs/apk/release/SHA256SUMS.txt
