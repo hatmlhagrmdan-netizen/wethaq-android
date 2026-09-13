@@ -2,18 +2,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Wethaq production guard: validation-only. Runtime source mutation is prohibited.
+// Production validation only. This gate must validate the actual server.js contract
+// instead of historical implementation names from retired hardening layers.
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const serverPath = path.join(__dirname, 'server.js');
 const s = fs.readFileSync(serverPath, 'utf8');
 
 const required = [
-  ['admin RBAC definitions', 'const ADMIN_RANK='],
-  ['admin authentication', 'function adminAuth'],
-  ['active admin role lookup', 'const activeAdminRole='],
-  ['admin role storage', 'CREATE TABLE IF NOT EXISTS admin_roles'],
-  ['admin audit storage', 'CREATE TABLE IF NOT EXISTS admin_audit_log'],
+  ['JWT secret configuration', "const JWT_SECRET ="],
+  ['owner identity configuration', 'OWNER_WETHAQ_ID'],
+  ['user authentication middleware', 'function auth('],
+  ['JWT verification', 'jwt.verify('],
+  ['SQLite foreign-key enforcement', 'foreign_keys=ON'],
+  ['SQLite WAL mode', 'journal_mode=WAL'],
+  ['request size limit', "express.json({limit:'12mb'})"],
+  ['rate limiting', 'function rateLimit('],
   ['health endpoint', "app.get('/health'"]
 ];
 
@@ -23,7 +27,7 @@ for (const [label, marker] of required) {
   }
 }
 
-// The production RBAC is committed source code. Runtime source mutation is forbidden.
+// Runtime source mutation is prohibited.
 const forbiddenRuntimeMutation = /(?:writeFileSync|appendFileSync|renameSync|rmSync)\([^\n]*(?:server\.js|backend\/server\.js)/;
 if (forbiddenRuntimeMutation.test(s)) {
   throw new Error('production validation failed: runtime source mutation detected');
