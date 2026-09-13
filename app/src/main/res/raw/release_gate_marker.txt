@@ -1,3 +1,4 @@
-Wethaq release gate trigger marker
+Wethaq production release gate
 Validation target: latest main commit
-APK verification is performed by .github/workflows/wethaq-release.yml
+APK build and verification are performed by .github/workflows/finalize-v2.yml
+Production hardening validation checks the current backend/server.js contract.
