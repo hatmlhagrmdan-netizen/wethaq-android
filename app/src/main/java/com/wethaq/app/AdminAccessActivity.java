@@ -50,7 +50,7 @@ public final class AdminAccessActivity extends Activity {
         if(can("assign"))addAssignmentCard(role);
         if(can("viewStructure")&&!can("viewAudit"))addStructureCard();
         if(can("viewAudit"))addAuditCards();
-        Button logout=btn("🚪 خروج من لوحة المنصب");content.addView(logout);logout.setOnClickListener(v->{prefs.edit().remove("admin_token").remove("admin_role").apply();adminToken="";if(isOwner())founderSession();else finish();});}
+        Button logout=btn("🚪 خروج من لوحة المنصب");content.addView(logout);logout.setOnClickListener(v->{prefs.edit().remove("admin_token").remove("admin_role").apply();adminToken="";finish();});}
 
     private void addUserControlCard(){LinearLayout box=card("🛡 إدارة المستخدمين ضمن نطاق منصبك");targetName=field("الاسم الثلاثي للمستخدم");targetBirth=field("سنة الميلاد");targetBirth.setInputType(InputType.TYPE_CLASS_NUMBER);box.addView(targetName);box.addView(targetBirth);Button find=btn("🔎 بحث واختيار المستخدم");box.addView(find);targetStatus=tv("لم يتم اختيار مستخدم.",15,Color.WHITE);box.addView(targetStatus);
         LinearLayout row1=new LinearLayout(this);row1.setOrientation(LinearLayout.HORIZONTAL);Button temp=btn("حظر مؤقت"),permanent=btn("حظر دائم");temp.setEnabled(can("banTemporary"));permanent.setEnabled(can("banPermanent"));row1.addView(temp,new LinearLayout.LayoutParams(0,dp(64),1));row1.addView(permanent,new LinearLayout.LayoutParams(0,dp(64),1));box.addView(row1);
