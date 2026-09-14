@@ -10,19 +10,20 @@ const serverPath = path.join(__dirname, 'server.js');
 const s = fs.readFileSync(serverPath, 'utf8');
 
 const required = [
-  ['JWT secret configuration', "const JWT_SECRET ="],
-  ['owner identity configuration', 'OWNER_WETHAQ_ID'],
-  ['user authentication middleware', 'function auth('],
-  ['JWT verification', 'jwt.verify('],
-  ['SQLite foreign-key enforcement', 'foreign_keys=ON'],
-  ['SQLite WAL mode', 'journal_mode=WAL'],
-  ['request size limit', "express.json({limit:'12mb'})"],
-  ['rate limiting', 'function rateLimit('],
-  ['health endpoint', "app.get('/health'"]
+  ['JWT secret configuration', /process\.env\.JWT_SECRET/],
+  ['owner identity configuration', /OWNER_WETHAQ_ID/],
+  ['user authentication middleware', /function auth\s*\(/],
+  ['JWT verification', /jwt\.verify\s*\(/],
+  ['SQLite foreign-key enforcement', /foreign_keys=ON/],
+  ['SQLite WAL mode', /journal_mode=WAL/],
+  ['request size limit', /express\.json\(\{limit:'12mb'\}\)/],
+  ['rate limiting', /function rateLimit\s*\(/],
+  ['health endpoint', /app\.get\('\/health'/]
 ];
 
 for (const [label, marker] of required) {
-  if (!s.includes(marker)) {
+  const matched = marker instanceof RegExp ? marker.test(s) : s.includes(marker);
+  if (!matched) {
     throw new Error(`production validation failed: missing ${label}`);
   }
 }
