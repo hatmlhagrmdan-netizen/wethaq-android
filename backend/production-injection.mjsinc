@@ -1,0 +1,168 @@
+// WETHAQ_PRODUCTION_FIXES_2026_09_17
+// طبقة تشغيلية تكمّل الخادم الحالي دون حذف منطق الإنتاج الأصلي.
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS user_action_notifications(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  target_user_id INTEGER NOT NULL,
+  actor_user_id INTEGER,
+  action_type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  read_at TEXT,
+  delivered_at TEXT,
+  FOREIGN KEY(target_user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY(actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_user_action_target ON user_action_notifications(target_user_id,id);
+CREATE INDEX IF NOT EXISTS idx_user_action_pending ON user_action_notifications(target_user_id,read_at,id);
+`);
+
+db.exec(`
+CREATE TRIGGER IF NOT EXISTS trg_wethaq_action_role_assign
+AFTER INSERT ON admin_roles
+WHEN NEW.active=1 AND NEW.role <> 'founder'
+BEGIN
+  INSERT INTO user_action_notifications(target_user_id,actor_user_id,action_type,title,body)
+  VALUES(NEW.user_id,NEW.appointed_by,'role_assigned','تعيين إداري','تم تعيينك رسميًا في منصب إداري في تطبيق وَثاق.');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_wethaq_action_role_remove
+AFTER UPDATE OF active ON admin_roles
+WHEN OLD.active=1 AND NEW.active=0
+BEGIN
+  INSERT INTO user_action_notifications(target_user_id,action_type,title,body)
+  VALUES(NEW.user_id,'role_removed','إزالة منصب إداري','تم إنهاء منصبك الإداري في تطبيق وَثاق.');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_wethaq_action_ban
+AFTER INSERT ON bans
+BEGIN
+  INSERT INTO user_action_notifications(target_user_id,actor_user_id,action_type,title,body)
+  VALUES(NEW.user_id,NEW.created_by,'user_banned','إجراء حظر','تم اتخاذ إجراء حظر بحق هويتك في تطبيق وَثاق.');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_wethaq_action_unban
+AFTER DELETE ON bans
+BEGIN
+  INSERT INTO user_action_notifications(target_user_id,action_type,title,body)
+  VALUES(OLD.user_id,'ban_removed','إزالة الحظر','تمت إزالة الحظر عن هويتك في تطبيق وَثاق.');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_wethaq_action_admin_message
+AFTER INSERT ON messages
+WHEN NEW.message_type='admin_alert'
+BEGIN
+  INSERT INTO user_action_notifications(target_user_id,actor_user_id,action_type,title,body)
+  VALUES(NEW.receiver_id,NEW.sender_id,'admin_alert','تنبيه إداري','تم إرسال تنبيه إداري إلى هويتك في تطبيق وَثاق. راجع الرسالة لمعرفة التفاصيل.');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_wethaq_action_complaint
+AFTER INSERT ON complaints
+BEGIN
+  INSERT INTO user_action_notifications(target_user_id,actor_user_id,action_type,title,body)
+  SELECT id,NEW.from_user_id,'complaint_received','شكوى جديدة','تم استلام شكوى جديدة موجهة إلى مؤسس وَثاق.'
+  FROM users WHERE wethaq_id='Hatem_Hussin_Al_Haj_Ramadan1995';
+END;
+`);
+
+app.get('/api/me/actions',auth,(req,res)=>{
+  const limit=Math.min(100,Math.max(1,Number(req.query.limit||50)));
+  const rows=db.prepare(`SELECT a.id,a.action_type,a.title,a.body,a.created_at,a.read_at,
+    actor.name actor_name,actor.wethaq_id actor_wethaq_id
+    FROM user_action_notifications a
+    LEFT JOIN users actor ON actor.id=a.actor_user_id
+    WHERE a.target_user_id=? ORDER BY a.id ASC LIMIT ?`).all(Number(req.user.sub),limit);
+  const unread=db.prepare('SELECT COUNT(*) n FROM user_action_notifications WHERE target_user_id=? AND read_at IS NULL').get(Number(req.user.sub)).n;
+  res.json({unreadCount:Number(unread||0),actions:rows});
+});
+app.post('/api/me/actions/read',auth,(req,res)=>{
+  if(req.body?.all===true){db.prepare('UPDATE user_action_notifications SET read_at=? WHERE target_user_id=? AND read_at IS NULL').run(now(),Number(req.user.sub));}
+  else if(Array.isArray(req.body?.ids)&&req.body.ids.length){
+    const ids=req.body.ids.map(Number).filter(Number.isInteger).slice(0,100);
+    if(ids.length){
+      const marks=ids.map(()=>'?').join(',');
+      db.prepare(`UPDATE user_action_notifications SET read_at=? WHERE target_user_id=? AND id IN (${marks})`).run(now(),Number(req.user.sub),...ids);
+    }
+  }
+  res.json({ok:true});
+});
+
+app.get('/api/contacts',auth,(req,res)=>{
+  const rows=db.prepare(`
+    SELECT c.contact_id,u.wethaq_id,u.name,u.created_at,u.last_seen,
+      lm.id latest_message_id,lm.body latest_message_body,lm.message_type latest_message_type,lm.created_at latest_message_at
+    FROM contacts c JOIN users u ON u.id=c.contact_id
+    LEFT JOIN messages lm ON lm.id=(
+      SELECT MAX(m2.id) FROM messages m2
+      WHERE (m2.sender_id=? AND m2.receiver_id=u.id) OR (m2.sender_id=u.id AND m2.receiver_id=?)
+    )
+    WHERE c.user_id=?
+    ORDER BY COALESCE(lm.id,0) ASC,c.created_at ASC,u.name COLLATE NOCASE ASC
+  `).all(Number(req.user.sub),Number(req.user.sub),Number(req.user.sub));
+  const seen=new Set();
+  const contacts=rows.filter(r=>{if(seen.has(r.contact_id))return false;seen.add(r.contact_id);return true;}).map(r=>({wethaq_id:r.wethaq_id,name:r.name,created_at:r.created_at,last_seen:r.last_seen,latest_message_id:r.latest_message_id||null,latest_message_body:r.latest_message_body||'',latest_message_type:r.latest_message_type||null,latest_message_at:r.latest_message_at||null}));
+  res.json({contacts});
+});
+
+// تأمين مسار إزالة الحظر القديم: القرار النهائي للخادم حسب سلّم الصلاحيات.
+const __wethaqFixMiddleware=(req,res,next)=>{
+  if(req.path!=='/api/admin/unban')return next();
+  return adminAuth(req,res,()=>{
+    const targetId=String(req.body?.wethaqId||'').trim();
+    const target=db.prepare('SELECT id,wethaq_id FROM users WHERE wethaq_id=?').get(targetId);
+    if(!target)return res.status(404).json({error:'user_not_found'});
+    if(target.wethaq_id===OWNER_WETHAQ_ID)return res.status(403).json({error:'founder_protected'});
+    const tr=activeAdminRole(target.id),targetRole=tr?.role||'user';
+    if(!canManageTarget(req.adminRow.role,targetRole))return res.status(403).json({error:'unban_scope_denied'});
+    db.prepare('DELETE FROM bans WHERE user_id=?').run(target.id);
+    audit(req.adminRow.user_id,target.id,'unban',req.adminRow.role,'');
+    return res.json({ok:true});
+  });
+};
+app.use(__wethaqFixMiddleware);
+const __wethaqRouter=app.router||app._router;
+if(__wethaqRouter?.stack){
+  const __idx=__wethaqRouter.stack.findIndex(x=>x.handle===__wethaqFixMiddleware);
+  if(__idx>0)__wethaqRouter.stack.unshift(__wethaqRouter.stack.splice(__idx,1)[0]);
+}
+
+// توحيد السجلات: الأقدم أولًا، مع منع تكرار المستخدم في سجل الدخول، ومنع تكرار الصف المماثل في السجلات الأخرى.
+const __wethaqResponseLayer=(req,res,next)=>{
+  const originalJson=res.json.bind(res);
+  res.json=(payload)=>{
+    try{
+      if(req.path==='/api/admin/login-history'&&payload?.entries){
+        const sorted=[...payload.entries].sort((a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||'')));
+        const seen=new Set();payload={...payload,entries:sorted.filter(e=>{const k=e.wethaq_id||e.name||'';if(seen.has(k))return false;seen.add(k);return true;})};
+      }else if(req.path==='/api/admin/position-history'&&payload?.entries){
+        const sorted=[...payload.entries].sort((a,b)=>String(a.appointed_at||a.created_at||'').localeCompare(String(b.appointed_at||b.created_at||'')));
+        const seen=new Set();payload={...payload,entries:sorted.filter(e=>{const k=[e.wethaq_id,e.role,e.appointed_at].join('|');if(seen.has(k))return false;seen.add(k);return true;})};
+      }else if(req.path==='/api/admin/audit-log'&&payload?.logs){
+        payload={...payload,logs:[...payload.logs].sort((a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||'')))};
+      }
+    }catch{}
+    return originalJson(payload);
+  };
+  next();
+};
+app.use(__wethaqResponseLayer);
+if(__wethaqRouter?.stack){
+  const __idx2=__wethaqRouter.stack.findIndex(x=>x.handle===__wethaqResponseLayer);
+  if(__idx2>0)__wethaqRouter.stack.unshift(__wethaqRouter.stack.splice(__idx2,1)[0]);
+}
+
+// إرسال الإجراءات كإشعارات خارجية بمجرد توفر اتصال الجهاز.
+let __wethaqFixInterval=null;
+const __deliverWethaqActions=()=>{
+  try{
+    const rows=db.prepare(`SELECT a.*,u.name target_name,u.wethaq_id target_wethaq_id,
+      actor.name actor_name,actor.wethaq_id actor_wethaq_id
+      FROM user_action_notifications a JOIN users u ON u.id=a.target_user_id
+      LEFT JOIN users actor ON actor.id=a.actor_user_id
+      WHERE a.delivered_at IS NULL ORDER BY a.id ASC LIMIT 100`).all();
+    for(const a of rows){
+      if(!isOnline(a.target_user_id))continue;
+      pushUser(a.target_user_id,{event:'action',action:{id:a.id,action_type:a.action_type,title:a.title,body:a.body,created_at:a.created_at,actor_name:a.actor_name||'',actor_wethaq_id:a.actor_wethaq_id||'',target_name:a.target_name,target_wethaq_id:a.target_wethaq_id}});
+      db.prepare('UPDATE user_action_notifications SET delivered_at=? WHERE id=?').run(now(),a.id);
+    }
+  }catch(e){console.error('wethaq action delivery failed',e.message)}
+};
+__wethaqFixInterval=setInterval(__deliverWethaqActions,1500);
+if(typeof process!=='undefined')process.once('SIGTERM',()=>{if(__wethaqFixInterval)clearInterval(__wethaqFixInterval)});
