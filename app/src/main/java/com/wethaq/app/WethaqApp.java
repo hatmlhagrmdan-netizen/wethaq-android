@@ -11,14 +11,21 @@ import android.os.Build;
 import android.os.Bundle;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 
 public final class WethaqApp extends Application implements Application.ActivityLifecycleCallbacks {
     private static final String PREFS="wethaq";
     private static final String CONTACTS="saved_contacts";
     private static final String BACKUP="wethaq_contacts_backup";
+    private static final String API="https://wethaq-backend-production.up.railway.app";
     private SharedPreferences prefs;
     private SharedPreferences backup;
     private boolean restoring;
+    private long lastSync;
     private final SharedPreferences.OnSharedPreferenceChangeListener prefListener=(sp,key)->{
         if(restoring||!CONTACTS.equals(key))return;
         preserveAndRestoreContacts();
@@ -42,6 +49,7 @@ public final class WethaqApp extends Application implements Application.Activity
         IntentFilter f=new IntentFilter("com.wethaq.MESSAGE_RECEIVED");
         if(Build.VERSION.SDK_INT>=33)registerReceiver(messageReceiver,f,Context.RECEIVER_NOT_EXPORTED);else registerReceiver(messageReceiver,f);
         registerActivityLifecycleCallbacks(this);
+        syncContactsIfNeeded();
     }
 
     private synchronized void preserveAndRestoreContacts(){
@@ -75,7 +83,42 @@ public final class WethaqApp extends Application implements Application.Activity
         }catch(Exception ignored){}
     }
 
-    private void refresh(Activity a){a.getWindow().setStatusBarColor(android.graphics.Color.rgb(8,8,10));a.getWindow().setNavigationBarColor(android.graphics.Color.rgb(8,8,10));a.getWindow().getDecorView().postDelayed(()->WethaqUi.apply(this,a),120);a.getWindow().getDecorView().postDelayed(()->WethaqUi.apply(this,a),500);}
+    private void syncContactsIfNeeded(){
+        if(prefs.getString("token","").length()<10)return;
+        long now=System.currentTimeMillis();
+        if(now-lastSync<15000)return;
+        lastSync=now;
+        new Thread(()->{
+            try{
+                String token=prefs.getString("token","");
+                HttpURLConnection c=(HttpURLConnection)new URL(API+"/api/contacts").openConnection();
+                c.setRequestMethod("GET");c.setConnectTimeout(8000);c.setReadTimeout(10000);
+                c.setRequestProperty("Accept","application/json");c.setRequestProperty("Authorization","Bearer "+token);
+                int code=c.getResponseCode();
+                InputStream in=code>=200&&code<300?c.getInputStream():c.getErrorStream();
+                ByteArrayOutputStream out=new ByteArrayOutputStream();
+                if(in!=null){byte[] b=new byte[4096];int n;while((n=in.read(b))!=-1)out.write(b,0,n);in.close();}
+                c.disconnect();
+                if(code<200||code>=300)return;
+                JSONObject root=new JSONObject(new String(out.toByteArray(),StandardCharsets.UTF_8));
+                JSONArray contacts=root.optJSONArray("contacts");
+                if(contacts==null)return;
+                for(int i=0;i<contacts.length();i++){
+                    JSONObject x=contacts.optJSONObject(i);if(x==null)continue;
+                    String id=x.optString("wethaq_id").trim(),name=x.optString("name").trim();
+                    if(!id.isEmpty())addContact(id,name.isEmpty()?"مستخدم":name);
+                }
+            }catch(Exception ignored){}
+        }).start();
+    }
+
+    private void refresh(Activity a){
+        syncContactsIfNeeded();
+        a.getWindow().setStatusBarColor(android.graphics.Color.rgb(8,8,10));
+        a.getWindow().setNavigationBarColor(android.graphics.Color.rgb(8,8,10));
+        a.getWindow().getDecorView().postDelayed(()->WethaqUi.apply(this,a),120);
+        a.getWindow().getDecorView().postDelayed(()->WethaqUi.apply(this,a),500);
+    }
     @Override public void onActivityCreated(Activity a,Bundle b){refresh(a);}
     @Override public void onActivityResumed(Activity a){refresh(a);}
     @Override public void onActivityStarted(Activity a){}
