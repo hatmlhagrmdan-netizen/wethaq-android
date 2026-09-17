@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -10,6 +9,11 @@ const injectionPath=path.resolve(process.cwd(),'production-injection.mjsinc');
 const injected=fs.readFileSync(injectionPath,'utf8');
 if(!source.includes(marker))throw new Error('WETHAQ production start marker not found');
 const runtimeSource=source.replace(marker,injected+'\n'+marker);
-const runtimePath=path.join(os.tmpdir(),`wethaq-server-${process.pid}-${Date.now()}.mjs`);
+// يُحفظ الملف المؤقت داخل backend حتى تتبع وحدات جافاسكربت شجرة node_modules المحلية.
+const runtimePath=path.join(path.dirname(sourcePath),`.wethaq-server-runtime-${process.pid}.mjs`);
 fs.writeFileSync(runtimePath,runtimeSource,'utf8');
-await import(pathToFileURL(runtimePath).href);
+try{
+  await import(pathToFileURL(runtimePath).href);
+}finally{
+  try{fs.rmSync(runtimePath,{force:true});}catch{}
+}
