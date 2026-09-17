@@ -25,7 +25,7 @@ AFTER INSERT ON admin_roles
 WHEN NEW.active=1 AND NEW.role <> 'founder'
 BEGIN
   INSERT INTO user_action_notifications(target_user_id,actor_user_id,action_type,title,body)
-  VALUES(NEW.user_id,NEW.appointed_by,'role_assigned','تعيين إداري','تم تعيينك رسميًا في منصب إداري في تطبيق وَثاق.');
+  VALUES(NEW.user_id,NEW.appointed_by,'role_assigned','تعيين إداري','تم تعيينك رسميًا في منصب إداري. المنصب: ' || NEW.role || '.');
 END;
 CREATE TRIGGER IF NOT EXISTS trg_wethaq_action_role_remove
 AFTER UPDATE OF active ON admin_roles
@@ -38,7 +38,7 @@ CREATE TRIGGER IF NOT EXISTS trg_wethaq_action_ban
 AFTER INSERT ON bans
 BEGIN
   INSERT INTO user_action_notifications(target_user_id,actor_user_id,action_type,title,body)
-  VALUES(NEW.user_id,NEW.created_by,'user_banned','إجراء حظر','تم اتخاذ إجراء حظر بحق هويتك في تطبيق وَثاق.');
+  VALUES(NEW.user_id,NEW.created_by,'user_banned','إجراء حظر','تم اتخاذ إجراء حظر بحق هويتك. السبب: ' || COALESCE(NULLIF(NEW.reason,''),'غير محدد') || '.');
 END;
 CREATE TRIGGER IF NOT EXISTS trg_wethaq_action_unban
 AFTER DELETE ON bans
@@ -51,13 +51,13 @@ AFTER INSERT ON messages
 WHEN NEW.message_type='admin_alert'
 BEGIN
   INSERT INTO user_action_notifications(target_user_id,actor_user_id,action_type,title,body)
-  VALUES(NEW.receiver_id,NEW.sender_id,'admin_alert','تنبيه إداري','تم إرسال تنبيه إداري إلى هويتك في تطبيق وَثاق. راجع الرسالة لمعرفة التفاصيل.');
+  VALUES(NEW.receiver_id,NEW.sender_id,'admin_alert','تنبيه إداري',COALESCE(NULLIF(NEW.body,''),'تم إرسال تنبيه إداري إلى هويتك في تطبيق وَثاق.'));
 END;
 CREATE TRIGGER IF NOT EXISTS trg_wethaq_action_complaint
 AFTER INSERT ON complaints
 BEGIN
   INSERT INTO user_action_notifications(target_user_id,actor_user_id,action_type,title,body)
-  SELECT id,NEW.from_user_id,'complaint_received','شكوى جديدة','تم استلام شكوى جديدة موجهة إلى مؤسس وَثاق.'
+  SELECT id,NEW.from_user_id,'complaint_received','شكوى جديدة','تم استلام شكوى موجهة إلى مؤسس وَثاق: ' || NEW.message
   FROM users WHERE wethaq_id='Hatem_Hussin_Al_Haj_Ramadan1995';
 END;
 `);
@@ -123,12 +123,25 @@ if(__wethaqRouter?.stack){
   if(__idx>0)__wethaqRouter.stack.unshift(__wethaqRouter.stack.splice(__idx,1)[0]);
 }
 
-// توحيد السجلات: الأقدم أولًا، مع منع تكرار المستخدم في سجل الدخول، ومنع تكرار الصف المماثل في السجلات الأخرى.
+// توحيد الصلاحيات والسجلات من نقطة واحدة للخادم.
 const __wethaqResponseLayer=(req,res,next)=>{
   const originalJson=res.json.bind(res);
   res.json=(payload)=>{
     try{
-      if(req.path==='/api/admin/login-history'&&payload?.entries){
+      if(req.path==='/api/admin/role'&&payload?.role){
+        const role=String(payload.role);
+        payload={...payload,capabilities:{
+          manageUsers:['founder','executive','deputy1','deputy2','deputy3','supervisor','admin_member'].includes(role),
+          banPermanent:['founder','executive','deputy1','deputy2','deputy3','supervisor'].includes(role),
+          banTemporary:['founder','executive','deputy1','deputy2','deputy3','supervisor','admin_member'].includes(role),
+          unban:['founder','executive','deputy1','deputy2','deputy3','supervisor'].includes(role),
+          warn:['founder','executive','deputy1','deputy2','deputy3','supervisor','admin_member','premium'].includes(role),
+          assign:['founder','executive','deputy1','deputy2','deputy3','supervisor'].filter(r=>r===role).length>0,
+          removeRole:['founder','executive','deputy1','deputy2','deputy3'].includes(role),
+          viewStructure:['founder','executive','deputy1','deputy2','deputy3','supervisor'].includes(role),
+          viewAudit:role==='founder'
+        }};
+      }else if(req.path==='/api/admin/login-history'&&payload?.entries){
         const sorted=[...payload.entries].sort((a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||'')));
         const seen=new Set();payload={...payload,entries:sorted.filter(e=>{const k=e.wethaq_id||e.name||'';if(seen.has(k))return false;seen.add(k);return true;})};
       }else if(req.path==='/api/admin/position-history'&&payload?.entries){
