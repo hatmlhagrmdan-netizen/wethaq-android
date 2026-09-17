@@ -14,6 +14,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -49,8 +50,9 @@ public final class VideoCallActivity extends Activity {
     private AudioManager audioManager;
     private boolean previousSpeaker;
     private String target,token,myId,incomingOffer;
-    private boolean audioOnly,cleaned,offerSent,remoteDescriptionSet;
+    private boolean audioOnly,cleaned,offerSent,remoteDescriptionSet,micMuted;
     private TextView status;
+    private LinearLayout controls;
 
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
@@ -69,8 +71,10 @@ public final class VideoCallActivity extends Activity {
                 return;
             }
         }
-        startCall();
+        if(isIncoming())showIncomingControls();else startCall();
     }
+
+    private boolean isIncoming(){return incomingOffer!=null&&!incomingOffer.trim().isEmpty();}
 
     private View makeUi(){
         FrameLayout root=new FrameLayout(this);root.setBackgroundColor(Color.BLACK);
@@ -81,28 +85,49 @@ public final class VideoCallActivity extends Activity {
         }else{
             TextView call=new TextView(this);call.setText("📞\nمكالمة صوتية\n"+String.valueOf(getIntent().getStringExtra("name")));call.setTextColor(Color.WHITE);call.setTextSize(25);call.setGravity(Gravity.CENTER);root.addView(call,new FrameLayout.LayoutParams(-1,-1));
         }
-        status=new TextView(this);status.setText("جاري الاتصال…");status.setTextColor(Color.WHITE);status.setTextSize(18);status.setGravity(Gravity.CENTER);root.addView(status,new FrameLayout.LayoutParams(-1,dp(64),Gravity.TOP));
-        Button end=new Button(this);end.setText("إنهاء المكالمة");end.setTextSize(19);FrameLayout.LayoutParams ep=new FrameLayout.LayoutParams(-1,dp(72),Gravity.BOTTOM);ep.setMargins(dp(16),0,dp(16),dp(24));root.addView(end,ep);end.setOnClickListener(v->endCall());
+        status=new TextView(this);status.setText(isIncoming()?"مكالمة واردة":"جاري الاتصال…");status.setTextColor(Color.WHITE);status.setTextSize(18);status.setGravity(Gravity.CENTER);root.addView(status,new FrameLayout.LayoutParams(-1,dp(72),Gravity.TOP));
+        controls=new LinearLayout(this);controls.setOrientation(LinearLayout.HORIZONTAL);controls.setGravity(Gravity.CENTER);controls.setPadding(dp(10),dp(8),dp(10),dp(16));FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams(-1,dp(92),Gravity.BOTTOM);cp.setMargins(dp(8),0,dp(8),dp(8));root.addView(controls,cp);
         return root;
+    }
+
+    private Button actionButton(String text){
+        Button b=new Button(this);b.setText(text);b.setTextSize(16);b.setAllCaps(false);b.setTextColor(Color.WHITE);b.setMinHeight(dp(68));b.setMinimumWidth(0);b.setPadding(dp(10),0,dp(10),0);return b;
+    }
+
+    private void showIncomingControls(){
+        controls.removeAllViews();
+        TextView title=new TextView(this);title.setText("📞 مكالمة واردة من "+String.valueOf(getIntent().getStringExtra("name")));title.setTextColor(Color.WHITE);title.setTextSize(18);title.setGravity(Gravity.CENTER);FrameLayout.LayoutParams tp=new FrameLayout.LayoutParams(-1,dp(70),Gravity.CENTER_HORIZONTAL|Gravity.CENTER_VERTICAL);tp.setMargins(dp(16),dp(48),dp(16),dp(108));addContentView(title,tp);
+        Button accept=actionButton("✅ قبول المكالمة"),reject=actionButton("❌ رفض");accept.setOnClickListener(v->{accept.setEnabled(false);reject.setEnabled(false);startCall();});reject.setOnClickListener(v->rejectCall());controls.addView(accept,new LinearLayout.LayoutParams(0,dp(72),1));controls.addView(reject,new LinearLayout.LayoutParams(0,dp(72),1));
+    }
+
+    private void showInCallControls(){
+        controls.removeAllViews();
+        Button mic=actionButton("🎙 كتم الميكروفون"),speaker=actionButton("🔊 مكبر الصوت"),end=actionButton("⛔ إنهاء");
+        mic.setOnClickListener(v->{if(localAudioTrack==null)return;micMuted=!micMuted;localAudioTrack.setEnabled(!micMuted);mic.setText(micMuted?"🎙 تشغيل الميكروفون":"🔇 كتم الميكروفون");status.setText(micMuted?"الميكروفون مكتوم":"تم الاتصال ✓");});
+        speaker.setOnClickListener(v->{if(audioManager==null)return;boolean on=!audioManager.isSpeakerphoneOn();audioManager.setSpeakerphoneOn(on);speaker.setText(on?"🔊 إيقاف مكبر الصوت":"📱 سماعة الهاتف");});
+        end.setOnClickListener(v->endCall());
+        controls.addView(mic,new LinearLayout.LayoutParams(0,dp(72),1));controls.addView(speaker,new LinearLayout.LayoutParams(0,dp(72),1));controls.addView(end,new LinearLayout.LayoutParams(0,dp(72),1));
     }
 
     private int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
 
     private void startCall(){
         try{
+            status.setText(isIncoming()?"جاري قبول المكالمة…":"جاري تهيئة المكالمة…");
             PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(this).createInitializationOptions());
             if(!audioOnly){egl=EglBase.create();localView.init(egl.getEglBaseContext(),null);remoteView.init(egl.getEglBaseContext(),null);localView.setMirror(true);}
             audioManager=(AudioManager)getSystemService(Context.AUDIO_SERVICE);
             if(audioManager!=null){previousSpeaker=audioManager.isSpeakerphoneOn();audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);audioManager.setSpeakerphoneOn(true);}
             PeerConnectionFactory.Builder builder=PeerConnectionFactory.builder();
             if(!audioOnly)builder.setVideoEncoderFactory(new DefaultVideoEncoderFactory(egl.getEglBaseContext(),true,true)).setVideoDecoderFactory(new DefaultVideoDecoderFactory(egl.getEglBaseContext()));
-            factory=builder.createPeerConnectionFactory();createPeer();startLocal();
+            factory=builder.createPeerConnectionFactory();createPeer();startLocal();showInCallControls();
             if(incomingOffer!=null&&!incomingOffer.trim().isEmpty()&&!isInitiator())handler.post(()->handle("offer",incomingOffer));
             callIo.scheduleWithFixedDelay(this::pollSignals,0,1200,TimeUnit.MILLISECONDS);
             if(isInitiator()&&(incomingOffer==null||incomingOffer.trim().isEmpty()))sendOffer();
-            status.setText(isInitiator()?"جاري الاتصال بالطرف الآخر…":"بانتظار اتصال الطرف الآخر…");
+            status.setText(isIncoming()?"جاري توصيل المكالمة…":(isInitiator()?"جاري الاتصال بالطرف الآخر…":"بانتظار اتصال الطرف الآخر…"));
         }catch(Throwable e){fail("تعذر بدء المكالمة: "+(e.getMessage()==null?"خطأ WebRTC":e.getMessage()));}
     }
+
     private boolean isInitiator(){return myId.compareTo(target)<0;}
     private void createPeer(){
         List<PeerConnection.IceServer> servers=new ArrayList<>();
@@ -126,6 +151,7 @@ public final class VideoCallActivity extends Activity {
         });
         if(peer==null)throw new IllegalStateException("peer connection unavailable");
     }
+
     private void startLocal(){
         List<String> ids=Collections.singletonList("wethaq_stream");
         audioSource=factory.createAudioSource(new MediaConstraints());
@@ -147,10 +173,11 @@ public final class VideoCallActivity extends Activity {
     private String sdpJson(SessionDescription d){try{return new JSONObject().put("sdp",d.description).toString();}catch(Exception e){return "{}";}}
     private String candidateJson(IceCandidate c){try{return new JSONObject().put("candidate",c.sdp).put("sdpMid",c.sdpMid).put("sdpMLineIndex",c.sdpMLineIndex).toString();}catch(Exception e){return "{}";}}
     private void sendSignal(String type,String payload){new Thread(()->{try{JSONObject q=new JSONObject().put("to",target).put("type",type).put("payload",payload);HttpURLConnection c=(HttpURLConnection)new URL(API+"/api/calls/signal").openConnection();c.setRequestMethod("POST");c.setDoOutput(true);c.setConnectTimeout(5000);c.setReadTimeout(5000);c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","application/json");try(OutputStream o=c.getOutputStream()){o.write(q.toString().getBytes(StandardCharsets.UTF_8));}c.getResponseCode();c.disconnect();}catch(Exception ignored){}}).start();}
+    private void rejectCall(){sendSignal("end","{}");cleaned=true;callIo.shutdownNow();finish();}
     private void fail(String text){if(status!=null)status.setText(text);else toast(text);handler.postDelayed(this::endCall,1800);}
-    private void endCall(){if(cleaned)return;sendSignal("end","{}");cleaned=true;callIo.shutdownNow();try{if(capturer!=null)capturer.stopCapture();}catch(Exception ignored){}try{if(peer!=null)peer.close();}catch(Exception ignored){}try{if(factory!=null)factory.dispose();}catch(Exception ignored){}try{if(videoSource!=null)videoSource.dispose();}catch(Exception ignored){}try{if(audioSource!=null)audioSource.dispose();}catch(Exception ignored){}try{if(localView!=null) localView.release();if(remoteView!=null) remoteView.release();if(egl!=null) egl.release();}catch(Exception ignored){}if(audioManager!=null){audioManager.setSpeakerphoneOn(previousSpeaker);audioManager.setMode(AudioManager.MODE_NORMAL);}finish();}
+    private void endCall(){if(cleaned)return;sendSignal("end","{}");cleaned=true;callIo.shutdownNow();try{if(capturer!=null)capturer.stopCapture();}catch(Exception ignored){}try{if(peer!=null)peer.close();}catch(Exception ignored){}try{if(factory!=null)factory.dispose();}catch(Exception ignored){}try{if(videoSource!=null)videoSource.dispose();}catch(Exception ignored){}try{if(audioSource!=null)audioSource.dispose();}catch(Exception ignored){}try{if(localView!=null)localView.release();if(remoteView!=null)remoteView.release();if(egl!=null)egl.release();}catch(Exception ignored){}if(audioManager!=null){audioManager.setSpeakerphoneOn(previousSpeaker);audioManager.setMode(AudioManager.MODE_NORMAL);}finish();}
     private void toast(String s){android.widget.Toast.makeText(this,s,android.widget.Toast.LENGTH_LONG).show();}
-    @Override public void onRequestPermissionsResult(int r,String[] p,int[] g){super.onRequestPermissionsResult(r,p,g);if(r==PERM_CALL){boolean ok=audioOnly?(g.length>0&&g[0]==PackageManager.PERMISSION_GRANTED):(g.length>=2&&g[0]==PackageManager.PERMISSION_GRANTED&&g[1]==PackageManager.PERMISSION_GRANTED);if(ok)startCall();else{toast(audioOnly?"يجب السماح بالميكروفون للمكالمة":"يجب السماح بالميكروفون والكاميرا للمكالمة");finish();}}}
+    @Override public void onRequestPermissionsResult(int r,String[] p,int[] g){super.onRequestPermissionsResult(r,p,g);if(r==PERM_CALL){boolean ok=audioOnly?(g.length>0&&g[0]==PackageManager.PERMISSION_GRANTED):(g.length>=2&&g[0]==PackageManager.PERMISSION_GRANTED&&g[1]==PackageManager.PERMISSION_GRANTED);if(ok){if(isIncoming())showIncomingControls();else startCall();}else{toast(audioOnly?"يجب السماح بالميكروفون للمكالمة":"يجب السماح بالميكروفون والكاميرا للمكالمة");finish();}}}
     @Override protected void onDestroy(){if(!cleaned)callIo.shutdownNow();super.onDestroy();}
     private abstract static class SimpleSdp implements SdpObserver{public void onCreateSuccess(SessionDescription d){}public void onSetSuccess(){}public void onCreateFailure(String s){}public void onSetFailure(String s){}}
 }
