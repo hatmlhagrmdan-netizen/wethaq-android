@@ -63,7 +63,7 @@ public final class VideoCallActivity extends Activity {
     private boolean previousSpeaker;
     private String target,token,myId,incomingOffer;
     private boolean audioOnly,cleaned,offerSent,remoteDescriptionSet,micMuted;
-    private final BroadcastReceiver callSignalReceiver=new BroadcastReceiver(){@Override public void onReceive(Context context,Intent intent){if(!"com.wethaq.CALL_SIGNAL".equals(intent.getAction())||cleaned)return;String sender=intent.getStringExtra("sender_wethaq_id");if(sender==null||!sender.equals(target))return;String type=intent.getStringExtra("type");String payload=intent.getStringExtra("payload");long signalId=intent.getLongExtra("signal_id",0);if(signalId>0&&!seenSignals.add("ws:"+signalId))return;handler.post(()->handle(type==null?"":type,payload==null?"":payload));}};
+    private final BroadcastReceiver callSignalReceiver=new BroadcastReceiver(){@Override public void onReceive(Context context,Intent intent){if(!"com.wethaq.CALL_SIGNAL".equals(intent.getAction())||cleaned)return;String sender=intent.getStringExtra("sender_wethaq_id");if(sender==null||!sender.equals(target))return;String type=intent.getStringExtra("type");String payload=intent.getStringExtra("payload");long signalId=intent.getLongExtra("signal_id",0);if(signalId>0&&!seenSignals.add(String.valueOf(signalId)))return;handler.post(()->handle(type==null?"":type,payload==null?"":payload));}};
     private TextView status;
     private LinearLayout controls;
 
