@@ -20,6 +20,7 @@ public final class WethaqMessageService extends Service {
     private static final String MESSAGE_CHANNEL="wethaq_messages_v2";
     private static final String CALL_CHANNEL="wethaq_calls";
     private static final String LIVE_MESSAGE_ACTION="com.wethaq.MESSAGE_RECEIVED";
+    private static final String CALL_SIGNAL_ACTION="com.wethaq.CALL_SIGNAL";
     private final LinkedHashSet<String> seenMessageIds=new LinkedHashSet<>();
     private OkHttpClient client;
     private WebSocket socket;
@@ -64,12 +65,12 @@ public final class WethaqMessageService extends Service {
                 int actionId=a.optInt("id",0);String title=a.optString("title","إجراء إداري");String body=a.optString("body","تم اتخاذ إجراء على حسابك.");String actor=a.optString("actor_name","");
                 showActionNotification(title,actor,body,actionId);
             }else if("call".equals(event)){
-                JSONObject from=o.optJSONObject("from");String id=from==null?"":from.optString("wethaq_id","");String name=from==null?"مستخدم":from.optString("name","مستخدم");String type=o.optString("type","");String payload=o.optString("payload","");if("offer".equals(type)&&!id.isEmpty())showIncomingCall(id,name,!payload.contains("m=video"),payload);
+                JSONObject from=o.optJSONObject("from");String id=from==null?"":from.optString("wethaq_id","");String name=from==null?"مستخدم":from.optString("name","مستخدم");String type=o.optString("type","");String payload=o.optString("payload","");publishCallSignal(id,type,payload,o.optLong("signal_id",0));if("offer".equals(type)&&!id.isEmpty())showIncomingCall(id,name,!payload.contains("m=video"),payload);
             }
         }catch(Exception ignored){}
     }
 
-    private void syncPendingNotifications(){
+    private void publishCallSignal(String senderId,String type,String payload,long signalId){if(senderId==null||senderId.isEmpty()||type==null||type.isEmpty())return;Intent i=new Intent(CALL_SIGNAL_ACTION);i.setPackage(getPackageName());i.putExtra("sender_wethaq_id",senderId);i.putExtra("type",type);i.putExtra("payload",payload==null?"":payload);i.putExtra("signal_id",signalId);sendBroadcast(i);}\n\n    private void syncPendingNotifications(){
         final String token=getSharedPreferences("wethaq",MODE_PRIVATE).getString("token","");
         if(token.length()<10||client==null)return;
         try{
