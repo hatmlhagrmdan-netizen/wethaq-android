@@ -31,7 +31,7 @@ function limited(key,limit,windowMs){const now=Date.now(),old=buckets.get(key);i
 function userLoginGuard(req,res,next){const key=`user-auth:${req.ip}:${safeName(req.body?.name)}`;if(!limited(key,8,15*60*1000))return res.status(429).json({error:'too_many_attempts'});next();}
 function adminLoginGuard(req,res,next){const key=`admin-auth:${req.ip}:${safeName(req.body?.name)}`;if(!limited(key,8,15*60*1000))return res.status(429).json({error:'too_many_attempts'});next();}
 function reshapeMessages(limit){return(req,res,next)=>{const old=res.json.bind(res);res.json=body=>{if(body&&Array.isArray(body.messages)){const all=body.messages;body.hasMore=all.length>limit;body.messages=body.hasMore?all.slice(-limit):all;}return old(body);};next();};}
-function stripSearchFields(){return(req,res,next)=>{const old=res.json.bind(res);res.json=body=>{if(body&&Array.isArray(body.users))body.users=body.users.map(u=>{const z={...u};delete z.birth_year;delete z.avatar_data;delete z.personal_code_hash;delete z.password_hash;return z;});return old(body);};next();};}
+function stripSearchFields(){return(req,res,next)=>{const old=res.json.bind(res);res.json=body=>{if(req.path==='/api/search'&&body&&Array.isArray(body.users))body.users=body.users.map(u=>{const z={...u};delete z.birth_year;delete z.avatar_data;delete z.personal_code_hash;delete z.password_hash;return z;});return old(body);};next();};}
 function injectRolePayload(req,res,next){const old=res.json.bind(res);res.json=body=>{if(body&&body.role)body.capabilities=CAPABILITIES[body.role]||{};return old(body);};next();}
 
 const originalGet=express.application.get;
