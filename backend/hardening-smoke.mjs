@@ -23,6 +23,11 @@ const structure = await req('/api/admin/structure',{headers:{authorization:`Bear
 assert(structure.r.ok && Array.isArray(structure.body.roles),'founder structure failed');
 const memberLogin = await req('/api/admin/login',{method:'POST',body:JSON.stringify({name:memberName,birthYear:1998,adminCode:assigned.body.adminCode})});
 assert(memberLogin.r.ok && memberLogin.body.role==='admin_member','member admin login failed');
+const directory = await req('/api/admin/users?q='+encodeURIComponent(memberName),{headers:{authorization:`Bearer ${memberLogin.body.token}`}});
+assert(directory.r.ok && directory.body.users?.some(u=>u.wethaq_id===member.body.user.wethaq_id),'assigned admin directory lookup failed');
+assert(directory.body.users?.some(u=>u.wethaq_id===member.body.user.wethaq_id && Number(u.birth_year)===1998),'assigned admin directory birth year missing');
+const oldBanDenied = await req('/api/admin/ban',{method:'POST',headers:{authorization:`Bearer ${memberLogin.body.token}`},body:JSON.stringify({wethaqId:member.body.user.wethaq_id,minutes:1})});
+assert(oldBanDenied.r.status===403 && oldBanDenied.body.error==='admin_only','legacy admin ban endpoint widened');
 assert((await req('/api/admin/structure',{headers:{authorization:`Bearer ${memberLogin.body.token}`}})).r.status===403,'member can view restricted structure');
 assert((await req('/api/admin/audit-log',{headers:{authorization:`Bearer ${memberLogin.body.token}`}})).r.status===403,'member can view founder audit log');
 const personal = await req('/api/login',{method:'POST',body:JSON.stringify({name:memberName,birthYear:1998,personalCode:memberCode,deviceKey:`m2-${s}`})});
