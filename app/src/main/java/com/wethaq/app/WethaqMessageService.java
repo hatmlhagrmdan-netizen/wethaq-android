@@ -43,7 +43,7 @@ public final class WethaqMessageService extends Service {
     }
 
     private Notification baseNotification(String text){return new NotificationCompat.Builder(this,SERVICE_CHANNEL).setSmallIcon(android.R.drawable.ic_dialog_email).setContentTitle("وَثاق").setContentText(text).setOngoing(true).setCategory(NotificationCompat.CATEGORY_SERVICE).build();}
-    private void connect(){if(stopping)return;String token=getSharedPreferences("wethaq",MODE_PRIVATE).getString("token","");if(token.length()<10){scheduleReconnect();return;}try{String encoded=URLEncoder.encode(token,"UTF-8");client=new OkHttpClient.Builder().pingInterval(20,TimeUnit.SECONDS).retryOnConnectionFailure(true).build();Request r=new Request.Builder().url("wss://wethaq-backend-production.up.railway.app/ws?token="+encoded).build();socket=client.newWebSocket(r,new WebSocketListener(){@Override public void onOpen(WebSocket w,Response x){update("متصل — استقبال الرسائل والمكالمات والإجراءات فعال");}@Override public void onMessage(WebSocket w,String text){handle(text);}@Override public void onClosed(WebSocket w,int code,String reason){socket=null;scheduleReconnect();}@Override public void onFailure(WebSocket w,Throwable t,Response r){socket=null;scheduleReconnect();}});}catch(Exception e){scheduleReconnect();}}
+    private void connect(){if(stopping)return;String token=getSharedPreferences("wethaq",MODE_PRIVATE).getString("token","");if(token.length()<10){scheduleReconnect();return;}try{String encoded=URLEncoder.encode(token,"UTF-8");client=new OkHttpClient.Builder().pingInterval(20,TimeUnit.SECONDS).retryOnConnectionFailure(true).build();Request r=new Request.Builder().url("wss://wethaq-backend-production.up.railway.app/ws?token="+encoded).build();socket=client.newWebSocket(r,new WebSocketListener(){@Override public void onOpen(WebSocket w,Response x){update("متصل — استقبال الرسائل والمكالمات والإجراءات فعال");syncPendingNotifications();}@Override public void onMessage(WebSocket w,String text){handle(text);}@Override public void onClosed(WebSocket w,int code,String reason){socket=null;scheduleReconnect();}@Override public void onFailure(WebSocket w,Throwable t,Response r){socket=null;scheduleReconnect();}});}catch(Exception e){scheduleReconnect();}}
     private void scheduleReconnect(){if(stopping)return;new Handler(Looper.getMainLooper()).postDelayed(()->{if(!stopping&&socket==null)connect();},3000);}
     private void update(String text){NotificationManager nm=getSystemService(NotificationManager.class);if(nm!=null)nm.notify(FOREGROUND_ID,baseNotification(text));}
     private boolean firstTimeMessage(String id){if(id==null||id.isEmpty())return true;synchronized(seenMessageIds){if(seenMessageIds.contains(id))return false;if(seenMessageIds.size()>=256){java.util.Iterator<String> it=seenMessageIds.iterator();if(it.hasNext()){it.next();it.remove();}}seenMessageIds.add(id);return true;}}
@@ -56,9 +56,7 @@ public final class WethaqMessageService extends Service {
                 JSONObject m=o.optJSONObject("message");String id=m==null?"":m.optString("id","");if(!firstTimeMessage(id))return;
                 String sender=m==null?"مستخدم":m.optString("sender_name","مستخدم");String senderId=m==null?"":m.optString("sender_wethaq_id","");String body=m==null?"رسالة جديدة":m.optString("body","");String type=m==null?"text":m.optString("message_type","text");
                 String content=body.isEmpty()?("audio".equals(type)?"🎙 رسالة صوتية":"image".equals(type)?"🖼 صورة":"رسالة جديدة"):body;
-                if("admin_assignment".equals(type))showAdminMessageNotification("📋 تعيين إداري",sender,senderId,body,m.optInt("id",0));
-                else if("admin_alert".equals(type))showAdminMessageNotification("⚠️ تنبيه إداري",sender,senderId,body,m.optInt("id",0));
-                else showMessage(sender,senderId,content);
+                if("admin_assignment".equals(type)||"admin_alert".equals(type)){} else showMessage(sender,senderId,content);
                 publishLiveMessage(senderId,sender);
             }else if("action".equals(event)){
                 JSONObject a=o.optJSONObject("action");
@@ -71,6 +69,38 @@ public final class WethaqMessageService extends Service {
         }catch(Exception ignored){}
     }
 
+    private void syncPendingNotifications(){
+        final String token=getSharedPreferences("wethaq",MODE_PRIVATE).getString("token","");
+        if(token.length()<10||client==null)return;
+        try{
+            Request mr=new Request.Builder().url("https://wethaq-backend-production.up.railway.app/api/messages/inbox?pending=1").header("Authorization","Bearer "+token).get().build();
+            client.newCall(mr).enqueue(new Callback(){
+                @Override public void onFailure(Call call,java.io.IOException e){}
+                @Override public void onResponse(Call call,Response response){
+                    try(Response rr=response){
+                        if(!rr.isSuccessful()||rr.body()==null)return;
+                        JSONObject z=new JSONObject(rr.body().string());JSONArray a=z.optJSONArray("messages");java.util.ArrayList<Integer> ids=new java.util.ArrayList<>();
+                        if(a!=null)for(int i=0;i<a.length();i++){JSONObject m=a.optJSONObject(i);if(m==null)continue;int id=m.optInt("id",0);String sender=m.optString("sender_name","مستخدم"),senderId=m.optString("sender_wethaq_id",""),body=m.optString("body",""),type=m.optString("message_type","text");String preview=body.isEmpty()?("audio".equals(type)?"🎙 رسالة صوتية":"image".equals(type)?"🖼 صورة":"رسالة جديدة"):body;if(!"admin_assignment".equals(type)&&!"admin_alert".equals(type)&&firstTimeMessage(String.valueOf(id)))showMessage(sender,senderId,preview);if(id>0)ids.add(id);}
+                        acknowledgeMessages(ids);
+                    }catch(Exception ignored){}
+                }
+            });
+            Request ar=new Request.Builder().url("https://wethaq-backend-production.up.railway.app/api/me/actions?pending=1").header("Authorization","Bearer "+token).get().build();
+            client.newCall(ar).enqueue(new Callback(){
+                @Override public void onFailure(Call call,java.io.IOException e){}
+                @Override public void onResponse(Call call,Response response){
+                    try(Response rr=response){
+                        if(!rr.isSuccessful()||rr.body()==null)return;
+                        JSONObject z=new JSONObject(rr.body().string());JSONArray a=z.optJSONArray("actions");java.util.ArrayList<Integer> ids=new java.util.ArrayList<>();
+                        if(a!=null)for(int i=0;i<a.length();i++){JSONObject x=a.optJSONObject(i);if(x==null)continue;int id=x.optInt("id",0);if(id>0){showActionNotification(x.optString("title","إجراء إداري"),x.optString("actor_name",""),x.optString("body","تم اتخاذ إجراء على حسابك."),id);ids.add(id);}}
+                        acknowledgeActions(ids);
+                    }catch(Exception ignored){}
+                }
+            });
+        }catch(Exception ignored){}
+    }
+    private void acknowledgeMessages(java.util.ArrayList<Integer> ids){if(ids==null||ids.isEmpty())return;String token=getSharedPreferences("wethaq",MODE_PRIVATE).getString("token","");if(token.length()<10)return;try{org.json.JSONArray a=new org.json.JSONArray();for(Integer id:ids)a.put(id);JSONObject body=new JSONObject();body.put("ids",a);Request r=new Request.Builder().url("https://wethaq-backend-production.up.railway.app/api/messages/notifications/delivered").header("Authorization","Bearer "+token).header("Content-Type","application/json").post(RequestBody.create(body.toString(),MediaType.parse("application/json"))).build();client.newCall(r).enqueue(new Callback(){@Override public void onFailure(Call c,java.io.IOException e){}@Override public void onResponse(Call c,Response r){r.close();}});}catch(Exception ignored){}}
+    private void acknowledgeActions(java.util.ArrayList<Integer> ids){if(ids==null||ids.isEmpty())return;String token=getSharedPreferences("wethaq",MODE_PRIVATE).getString("token","");if(token.length()<10)return;try{org.json.JSONArray a=new org.json.JSONArray();for(Integer id:ids)a.put(id);JSONObject body=new JSONObject();body.put("ids",a);Request r=new Request.Builder().url("https://wethaq-backend-production.up.railway.app/api/me/actions/delivered").header("Authorization","Bearer "+token).header("Content-Type","application/json").post(RequestBody.create(body.toString(),MediaType.parse("application/json"))).build();client.newCall(r).enqueue(new Callback(){@Override public void onFailure(Call c,java.io.IOException e){}@Override public void onResponse(Call c,Response r){r.close();}});}catch(Exception ignored){}}
     private void showMessage(String title,String senderId,String body){NotificationCompat.Builder b=new NotificationCompat.Builder(this,MESSAGE_CHANNEL).setSmallIcon(android.R.drawable.ic_dialog_email).setContentTitle(title).setContentText(body).setStyle(new NotificationCompat.BigTextStyle().bigText(body)).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_MAX).setCategory(NotificationCompat.CATEGORY_MESSAGE).setDefaults(NotificationCompat.DEFAULT_ALL);setConversationIntent(b,senderId,title);NotificationManager nm=getSystemService(NotificationManager.class);if(nm!=null)nm.notify((int)(System.currentTimeMillis()&0x7fffffff),b.build());}
     private void showAdminMessageNotification(String title,String sender,String senderId,String body,int messageId){String preview=body==null?"":body.replace('\n',' ').trim();if(preview.length()>140)preview=preview.substring(0,140)+"…";NotificationCompat.Builder b=new NotificationCompat.Builder(this,MESSAGE_CHANNEL).setSmallIcon(android.R.drawable.ic_dialog_alert).setContentTitle(title).setContentText(preview.isEmpty()?"لديك رسالة إدارية جديدة":preview).setStyle(new NotificationCompat.BigTextStyle().bigText(body==null?"":body)).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_MAX).setCategory(NotificationCompat.CATEGORY_EVENT).setDefaults(NotificationCompat.DEFAULT_ALL);setConversationIntent(b,senderId,sender);NotificationManager nm=getSystemService(NotificationManager.class);if(nm!=null){int id=messageId>0?ADMIN_NOTIFICATION_ID_BASE+messageId:(int)(System.currentTimeMillis()&0x7fffffff);nm.notify(id,b.build());}}
     private void showActionNotification(String title,String actor,String body,int actionId){String full=actor==null||actor.isEmpty()?body:body+"\nالمنفذ: "+actor;NotificationCompat.Builder b=new NotificationCompat.Builder(this,MESSAGE_CHANNEL).setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("🔔 "+title).setContentText(body).setStyle(new NotificationCompat.BigTextStyle().bigText(full)).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_MAX).setCategory(NotificationCompat.CATEGORY_EVENT).setDefaults(NotificationCompat.DEFAULT_ALL);Intent i=new Intent(this,MainActivity.class);i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP);PendingIntent pi=PendingIntent.getActivity(this,Math.max(1,actionId),i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);b.setContentIntent(pi);NotificationManager nm=getSystemService(NotificationManager.class);if(nm!=null)nm.notify(actionId>0?ACTION_NOTIFICATION_ID_BASE+actionId:(int)(System.currentTimeMillis()&0x7fffffff),b.build());}
