@@ -67,7 +67,7 @@ public final class VideoCallActivity extends Activity {
     private TextView status;
     private LinearLayout controls;
 
-    @Override public void onDestroy(){unregisterCallSignalReceiver();super.onDestroy();}\n\n    @Override public void onCreate(Bundle state){
+    @Override public void onDestroy(){unregisterCallSignalReceiver();callIo.shutdownNow();callClient.dispatcher().cancelAll();callClient.connectionPool().evictAll();super.onDestroy();}\n\n    @Override public void onCreate(Bundle state){
         super.onCreate(state);
         target=getIntent().getStringExtra("target");
         token=getSharedPreferences("wethaq",MODE_PRIVATE).getString("token","");
