@@ -3,6 +3,9 @@ package com.wethaq.app;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.BroadcastReceiver;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.media.AudioManager;
@@ -60,10 +63,11 @@ public final class VideoCallActivity extends Activity {
     private boolean previousSpeaker;
     private String target,token,myId,incomingOffer;
     private boolean audioOnly,cleaned,offerSent,remoteDescriptionSet,micMuted;
+    private final BroadcastReceiver callSignalReceiver=new BroadcastReceiver(){@Override public void onReceive(Context context,Intent intent){if(!"com.wethaq.CALL_SIGNAL".equals(intent.getAction())||cleaned)return;String sender=intent.getStringExtra("sender_wethaq_id");if(sender==null||!sender.equals(target))return;String type=intent.getStringExtra("type");String payload=intent.getStringExtra("payload");long signalId=intent.getLongExtra("signal_id",0);if(signalId>0&&!seenSignals.add("ws:"+signalId))return;handler.post(()->handle(type==null?"":type,payload==null?"":payload));}};
     private TextView status;
     private LinearLayout controls;
 
-    @Override public void onCreate(Bundle state){
+    @Override public void onDestroy(){unregisterCallSignalReceiver();super.onDestroy();}\n\n    @Override public void onCreate(Bundle state){
         super.onCreate(state);
         target=getIntent().getStringExtra("target");
         token=getSharedPreferences("wethaq",MODE_PRIVATE).getString("token","");
@@ -71,6 +75,7 @@ public final class VideoCallActivity extends Activity {
         audioOnly=getIntent().getBooleanExtra("audioOnly",false);
         incomingOffer=getIntent().getStringExtra("incomingOffer");
         setContentView(makeUi());
+        registerCallSignalReceiver();
         if(target==null||target.trim().isEmpty()||token.isEmpty()||myId.isEmpty()){fail("تعذر بدء المكالمة");return;}
         if(Build.VERSION.SDK_INT>=23){
             boolean mic=checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED;
@@ -84,7 +89,7 @@ public final class VideoCallActivity extends Activity {
     }
 
     private boolean isIncoming(){return incomingOffer!=null&&!incomingOffer.trim().isEmpty();}
-
+    private void registerCallSignalReceiver(){IntentFilter f=new IntentFilter("com.wethaq.CALL_SIGNAL");if(Build.VERSION.SDK_INT>=33)registerReceiver(callSignalReceiver,f,Context.RECEIVER_NOT_EXPORTED);else registerReceiver(callSignalReceiver,f);}\n    private void unregisterCallSignalReceiver(){try{unregisterReceiver(callSignalReceiver);}catch(Exception ignored){}}\n\n
     private View makeUi(){
         FrameLayout root=new FrameLayout(this);root.setBackgroundColor(Color.BLACK);
         if(!audioOnly){
@@ -131,7 +136,7 @@ public final class VideoCallActivity extends Activity {
             if(!audioOnly)builder.setVideoEncoderFactory(new DefaultVideoEncoderFactory(egl.getEglBaseContext(),true,true)).setVideoDecoderFactory(new DefaultVideoDecoderFactory(egl.getEglBaseContext()));
             factory=builder.createPeerConnectionFactory();createPeer();startLocal();showInCallControls();
             if(incomingOffer!=null&&!incomingOffer.trim().isEmpty()&&!isInitiator())handler.post(()->handle("offer",incomingOffer));
-            callIo.scheduleWithFixedDelay(this::pollSignals,0,800,TimeUnit.MILLISECONDS);
+            callIo.scheduleWithFixedDelay(this::pollSignals,0,2000,TimeUnit.MILLISECONDS);
             if(isInitiator()&&(incomingOffer==null||incomingOffer.trim().isEmpty()))sendOffer();
             status.setText(isIncoming()?"جاري توصيل المكالمة…":(isInitiator()?"جاري الاتصال بالطرف الآخر…":"بانتظار اتصال الطرف الآخر…"));
         }catch(Throwable e){fail("تعذر بدء المكالمة: "+(e.getMessage()==null?"خطأ WebRTC":e.getMessage()));}
