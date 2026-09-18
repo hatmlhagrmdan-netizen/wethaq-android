@@ -64,14 +64,16 @@ END;
 
 app.get('/api/me/actions',auth,(req,res)=>{
   const limit=Math.min(100,Math.max(1,Number(req.query.limit||50)));
+  const pending=String(req.query?.pending||'')==='1';
   const rows=db.prepare(`SELECT a.id,a.action_type,a.title,a.body,a.created_at,a.read_at,
     actor.name actor_name,actor.wethaq_id actor_wethaq_id
     FROM user_action_notifications a
     LEFT JOIN users actor ON actor.id=a.actor_user_id
-    WHERE a.target_user_id=? ORDER BY a.id ASC LIMIT ?`).all(Number(req.user.sub),limit);
+    WHERE a.target_user_id=? ${pending?'AND a.delivered_at IS NULL':''} ORDER BY a.id ASC LIMIT ?`).all(Number(req.user.sub),limit);
   const unread=db.prepare('SELECT COUNT(*) n FROM user_action_notifications WHERE target_user_id=? AND read_at IS NULL').get(Number(req.user.sub)).n;
   res.json({unreadCount:Number(unread||0),actions:rows});
 });
+app.post('/api/me/actions/delivered',auth,(req,res)=>{const ids=Array.isArray(req.body?.ids)?req.body.ids.map(Number).filter(Number.isInteger).slice(0,100):[];if(ids.length){const marks=ids.map(()=>'?').join(',');db.prepare(`UPDATE user_action_notifications SET delivered_at=COALESCE(delivered_at,?) WHERE target_user_id=? AND id IN (${marks})`).run(now(),Number(req.user.sub),...ids)}res.json({ok:true,count:ids.length})});
 app.post('/api/me/actions/read',auth,(req,res)=>{
   if(req.body?.all===true){db.prepare('UPDATE user_action_notifications SET read_at=? WHERE target_user_id=? AND read_at IS NULL').run(now(),Number(req.user.sub));}
   else if(Array.isArray(req.body?.ids)&&req.body.ids.length){
