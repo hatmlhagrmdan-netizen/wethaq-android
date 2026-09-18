@@ -128,7 +128,7 @@ public final class VideoCallActivity extends Activity {
         }catch(Throwable e){fail("تعذر بدء المكالمة: "+(e.getMessage()==null?"خطأ WebRTC":e.getMessage()));}
     }
 
-    private boolean isInitiator(){return myId.compareTo(target)<0;}
+    // The device that explicitly starts the call is always the offerer.\n    // Do not derive caller/callee from Wethaq IDs: either user must be able to call the other.\n    private boolean isInitiator(){return incomingOffer==null||incomingOffer.trim().isEmpty();}
     private void createPeer(){
         List<PeerConnection.IceServer> servers=new ArrayList<>();
         servers.add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer());
