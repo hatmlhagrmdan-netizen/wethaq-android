@@ -70,7 +70,9 @@ public final class WethaqMessageService extends Service {
         }catch(Exception ignored){}
     }
 
-    private void publishCallSignal(String senderId,String type,String payload,long signalId){if(senderId==null||senderId.isEmpty()||type==null||type.isEmpty())return;Intent i=new Intent(CALL_SIGNAL_ACTION);i.setPackage(getPackageName());i.putExtra("sender_wethaq_id",senderId);i.putExtra("type",type);i.putExtra("payload",payload==null?"":payload);i.putExtra("signal_id",signalId);sendBroadcast(i);}\n\n    private void syncPendingNotifications(){
+    private void publishCallSignal(String senderId,String type,String payload,long signalId){if(senderId==null||senderId.isEmpty()||type==null||type.isEmpty())return;Intent i=new Intent(CALL_SIGNAL_ACTION);i.setPackage(getPackageName());i.putExtra("sender_wethaq_id",senderId);i.putExtra("type",type);i.putExtra("payload",payload==null?"":payload);i.putExtra("signal_id",signalId);sendBroadcast(i);}
+
+    private void syncPendingNotifications(){
         final String token=getSharedPreferences("wethaq",MODE_PRIVATE).getString("token","");
         if(token.length()<10||client==null)return;
         try{

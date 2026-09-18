@@ -67,7 +67,9 @@ public final class VideoCallActivity extends Activity {
     private TextView status;
     private LinearLayout controls;
 
-    @Override public void onDestroy(){unregisterCallSignalReceiver();callIo.shutdownNow();callClient.dispatcher().cancelAll();callClient.connectionPool().evictAll();super.onDestroy();}\n\n    @Override public void onCreate(Bundle state){
+    @Override public void onDestroy(){unregisterCallSignalReceiver();callIo.shutdownNow();callClient.dispatcher().cancelAll();callClient.connectionPool().evictAll();super.onDestroy();}
+
+    @Override public void onCreate(Bundle state){
         super.onCreate(state);
         target=getIntent().getStringExtra("target");
         token=getSharedPreferences("wethaq",MODE_PRIVATE).getString("token","");
@@ -89,7 +91,10 @@ public final class VideoCallActivity extends Activity {
     }
 
     private boolean isIncoming(){return incomingOffer!=null&&!incomingOffer.trim().isEmpty();}
-    private void registerCallSignalReceiver(){IntentFilter f=new IntentFilter("com.wethaq.CALL_SIGNAL");if(Build.VERSION.SDK_INT>=33)registerReceiver(callSignalReceiver,f,Context.RECEIVER_NOT_EXPORTED);else registerReceiver(callSignalReceiver,f);}\n    private void unregisterCallSignalReceiver(){try{unregisterReceiver(callSignalReceiver);}catch(Exception ignored){}}\n\n
+    private void registerCallSignalReceiver(){IntentFilter f=new IntentFilter("com.wethaq.CALL_SIGNAL");if(Build.VERSION.SDK_INT>=33)registerReceiver(callSignalReceiver,f,Context.RECEIVER_NOT_EXPORTED);else registerReceiver(callSignalReceiver,f);}
+    private void unregisterCallSignalReceiver(){try{unregisterReceiver(callSignalReceiver);}catch(Exception ignored){}}
+
+
     private View makeUi(){
         FrameLayout root=new FrameLayout(this);root.setBackgroundColor(Color.BLACK);
         if(!audioOnly){
@@ -142,7 +147,9 @@ public final class VideoCallActivity extends Activity {
         }catch(Throwable e){fail("تعذر بدء المكالمة: "+(e.getMessage()==null?"خطأ WebRTC":e.getMessage()));}
     }
 
-    // The device that explicitly starts the call is always the offerer.\n    // Do not derive caller/callee from Wethaq IDs: either user must be able to call the other.\n    private boolean isInitiator(){return incomingOffer==null||incomingOffer.trim().isEmpty();}
+    // The device that explicitly starts the call is always the offerer.
+    // Do not derive caller/callee from Wethaq IDs: either user must be able to call the other.
+    private boolean isInitiator(){return incomingOffer==null||incomingOffer.trim().isEmpty();}
     private void createPeer(){
         List<PeerConnection.IceServer> servers=new ArrayList<>();
         servers.add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer());
@@ -196,6 +203,5 @@ public final class VideoCallActivity extends Activity {
     private void endCall(){if(cleaned)return;sendSignal("end","{}");cleaned=true;callIo.shutdownNow();try{if(capturer!=null)capturer.stopCapture();}catch(Exception ignored){}try{if(peer!=null)peer.close();}catch(Exception ignored){}try{if(factory!=null)factory.dispose();}catch(Exception ignored){}try{if(videoSource!=null)videoSource.dispose();}catch(Exception ignored){}try{if(audioSource!=null)audioSource.dispose();}catch(Exception ignored){}try{if(localView!=null)localView.release();if(remoteView!=null)remoteView.release();if(egl!=null)egl.release();}catch(Exception ignored){}if(audioManager!=null){audioManager.setSpeakerphoneOn(previousSpeaker);audioManager.setMode(AudioManager.MODE_NORMAL);}finish();}
     private void toast(String s){android.widget.Toast.makeText(this,s,android.widget.Toast.LENGTH_LONG).show();}
     @Override public void onRequestPermissionsResult(int r,String[] p,int[] g){super.onRequestPermissionsResult(r,p,g);if(r==PERM_CALL){boolean ok=audioOnly?(g.length>0&&g[0]==PackageManager.PERMISSION_GRANTED):(g.length>=2&&g[0]==PackageManager.PERMISSION_GRANTED&&g[1]==PackageManager.PERMISSION_GRANTED);if(ok){if(isIncoming())showIncomingControls();else startCall();}else{toast(audioOnly?"يجب السماح بالميكروفون للمكالمة":"يجب السماح بالميكروفون والكاميرا للمكالمة");finish();}}}
-    @Override protected void onDestroy(){if(!cleaned)callIo.shutdownNow();super.onDestroy();}
     private abstract static class SimpleSdp implements SdpObserver{public void onCreateSuccess(SessionDescription d){}public void onSetSuccess(){}public void onCreateFailure(String s){}public void onSetFailure(String s){}}
 }
