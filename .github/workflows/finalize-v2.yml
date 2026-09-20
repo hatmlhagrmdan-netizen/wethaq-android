@@ -120,7 +120,7 @@ jobs:
           api-level: 36
           target: google_apis
           arch: x86_64
-          profile: Pixel_2
+          profile: pixel_7_pro
           script: |
             set -euo pipefail
             adb install -r app/build/outputs/apk/ci/app-ci.apk
