@@ -269,25 +269,7 @@ jobs:
           test "$APK_CERT_DIGEST" = "$EXPECTED_NORMALIZED" || { echo 'Production APK signer certificate fingerprint mismatch.'; exit 1; }
           keytool -list -v -keystore "$WETHAQ_KEYSTORE_PATH" -storepass "$WETHAQ_KEYSTORE_PASSWORD" -alias "$WETHAQ_KEY_ALIAS" > "$RUNNER_TEMP/production-cert.txt"
           grep -Fqi "SHA256: $EXPECTED" "$RUNNER_TEMP/production-cert.txt" || { echo 'Production keystore certificate fingerprint mismatch.'; exit 1; }
-          AAB_CERT_FILE="$(unzip -Z1 "$AAB" | grep -E '^META-INF/[^/]+\\.RSA | tee app/build/outputs/apk/release/SHA256SUMS.txt
-          echo "WETHAQ_PRODUCTION_SOURCE=$GITHUB_SHA" > app/build/outputs/apk/release/PROVENANCE.txt
-          echo 'WETHAQ_PRODUCTION_APK_VERIFIED'
-      - name: Publish protected production artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Wethaq-production-${{ github.sha }}
-          path: |
-            app/build/outputs/apk/release/app-release.apk
-            app/build/outputs/bundle/release/app-release.aab
-            app/build/outputs/apk/release/SHA256SUMS.txt
-            app/build/outputs/apk/release/PROVENANCE.txt
-          if-no-files-found: error
-          retention-days: 30
-      - name: Secure cleanup
-        if: always()
-        shell: bash
-        run: rm -f "$WETHAQ_KEYSTORE_PATH" "$RUNNER_TEMP/apksigner.txt" "$RUNNER_TEMP/production-cert.txt" "$RUNNER_TEMP/aab-cert.rsa" "$RUNNER_TEMP/aab-cert.txt"
- | head -n1)"
+          AAB_CERT_FILE="$(unzip -Z1 "$AAB" | grep -E '^META-INF/[^/]+\\.RSA$' | head -n1)"
           test -n "$AAB_CERT_FILE"
           unzip -p "$AAB" "$AAB_CERT_FILE" > "$RUNNER_TEMP/aab-cert.rsa"
           keytool -printcert -file "$RUNNER_TEMP/aab-cert.rsa" > "$RUNNER_TEMP/aab-cert.txt"
