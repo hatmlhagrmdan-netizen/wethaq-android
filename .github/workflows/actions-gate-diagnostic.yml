@@ -1,0 +1,19 @@
+name: Wethaq Actions Gate Diagnostic
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  actions-health:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify Actions runner
+        run: |
+          set -euo pipefail
+          echo "GITHUB_SHA=$GITHUB_SHA"
+          test -n "$GITHUB_SHA"
+          echo "ACTIONS_GATE_OK"
