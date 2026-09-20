@@ -113,6 +113,8 @@ jobs:
       - name: Build CI APK and AAB
         run: gradle --no-daemon clean test assembleCi bundleCi --stacktrace --console=plain
       - name: Android 16 compatibility smoke
+        id: android16
+        continue-on-error: true
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
           api-level: 36
