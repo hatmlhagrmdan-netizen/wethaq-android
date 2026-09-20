@@ -245,16 +245,6 @@ jobs:
           WETHAQ_KEY_ALIAS: ${{ secrets.WETHAQ_KEY_ALIAS }}
           WETHAQ_KEY_PASSWORD: ${{ secrets.WETHAQ_KEY_PASSWORD }}
         run: gradle :app:clean :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace --console=plain
-      - name: Publish production diagnostic artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Wethaq-production-diagnostic-${{ github.sha }}
-          path: |
-            app/build/outputs/apk/release/app-release.apk
-            app/build/outputs/bundle/release/app-release.aab
-          if-no-files-found: ignore
-          retention-days: 2
       - name: Verify protected certificate and APK signer
         shell: bash
         env:
@@ -295,4 +285,4 @@ jobs:
       - name: Secure cleanup
         if: always()
         shell: bash
-        run: rm -f "$WETHAQ_KEYSTORE_PATH" "$RUNNER_TEMP/apksigner.txt" "$RUNNER_TEMP/production-cert.txt"
+        run: rm -f "$WETHAQ_KEYSTORE_PATH" "$RUNNER_TEMP/apksigner.txt" "$RUNNER_TEMP/production-cert.txt" "$RUNNER_TEMP/aab-cert.rsa" "$RUNNER_TEMP/aab-cert.txt"
