@@ -34,4 +34,8 @@ const personal = await req('/api/login',{method:'POST',body:JSON.stringify({name
 assert(personal.r.ok && personal.body.token,'personal login broke after assignment');
 const removed = await req('/api/admin/remove-role',{method:'POST',headers:{authorization:`Bearer ${login.body.token}`},body:JSON.stringify({wethaqId:member.body.user.wethaq_id})});
 assert(removed.r.ok,'role removal failed');
+const reassigned = await req('/api/admin/assign',{method:'POST',headers:{authorization:`Bearer ${login.body.token}`},body:JSON.stringify({wethaqId:member.body.user.wethaq_id,name:memberName,birthYear:1998,personalCode:memberCode,role:'admin_member'})});
+assert(reassigned.r.status===201 && reassigned.body.adminCode,'reassignment after removal failed');
+const reassignedLogin = await req('/api/admin/login',{method:'POST',body:JSON.stringify({name:memberName,birthYear:1998,adminCode:reassigned.body.adminCode})});
+assert(reassignedLogin.r.ok && reassignedLogin.body.role==='admin_member','reassigned admin login failed');
 console.log('WETHAQ_HARDENING_SMOKE_OK');

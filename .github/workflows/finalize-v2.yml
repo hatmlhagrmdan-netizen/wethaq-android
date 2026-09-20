@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   validation:
-    name: Validate Backend, Security and CI APK
+    name: Validate Backend, Security and CI APK/AAB
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -69,6 +69,13 @@ jobs:
           grep -q 'timingSafeEqual' backend/server.js
           grep -q 'AdminAccessActivity' app/src/main/AndroidManifest.xml
           grep -q 'PublicAdministrationActivity' app/src/main/AndroidManifest.xml
+          grep -q 'compileSdk 36' app/build.gradle
+          grep -q 'targetSdk 36' app/build.gradle
+          grep -q 'ACTION_PICK_IMAGES' app/src/main/java/com/wethaq/app/MainActivity.java
+          if grep -q 'READ_MEDIA_IMAGES' app/src/main/AndroidManifest.xml; then
+            echo 'READ_MEDIA_IMAGES must not be requested; the app uses the system photo picker.'
+            exit 1
+          fi
           git diff --check
       - name: Mainline architecture and security audit
         run: python3 scripts/mainline_stable_audit.py
@@ -103,19 +110,38 @@ jobs:
           NODE_ENV=production node runtime-hardening.mjs
           timeout 90s env PORT=3100 node security-smoke-test.mjs
           timeout 90s env PORT=3100 node smoke-test.mjs
-      - name: Build CI APK
-        run: gradle --no-daemon clean test assembleCi --stacktrace --console=plain
-      - name: Verify CI APK
+      - name: Build CI APK and AAB
+        run: gradle --no-daemon clean test assembleCi bundleCi --stacktrace --console=plain
+      - name: Android 16 compatibility smoke
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: Pixel_2
+          script: |
+            set -euo pipefail
+            adb install -r app/build/outputs/apk/ci/app-ci.apk
+            adb shell pm list packages | grep -Fq 'package:com.wethaq.app'
+            adb shell am force-stop com.wethaq.app || true
+            adb shell am start -W -n com.wethaq.app/.MainActivity
+            adb shell dumpsys package com.wethaq.app | grep -q 'versionCode=9'
+            adb shell dumpsys package com.wethaq.app | grep -q 'targetSdk=36'
+      - name: Verify CI APK and AAB
         shell: bash
         run: |
           set -euo pipefail
           APK='app/build/outputs/apk/ci/app-ci.apk'
+          AAB='app/build/outputs/bundle/ci/app-ci.aab'
           test -s "$APK"
+          test -s "$AAB"
           unzip -t "$APK" >/dev/null
+          unzip -t "$AAB" >/dev/null
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
           test -x "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
-          sha256sum "$APK" | tee app/build/outputs/apk/ci/SHA256SUMS.txt
+          jarsigner -verify -strict "$AAB"
+          sha256sum "$APK" "$AAB" | tee app/build/outputs/apk/ci/SHA256SUMS.txt
           echo "WETHAQ_CI_SOURCE=$GITHUB_SHA" > app/build/outputs/apk/ci/PROVENANCE.txt
       - name: Publish CI artifact
         uses: actions/upload-artifact@v4
@@ -123,6 +149,7 @@ jobs:
           name: Wethaq-CI-${{ github.sha }}
           path: |
             app/build/outputs/apk/ci/app-ci.apk
+            app/build/outputs/bundle/ci/app-ci.aab
             app/build/outputs/apk/ci/SHA256SUMS.txt
             app/build/outputs/apk/ci/PROVENANCE.txt
           if-no-files-found: error
@@ -210,12 +237,12 @@ jobs:
           NODE_ENV=production node runtime-hardening.mjs
           timeout 90s env PORT=3100 node security-smoke-test.mjs
           timeout 90s env PORT=3100 node smoke-test.mjs
-      - name: Build protected production APK
+      - name: Build protected production APK and AAB
         env:
           WETHAQ_KEYSTORE_PASSWORD: ${{ secrets.WETHAQ_KEYSTORE_PASSWORD }}
           WETHAQ_KEY_ALIAS: ${{ secrets.WETHAQ_KEY_ALIAS }}
           WETHAQ_KEY_PASSWORD: ${{ secrets.WETHAQ_KEY_PASSWORD }}
-        run: gradle :app:clean :app:assembleRelease --no-daemon --stacktrace --console=plain
+        run: gradle :app:clean :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace --console=plain
       - name: Verify protected certificate and APK signer
         shell: bash
         env:
@@ -225,8 +252,11 @@ jobs:
         run: |
           set -euo pipefail
           APK='app/build/outputs/apk/release/app-release.apk'
+          AAB='app/build/outputs/bundle/release/app-release.aab'
           test -s "$APK"
+          test -s "$AAB"
           unzip -t "$APK" >/dev/null
+          unzip -t "$AAB" >/dev/null
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
           test -x "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/apksigner.txt"
@@ -241,7 +271,8 @@ jobs:
           ACTUAL_KEYSTORE=$(printf '%s' "$CERT_SHA256" | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')
           test "$ACTUAL_KEYSTORE" = "$EXPECTED" || { echo 'Production keystore certificate fingerprint mismatch.'; exit 1; }
           test "$APK_CERT_SHA256" = "$ACTUAL_KEYSTORE" || { echo 'APK signer and keystore certificate mismatch.'; exit 1; }
-          sha256sum "$APK" | tee app/build/outputs/apk/release/SHA256SUMS.txt
+          jarsigner -verify -strict "$AAB"
+          sha256sum "$APK" "$AAB" | tee app/build/outputs/apk/release/SHA256SUMS.txt
           echo "WETHAQ_PRODUCTION_SOURCE=$GITHUB_SHA" > app/build/outputs/apk/release/PROVENANCE.txt
           echo 'WETHAQ_PRODUCTION_APK_VERIFIED'
       - name: Publish protected production artifact
@@ -250,6 +281,7 @@ jobs:
           name: Wethaq-production-${{ github.sha }}
           path: |
             app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/bundle/release/app-release.aab
             app/build/outputs/apk/release/SHA256SUMS.txt
             app/build/outputs/apk/release/PROVENANCE.txt
           if-no-files-found: error
