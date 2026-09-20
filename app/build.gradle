@@ -4,14 +4,14 @@ plugins {
 
 android {
     namespace 'com.wethaq.app'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         applicationId 'com.wethaq.app'
         minSdk 23
-        targetSdk 35
-        versionCode 8
-        versionName '2.4.0'
+        targetSdk 36
+        versionCode 9
+        versionName '2.5.0'
     }
 
     signingConfigs {
