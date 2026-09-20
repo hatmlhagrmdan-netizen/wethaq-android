@@ -283,15 +283,19 @@ jobs:
           test "$KEYSTORE_CERT_DIGEST" = "$EXPECTED_NORMALIZED" || { echo 'Production keystore certificate fingerprint mismatch.'; exit 1; }
           EXPECTED_NORMALIZED="$(printf '%s' "$EXPECTED" | tr -cd '0-9A-Fa-f' | tr '[:lower:]' '[:upper:]')"
           AAB_CERT_MATCH=0
+          AAB_CERT_COUNT=0
           while IFS= read -r AAB_CERT_FILE; do
+            AAB_CERT_COUNT=$((AAB_CERT_COUNT + 1))
             unzip -p "$AAB" "$AAB_CERT_FILE" > "$RUNNER_TEMP/aab-cert.rsa"
             keytool -printcert -file "$RUNNER_TEMP/aab-cert.rsa" > "$RUNNER_TEMP/aab-cert.txt"
             NORMALIZED_AAB_CERT="$(grep -i '^SHA256:' "$RUNNER_TEMP/aab-cert.txt" | head -n1 | sed 's/.*SHA256:[[:space:]]*//' | tr -cd '0-9A-Fa-f' | tr '[:lower:]' '[:upper:]')"
+            echo "AAB_CERT_CANDIDATE file=$AAB_CERT_FILE sha256=$NORMALIZED_AAB_CERT"
             if test "$NORMALIZED_AAB_CERT" = "$EXPECTED_NORMALIZED"; then
               AAB_CERT_MATCH=1
               break
             fi
-          done < <(unzip -Z1 "$AAB" | grep -E '^META-INF/[^/]+\.RSA$' || true)
+          done < <(unzip -Z1 "$AAB" | grep -Ei '^META-INF/[^/]+\.(RSA|DSA|EC)$' || true)
+          echo "AAB_CERT_CANDIDATE_COUNT=$AAB_CERT_COUNT"
           test "$AAB_CERT_MATCH" = 1 || { echo 'Production AAB signer certificate fingerprint mismatch.'; exit 1; }
           sha256sum "$APK" "$AAB" | tee app/build/outputs/apk/release/SHA256SUMS.txt
           echo "WETHAQ_PRODUCTION_SOURCE=$GITHUB_SHA" > app/build/outputs/apk/release/PROVENANCE.txt
