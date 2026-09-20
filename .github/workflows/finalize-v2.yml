@@ -280,7 +280,8 @@ jobs:
           EXPECTED_NORMALIZED="$(printf '%s' "$EXPECTED" | tr -cd '0-9A-Fa-f' | tr '[:lower:]' '[:upper:]')"
           test "$APK_CERT_DIGEST" = "$EXPECTED_NORMALIZED" || { echo 'Production APK signer certificate fingerprint mismatch.'; exit 1; }
           keytool -list -v -keystore "$WETHAQ_KEYSTORE_PATH" -storepass "$WETHAQ_KEYSTORE_PASSWORD" -alias "$WETHAQ_KEY_ALIAS" > "$RUNNER_TEMP/production-cert.txt"
-          grep -Fqi "SHA256: $EXPECTED" "$RUNNER_TEMP/production-cert.txt" || { echo 'Production keystore certificate fingerprint mismatch.'; exit 1; }
+          KEYSTORE_CERT_DIGEST="$(grep -i 'SHA256:' "$RUNNER_TEMP/production-cert.txt" | head -n1 | sed 's/.*SHA256:[[:space:]]*//' | tr -cd '0-9A-Fa-f' | tr '[:lower:]' '[:upper:]')"
+          test "$KEYSTORE_CERT_DIGEST" = "$EXPECTED_NORMALIZED" || { echo 'Production keystore certificate fingerprint mismatch.'; exit 1; }
           AAB_CERT_FILE="$(unzip -Z1 "$AAB" | grep -E '^META-INF/[^/]+\\.RSA$' | head -n1)"
           test -n "$AAB_CERT_FILE"
           unzip -p "$AAB" "$AAB_CERT_FILE" > "$RUNNER_TEMP/aab-cert.rsa"
