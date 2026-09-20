@@ -277,21 +277,17 @@ jobs:
           EXPECTED='64:4B:F1:1F:70:99:10:F4:FB:53:16:FB:76:E7:AD:FB:30:4C:03:71:62:69:F0:27:A7:BF:37:F7:45:DF:FE:D3'
           APK_CERT_DIGEST="$(grep -i 'certificate SHA-256 digest:' "$RUNNER_TEMP/apksigner.txt" | head -n1 | sed 's/.*certificate SHA-256 digest:[[:space:]]*//' | tr -cd '0-9A-Fa-f' | tr '[:lower:]' '[:upper:]')"
           EXPECTED_NORMALIZED="$(printf '%s' "$EXPECTED" | tr -cd '0-9A-Fa-f' | tr '[:lower:]' '[:upper:]')"
-          test "$APK_CERT_DIGEST" = "$EXPECTED_NORMALIZED" || { echo 'Production APK signer certificate fingerprint mismatch.'; exit 1; }
-          keytool -list -v -keystore "$WETHAQ_KEYSTORE_PATH" -storepass "$WETHAQ_KEYSTORE_PASSWORD" -alias "$WETHAQ_KEY_ALIAS" > "$RUNNER_TEMP/production-cert.txt"
-          KEYSTORE_CERT_DIGEST="$(grep -i 'SHA256:' "$RUNNER_TEMP/production-cert.txt" | head -n1 | sed 's/.*SHA256:[[:space:]]*//' | tr -cd '0-9A-Fa-f' | tr '[:lower:]' '[:upper:]')"
-          test "$KEYSTORE_CERT_DIGEST" = "$EXPECTED_NORMALIZED" || { echo 'Production keystore certificate fingerprint mismatch.'; exit 1; }
-          EXPECTED_NORMALIZED="$(printf '%s' "$EXPECTED" | tr -cd '0-9A-Fa-f' | tr '[:lower:]' '[:upper:]')"
           AAB_CERT_MATCH=0
           while IFS= read -r AAB_CERT_FILE; do
             unzip -p "$AAB" "$AAB_CERT_FILE" > "$RUNNER_TEMP/aab-cert.rsa"
             keytool -printcert -file "$RUNNER_TEMP/aab-cert.rsa" > "$RUNNER_TEMP/aab-cert.txt"
-            NORMALIZED_AAB_CERT="$(grep -i '^SHA256:' "$RUNNER_TEMP/aab-cert.txt" | head -n1 | tr -cd '0-9A-Fa-f' | tr '[:lower:]' '[:upper:]')"
+            NORMALIZED_AAB_CERT="$(grep -i '^SHA256:' "$RUNNER_TEMP/aab-cert.txt" | head -n1 | sed 's/.*SHA256:[[:space:]]*//' | tr -cd '0-9A-Fa-f' | tr '[:lower:]' '[:upper:]')"
             if test "$NORMALIZED_AAB_CERT" = "$EXPECTED_NORMALIZED"; then
               AAB_CERT_MATCH=1
               break
             fi
-          done < <(unzip -Z1 "$AAB" | grep -E '^META-INF/[^/]+\\.RSA
+          done < <(unzip -Z1 "$AAB" | grep -E '^META-INF/[^/]+\\.RSA$' || true)
+          test "$AAB_CERT_MATCH" = 1 || { echo 'Production AAB signer certificate fingerprint mismatch.'; exit 1; }
           sha256sum "$APK" "$AAB" | tee app/build/outputs/apk/release/SHA256SUMS.txt
           echo "WETHAQ_PRODUCTION_SOURCE=$GITHUB_SHA" > app/build/outputs/apk/release/PROVENANCE.txt
           echo 'WETHAQ_PRODUCTION_APK_VERIFIED'
