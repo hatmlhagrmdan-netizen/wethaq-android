@@ -138,9 +138,11 @@ jobs:
             adb install -r app/build/outputs/apk/ci/app-ci.apk
             adb shell pm list packages | grep -Fq 'package:com.wethaq.app'
             adb shell am force-stop com.wethaq.app || true
-            START_OUTPUT="$(adb shell am start -W -n com.wethaq.app/.MainActivity 2>&1)"
-            printf '%s\n' "$START_OUTPUT"
-            printf '%s\n' "$START_OUTPUT" | grep -q 'Status: ok'
+            adb shell am start -n com.wethaq.app/.MainActivity >/tmp/wethaq-start.txt 2>&1
+            cat /tmp/wethaq-start.txt
+            sleep 3
+            adb shell pidof com.wethaq.app >/dev/null
+            adb shell dumpsys activity activities | grep -Fq 'com.wethaq.app'
       - name: Verify CI APK and AAB
         shell: bash
         run: |
