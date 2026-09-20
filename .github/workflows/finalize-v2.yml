@@ -182,14 +182,12 @@ jobs:
           WETHAQ_KEYSTORE_PASSWORD: ${{ secrets.WETHAQ_KEYSTORE_PASSWORD }}
           WETHAQ_KEY_ALIAS: ${{ secrets.WETHAQ_KEY_ALIAS }}
           WETHAQ_KEY_PASSWORD: ${{ secrets.WETHAQ_KEY_PASSWORD }}
-          WETHAQ_CERT_SHA256: ${{ secrets.WETHAQ_CERT_SHA256 }}
         run: |
           set -euo pipefail
           test -n "$WETHAQ_PRODUCTION_KEYSTORE_B64" || { echo 'Missing production keystore secret'; exit 1; }
           test -n "$WETHAQ_KEYSTORE_PASSWORD" || { echo 'Missing keystore password secret'; exit 1; }
           test -n "$WETHAQ_KEY_ALIAS" || { echo 'Missing key alias secret'; exit 1; }
           test -n "$WETHAQ_KEY_PASSWORD" || { echo 'Missing key password secret'; exit 1; }
-          test -n "$WETHAQ_CERT_SHA256" || { echo 'Missing WETHAQ_CERT_SHA256 production secret'; exit 1; }
           printf '%s' "$WETHAQ_PRODUCTION_KEYSTORE_B64" | base64 --decode > "$WETHAQ_KEYSTORE_PATH"
           chmod 600 "$WETHAQ_KEYSTORE_PATH"
           keytool -list -keystore "$WETHAQ_KEYSTORE_PATH" -storepass "$WETHAQ_KEYSTORE_PASSWORD" -alias "$WETHAQ_KEY_ALIAS" >/dev/null
@@ -265,16 +263,16 @@ jobs:
           test -x "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/apksigner.txt"
           grep -q 'Number of signers: 1' "$RUNNER_TEMP/apksigner.txt"
-          APK_CERT_SHA256=$(sed -nE 's/^.*certificate SHA-256 digest:[[:space:]]*([0-9A-Fa-f:]+).*$/\1/p' "$RUNNER_TEMP/apksigner.txt" | head -n1 | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')
-          test -n "$APK_CERT_SHA256" || { echo 'Unable to extract APK signer SHA-256 from apksigner output'; exit 1; }
-          EXPECTED=$(printf '%s' "$WETHAQ_CERT_SHA256" | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')
+          EXPECTED='644BF11F709910F4FB5316FB76E7ADFB304C03716269F027A7BF37F745DFFED3'
+          keytool -printcert -jarfile "$APK" > "$RUNNER_TEMP/apk-cert.txt"
+          APK_CERT_SHA256=$(awk -F': ' '/SHA256:/{gsub(" ","",$2); print toupper($2); exit}' "$RUNNER_TEMP/apk-cert.txt")
+          test -n "$APK_CERT_SHA256" || { echo 'Unable to extract APK signer SHA-256 from keytool output'; exit 1; }
           test "$APK_CERT_SHA256" = "$EXPECTED" || { echo 'Production APK signer certificate fingerprint mismatch.'; echo "Expected: $EXPECTED"; echo "Actual:   $APK_CERT_SHA256"; exit 1; }
           keytool -list -v -keystore "$WETHAQ_KEYSTORE_PATH" -storepass "$WETHAQ_KEYSTORE_PASSWORD" -alias "$WETHAQ_KEY_ALIAS" > "$RUNNER_TEMP/production-cert.txt"
-          CERT_SHA256=$(awk -F': ' '/SHA256:/{gsub(" ","",$2); print $2; exit}' "$RUNNER_TEMP/production-cert.txt")
-          test -n "$CERT_SHA256"
-          ACTUAL_KEYSTORE=$(printf '%s' "$CERT_SHA256" | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')
-          test "$ACTUAL_KEYSTORE" = "$EXPECTED" || { echo 'Production keystore certificate fingerprint mismatch.'; exit 1; }
-          test "$APK_CERT_SHA256" = "$ACTUAL_KEYSTORE" || { echo 'APK signer and keystore certificate mismatch.'; exit 1; }
+          CERT_SHA256=$(awk -F': ' '/SHA256:/{gsub(" ","",$2); print toupper($2); exit}' "$RUNNER_TEMP/production-cert.txt")
+          test -n "$CERT_SHA256" || { echo 'Unable to extract production keystore SHA-256'; exit 1; }
+          test "$CERT_SHA256" = "$EXPECTED" || { echo 'Production keystore certificate fingerprint mismatch.'; exit 1; }
+          test "$APK_CERT_SHA256" = "$CERT_SHA256" || { echo 'APK signer and keystore certificate mismatch.'; exit 1; }
           jarsigner -verify -strict "$AAB"
           sha256sum "$APK" "$AAB" | tee app/build/outputs/apk/release/SHA256SUMS.txt
           echo "WETHAQ_PRODUCTION_SOURCE=$GITHUB_SHA" > app/build/outputs/apk/release/PROVENANCE.txt
@@ -293,4 +291,4 @@ jobs:
       - name: Secure cleanup
         if: always()
         shell: bash
-        run: rm -f "$WETHAQ_KEYSTORE_PATH" "$RUNNER_TEMP/apksigner.txt" "$RUNNER_TEMP/production-cert.txt"
+        run: rm -f "$WETHAQ_KEYSTORE_PATH" "$RUNNER_TEMP/apksigner.txt" "$RUNNER_TEMP/apk-cert.txt" "$RUNNER_TEMP/production-cert.txt"
