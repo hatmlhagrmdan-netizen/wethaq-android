@@ -122,7 +122,9 @@ jobs:
           script: |
             set -euo pipefail
             adb install -r app/build/outputs/apk/ci/app-ci.apk
-            adb shell pm list packages | grep -q '^package:com.wethaq.app        shell: bash
+            adb shell pm list packages | grep -q '^package:com.wethaq.app
+      - name: Verify CI APK and AAB
+        shell: bash
         run: |
           set -euo pipefail
           APK='app/build/outputs/apk/ci/app-ci.apk'
@@ -275,6 +277,7 @@ jobs:
           name: Wethaq-production-${{ github.sha }}
           path: |
             app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/bundle/release/app-release.aab
             app/build/outputs/apk/release/SHA256SUMS.txt
             app/build/outputs/apk/release/PROVENANCE.txt
           if-no-files-found: error
@@ -288,22 +291,17 @@ jobs:
             adb shell am start -W -n com.wethaq.app/.MainActivity
             adb shell dumpsys package com.wethaq.app | grep -q 'versionCode=9'
             adb shell dumpsys package com.wethaq.app | grep -q 'targetSdk=36'
-
       - name: Verify CI APK
         shell: bash
         run: |
           set -euo pipefail
           APK='app/build/outputs/apk/ci/app-ci.apk'
-          AAB='app/build/outputs/bundle/ci/app-ci.aab'
           test -s "$APK"
-          test -s "$AAB"
           unzip -t "$APK" >/dev/null
-          unzip -t "$AAB" >/dev/null
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
           test -x "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
-          jarsigner -verify -strict "$AAB"
-          sha256sum "$APK" "$AAB" | tee app/build/outputs/apk/ci/SHA256SUMS.txt
+          sha256sum "$APK" | tee app/build/outputs/apk/ci/SHA256SUMS.txt
           echo "WETHAQ_CI_SOURCE=$GITHUB_SHA" > app/build/outputs/apk/ci/PROVENANCE.txt
       - name: Publish CI artifact
         uses: actions/upload-artifact@v4
@@ -311,7 +309,6 @@ jobs:
           name: Wethaq-CI-${{ github.sha }}
           path: |
             app/build/outputs/apk/ci/app-ci.apk
-            app/build/outputs/bundle/ci/app-ci.aab
             app/build/outputs/apk/ci/SHA256SUMS.txt
             app/build/outputs/apk/ci/PROVENANCE.txt
           if-no-files-found: error
