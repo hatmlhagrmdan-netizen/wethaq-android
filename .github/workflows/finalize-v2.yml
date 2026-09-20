@@ -122,7 +122,7 @@ jobs:
           script: |
             set -euo pipefail
             adb install -r app/build/outputs/apk/ci/app-ci.apk
-            adb shell pm list packages | grep -q '^package:com.wethaq.app
+            adb shell pm list packages | grep -Fq 'package:com.wethaq.app'
       - name: Verify CI APK and AAB
         shell: bash
         run: |
