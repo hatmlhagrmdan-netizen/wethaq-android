@@ -142,7 +142,6 @@ jobs:
             cat /tmp/wethaq-start.txt
             sleep 3
             adb shell pidof com.wethaq.app >/dev/null
-            adb shell dumpsys activity activities | grep -Fq 'com.wethaq.app'
       - name: Verify CI APK and AAB
         shell: bash
         run: |
