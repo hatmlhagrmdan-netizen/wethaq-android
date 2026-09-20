@@ -21,8 +21,8 @@ workflow = read(".github/workflows/finalize-v2.yml")
 
 for needle, message in [
     ("applicationId 'com.wethaq.app'", "applicationId changed or missing"),
-    ("compileSdk 35", "compileSdk 35 is missing"),
-    ("targetSdk 35", "targetSdk 35 is missing"),
+    ("compileSdk 36", "compileSdk 36 is missing"),
+    ("targetSdk 36", "targetSdk 36 is missing"),
     ("signingConfig signingConfigs.release", "production release must use the release signing config"),
     ("signingConfig signingConfigs.debug", "CI build must use the debug signing config"),
     ("ci {", "dedicated CI build type is missing"),
@@ -38,6 +38,11 @@ if re.search(r"storePassword\s+['\"]|keyPassword\s+['\"]|-----BEGIN (RSA|EC|PRIV
     errors.append("hardcoded production signing credential material detected in Gradle configuration")
 
 source_text = "\n".join([main, server, read("backend/security-smoke-test.mjs")])
+if re.search(r"READ_MEDIA_IMAGES", read("app/src/main/AndroidManifest.xml")):
+    errors.append("READ_MEDIA_IMAGES must remain removed; use the system photo picker") 
+if "ACTION_PICK_IMAGES" not in main:
+    errors.append("system photo picker integration missing") 
+
 if re.search(r"-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY-----", source_text):
     errors.append("private-key material detected in runtime source")
 if re.search(r"(?:storePassword|keyPassword)\s+['\"][^'\"]+['\"]", source_text):
@@ -68,6 +73,8 @@ for needle, message in [
     ("gradle/actions/setup-gradle@v5", "Gradle setup action pin missing"),
     ("gradle-version: '8.9'", "Gradle 8.9 pin missing"),
     ("assembleCi", "CI assemble gate missing"),
+    ("bundleCi", "CI AAB build gate missing"),
+    ("bundleRelease", "production AAB build gate missing"),
     ("apksigner", "APK signature verification gate missing"),
     ("--print-certs", "certificate inspection gate missing"),
     ("actions/upload-artifact@v4", "artifact publication gate missing"),
