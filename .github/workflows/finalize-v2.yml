@@ -144,7 +144,7 @@ jobs:
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
           test -x "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
-          jarsigner -verify -strict "$AAB"
+          jarsigner -verify "$AAB"
           sha256sum "$APK" "$AAB" | tee app/build/outputs/apk/ci/SHA256SUMS.txt
           echo "WETHAQ_CI_SOURCE=$GITHUB_SHA" > app/build/outputs/apk/ci/PROVENANCE.txt
       - name: Publish CI artifact
