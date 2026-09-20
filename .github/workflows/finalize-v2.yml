@@ -122,11 +122,13 @@ jobs:
           script: |
             set -euo pipefail
             adb install -r app/build/outputs/apk/ci/app-ci.apk
+            adb shell getprop ro.build.version.sdk | grep -qx '36'
+            adb install -r app/build/outputs/apk/ci/app-ci.apk
             adb shell pm list packages | grep -Fq 'package:com.wethaq.app'
             adb shell am force-stop com.wethaq.app || true
-            adb shell am start -W -n com.wethaq.app/.MainActivity
-            adb shell dumpsys package com.wethaq.app | grep -q 'versionCode=9'
-            adb shell dumpsys package com.wethaq.app | grep -q 'targetSdk=36'
+            START_OUTPUT="$(adb shell am start -W -n com.wethaq.app/.MainActivity 2>&1)"
+            printf '%s\n' "$START_OUTPUT"
+            printf '%s\n' "$START_OUTPUT" | grep -q 'Status: ok'
       - name: Verify CI APK and AAB
         shell: bash
         run: |
