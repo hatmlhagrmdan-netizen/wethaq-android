@@ -132,7 +132,7 @@ jobs:
           profile: pixel_7_pro
           disable-linux-hw-accel: false
           script: |
-            set -euo pipefail
+            set -eu
             adb install -r app/build/outputs/apk/ci/app-ci.apk
             adb shell getprop ro.build.version.sdk | grep -qx '36'
             adb install -r app/build/outputs/apk/ci/app-ci.apk
