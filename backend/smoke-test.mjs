@@ -68,6 +68,54 @@ assert(history.response.ok && history.body.messages?.some(m => m.id === sent.bod
 const reverseHistory = await request(`/api/messages/${encodeURIComponent(a.body.user.wethaq_id)}`, { headers: { authorization: `Bearer ${b.body.token}` } });
 assert(reverseHistory.response.ok && reverseHistory.body.messages?.some(m => m.id === sent.body.message.id), 'receiver message history failed');
 
+// Call signaling path: exercise offer/answer delivery over WebSocket and REST fallback.
+const WebSocket = (await import('ws')).default;
+const wsB = new WebSocket(`ws://127.0.0.1:${process.env.PORT || 3100}/ws?token=${encodeURIComponent(b.body.token)}`);
+await new Promise((resolve, reject) => {
+  const timer = setTimeout(() => reject(new Error('receiver WebSocket did not open')), 5000);
+  wsB.once('open', () => { clearTimeout(timer); resolve(); });
+  wsB.once('error', reject);
+});
+const wsEvent = new Promise((resolve, reject) => {
+  const timer = setTimeout(() => reject(new Error('receiver did not receive call offer over WebSocket')), 5000);
+  wsB.on('message', data => {
+    try {
+      const event = JSON.parse(String(data));
+      if (event.event === 'call' && event.type === 'offer') {
+        clearTimeout(timer);
+        resolve(event);
+      }
+    } catch {}
+  });
+});
+const callOffer = await request('/api/calls/signal', {
+  method: 'POST',
+  headers: { authorization: `Bearer ${a.body.token}` },
+  body: JSON.stringify({ to: b.body.user.wethaq_id, type: 'offer', payload: JSON.stringify({ sdp: 'v=0\\r\\nmock-offer' }) })
+});
+assert(callOffer.response.status === 201 && callOffer.body.id, 'call offer signaling failed');
+const receivedOffer = await wsEvent;
+assert(receivedOffer.from?.wethaq_id === a.body.user.wethaq_id, 'call offer sender mismatch');
+assert(receivedOffer.payload?.includes('mock-offer'), 'call offer payload missing');
+const callAnswer = await request('/api/calls/signal', {
+  method: 'POST',
+  headers: { authorization: `Bearer ${b.body.token}` },
+  body: JSON.stringify({ to: a.body.user.wethaq_id, type: 'answer', payload: JSON.stringify({ sdp: 'v=0\\r\\nmock-answer' }) })
+});
+assert(callAnswer.response.status === 201 && callAnswer.body.id, 'call answer signaling failed');
+const fallback = await request(`/api/calls/signals/${encodeURIComponent(a.body.user.wethaq_id)}`, {
+  headers: { authorization: `Bearer ${b.body.token}` }
+});
+assert(fallback.response.ok && fallback.body.signals?.some(s => s.type === 'offer'), 'call REST fallback signaling failed');
+const callEnd = await request('/api/calls/signal', {
+  method: 'POST',
+  headers: { authorization: `Bearer ${a.body.token}` },
+  body: JSON.stringify({ to: b.body.user.wethaq_id, type: 'end', payload: '{}' })
+});
+assert(callEnd.response.status === 201, 'call end signaling failed');
+wsB.close();
+
+
 // Normal users must never reach protected administrative capabilities.
 // /api/admin/structure is intentionally public: it powers the public administration board.
 for (const path of ['/api/admin/role', '/api/admin/audit-log', '/api/admin/login-history', '/api/admin/position-history']) {
