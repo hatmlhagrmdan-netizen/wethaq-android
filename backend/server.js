@@ -6,7 +6,7 @@ import jwt from 'jsonwebtoken';
 import Database from 'better-sqlite3';
 import { WebSocketServer } from 'ws';
 const app=express(),server=http.createServer(app),wss=new WebSocketServer({server,path:'/ws'});
-const db=new Database(process.env.DB_PATH||'wethaq.db'),PORT=Number(process.env.PORT||3000),configuredJwtSecret=String(process.env.JWT_SECRET||'').trim(),isProduction=process.env.NODE_ENV==='production';
+const railwayVolumeRoot=String(process.env.RAILWAY_VOLUME_MOUNT_PATH||'').trim().replace(/\/$/,''),configuredDbPath=String(process.env.DB_PATH||'').trim(); const dbPath=railwayVolumeRoot?`${railwayVolumeRoot}/wethaq.db`:configuredDbPath||'wethaq.db'; const db=new Database(dbPath),PORT=Number(process.env.PORT||3000),configuredJwtSecret=String(process.env.JWT_SECRET||'').trim(),isProduction=process.env.NODE_ENV==='production';
 if(isProduction&&configuredJwtSecret.length<32)throw new Error('JWT_SECRET must be configured with at least 32 characters in production');
 const JWT_SECRET=configuredJwtSecret||crypto.randomBytes(32).toString('hex');
 const MAX_MESSAGE=4000,MAX_AUDIO_BASE64=5*1024*1024,MAX_IMAGE_BASE64=6*1024*1024,MAX_NAME=80,MAX_DEVICE_KEY=256,OWNER_WETHAQ_ID=process.env.OWNER_WETHAQ_ID||'Hatem_Hussin_Al_Haj_Ramadan1995';
