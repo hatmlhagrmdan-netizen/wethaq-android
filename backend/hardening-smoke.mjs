@@ -16,6 +16,10 @@ const member = await req('/api/identity',{method:'POST',body:JSON.stringify({nam
 assert(member.r.status===201,'member identity failed');
 const bad = await req('/api/admin/assign',{method:'POST',headers:{authorization:`Bearer ${login.body.token}`},body:JSON.stringify({wethaqId:member.body.user.wethaq_id,name:memberName,birthYear:1998,personalCode:String(Number(memberCode)+1),role:'admin_member'})});
 assert(bad.r.status===403 && bad.body.error==='assignment_personal_code_invalid','invalid assignment code bypassed');
+const badName = await req('/api/admin/assign',{method:'POST',headers:{authorization:login.body.token},body:JSON.stringify({wethaqId:member.body.user.wethaq_id,name:memberName+' خطأ',birthYear:1998,personalCode:memberCode,role:'admin_member'})});
+assert(badName.r.status===403 && badName.body.error==='assignment_identity_mismatch','assignment name mismatch bypassed');
+const badBirth = await req('/api/admin/assign',{method:'POST',headers:{authorization:login.body.token},body:JSON.stringify({wethaqId:member.body.user.wethaq_id,name:memberName,birthYear:1997,personalCode:memberCode,role:'admin_member'})});
+assert(badBirth.r.status===403 && badBirth.body.error==='assignment_identity_mismatch','assignment birth year mismatch bypassed');
 const assigned = await req('/api/admin/assign',{method:'POST',headers:{authorization:`Bearer ${login.body.token}`},body:JSON.stringify({wethaqId:member.body.user.wethaq_id,name:memberName,birthYear:1998,personalCode:memberCode,role:'admin_member'})});
 assert(assigned.r.status===201 && assigned.body.adminCode,'verified assignment failed');
 assert((await req('/api/admin/structure')).r.status===401,'admin structure is public');
