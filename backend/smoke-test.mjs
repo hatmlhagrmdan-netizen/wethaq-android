@@ -140,7 +140,7 @@ const assigneeName = `عضو إدارة ${suffix}`;
 const assignee = await request('/api/identity', { method: 'POST', body: JSON.stringify({ name: assigneeName, birthYear: 1998, personalCode: '842016', deviceKey: `admin-device-${suffix}` }) });
 assert(assignee.response.status === 201 && assignee.body.user?.wethaq_id, 'admin assignee identity failed');
 
-const assignment = await request('/api/admin/assign', { method: 'POST', headers: { authorization: `Bearer ${founderAdminLogin.body.token}` }, body: JSON.stringify({ wethaqId: assignee.body.user.wethaq_id, role: 'admin_member' }) });
+const assignment = await request('/api/admin/assign', { method: 'POST', headers: { authorization: `Bearer ${founderAdminLogin.body.token}` }, body: JSON.stringify({ wethaqId: assignee.body.user.wethaq_id, name: assigneeName, birthYear: 1998, personalCode: '842016', role: 'admin_member' }) });
 assert(assignment.response.status === 201 && assignment.body.adminCode && assignment.body.role === 'admin_member', 'admin assignment failed');
 assert(typeof assignment.body.adminCode === 'string' && assignment.body.adminCode.length >= 8, 'admin secret was not issued');
 
