@@ -57,6 +57,7 @@ jobs:
           test -f backend/audit-access-guard.mjs
           test -f backend/smoke-test.mjs
           test -f backend/security-smoke-test.mjs
+          test -f backend/hardening-smoke.mjs
           test -f scripts/mainline_stable_audit.py
           test -f backend/runtime-hardening.mjs
           python3 -m py_compile scripts/mainline_stable_audit.py
@@ -65,6 +66,7 @@ jobs:
           node --check backend/runtime-hardening.mjs
           node --check backend/smoke-test.mjs
           node --check backend/security-smoke-test.mjs
+          node --check backend/hardening-smoke.mjs
           grep -q 'personal_code_hash' backend/server.js
           grep -q 'scryptSync' backend/server.js
           grep -q 'timingSafeEqual' backend/server.js
@@ -111,6 +113,7 @@ jobs:
           NODE_ENV=production node runtime-hardening.mjs
           timeout 90s env PORT=3100 node security-smoke-test.mjs
           timeout 90s env PORT=3100 node smoke-test.mjs
+          timeout 90s env PORT=3100 node hardening-smoke.mjs
       - name: Build CI APK and AAB
         run: gradle --no-daemon clean test assembleCi bundleCi --stacktrace --console=plain
       - name: Enable KVM for Android 16 emulator
