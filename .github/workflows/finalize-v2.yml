@@ -113,22 +113,20 @@ jobs:
           NODE_ENV=production node runtime-hardening.mjs
           timeout 90s env PORT=3100 node security-smoke-test.mjs
           timeout 90s env PORT=3100 node smoke-test.mjs
-          kill "$pid" 2>/dev/null || true
-          wait "$pid" 2>/dev/null || true
-          trap - EXIT
+          export HARDENING_PORT=3101
           export DB_PATH="$RUNNER_TEMP/wethaq-hardening.sqlite"
           rm -f "$DB_PATH" "$RUNNER_TEMP/wethaq-hardening.log"
-          npm start > "$RUNNER_TEMP/wethaq-hardening.log" 2>&1 &
-          pid=$!
-          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          PORT="$HARDENING_PORT" node server.js > "$RUNNER_TEMP/wethaq-hardening.log" 2>&1 &
+          hardening_pid=$!
+          trap 'kill "$pid" "$hardening_pid" 2>/dev/null || true' EXIT
           for i in {1..60}; do
-            if ! kill -0 "$pid" 2>/dev/null; then cat "$RUNNER_TEMP/wethaq-hardening.log"; exit 1; fi
-            if curl -fsS --max-time 2 http://127.0.0.1:3100/health >/dev/null 2>&1; then break; fi
+            if ! kill -0 "$hardening_pid" 2>/dev/null; then cat "$RUNNER_TEMP/wethaq-hardening.log"; exit 1; fi
+            if curl -fsS --max-time 2 "http://127.0.0.1:$HARDENING_PORT/health" >/dev/null 2>&1; then break; fi
             sleep 1
           done
-          curl -fsS --max-time 5 http://127.0.0.1:3100/health >/dev/null
+          curl -fsS --max-time 5 "http://127.0.0.1:$HARDENING_PORT/health" >/dev/null
           NODE_ENV=production node runtime-hardening.mjs
-          timeout 90s env PORT=3100 node hardening-smoke.mjs
+          timeout 90s env PORT="$HARDENING_PORT" node hardening-smoke.mjs
       - name: Build CI APK and AAB
         run: gradle --no-daemon clean test assembleCi bundleCi --stacktrace --console=plain
       - name: Enable KVM for Android 16 emulator
