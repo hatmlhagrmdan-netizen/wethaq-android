@@ -50,6 +50,10 @@ if re.search(r"(?:storePassword|keyPassword)\s+['\"][^'\"]+['\"]", source_text):
 
 if "https://wethaq-backend-production.up.railway.app" not in main:
     errors.append("expected HTTPS Wethaq backend endpoint missing")
+if "open" + "relayproject" in main:
+    errors.append("public demo TURN credentials must not remain in Android source")
+if "/api/calls/ice-config" not in server:
+    errors.append("server-side ICE configuration endpoint missing")
 if re.search(r"http://(?!127\.0\.0\.1(?::\d+)?(?:[\"/]|$))", main):
     errors.append("non-local cleartext HTTP endpoint detected in Android source")
 
