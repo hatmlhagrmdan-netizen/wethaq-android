@@ -47,6 +47,7 @@ public final class VideoCallActivity extends Activity {
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final Set<String> seenSignals=new HashSet<>();
     private final List<IceCandidate> pendingCandidates=new ArrayList<>();
+    private final List<PeerConnection.IceServer> configuredIceServers=new ArrayList<>();
     private final ScheduledExecutorService callIo=Executors.newSingleThreadScheduledExecutor();
     private final OkHttpClient callClient=new OkHttpClient.Builder().connectTimeout(5,TimeUnit.SECONDS).readTimeout(5,TimeUnit.SECONDS).writeTimeout(5,TimeUnit.SECONDS).retryOnConnectionFailure(true).build();
     private static final MediaType JSON=MediaType.parse("application/json; charset=utf-8");
@@ -134,8 +135,42 @@ public final class VideoCallActivity extends Activity {
     private int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
 
     private void startCall(){
+        status.setText(isIncoming()?"جاري قبول المكالمة…":"جاري تهيئة المكالمة…");
+        loadIceConfigAndStart();
+    }
+
+    private void loadIceConfigAndStart(){
+        Request req=new Request.Builder().url(API+"/api/calls/ice-config").header("Authorization","Bearer "+token).get().build();
+        callClient.newCall(req).enqueue(new Callback(){
+            public void onFailure(Call call,java.io.IOException e){runOnUiThread(()->fail("تعذر تحميل إعدادات اتصال المكالمة"));}
+            public void onResponse(Call call,Response response){
+                try(Response r=response){
+                    if(!r.isSuccessful()||r.body()==null){runOnUiThread(()->fail("إعدادات اتصال المكالمة غير متاحة"));return;}
+                    JSONObject root=new JSONObject(r.body().string());
+                    JSONArray list=root.optJSONArray("iceServers");
+                    configuredIceServers.clear();
+                    if(list!=null)for(int i=0;i<list.length();i++){
+                        JSONObject item=list.optJSONObject(i);if(item==null)continue;
+                        Object urls=item.opt("urls");ArrayList<String> urlList=new ArrayList<>();
+                        if(urls instanceof JSONArray){JSONArray arr=(JSONArray)urls;for(int j=0;j<arr.length();j++)if(arr.optString(j,"").trim().length()>0)urlList.add(arr.optString(j).trim());}
+                        else if(urls!=null&&String.valueOf(urls).trim().length()>0)urlList.add(String.valueOf(urls).trim());
+                        if(urlList.isEmpty())continue;
+                        String username=item.optString("username",""),credential=item.optString("credential","");
+                        for(String u:urlList){
+                            if(username.isEmpty()||credential.isEmpty())configuredIceServers.add(PeerConnection.IceServer.builder(u).createIceServer());
+                            else configuredIceServers.add(PeerConnection.IceServer.builder(u).setUsername(username).setPassword(credential).createIceServer());
+                        }
+                    }
+                    if(configuredIceServers.isEmpty())throw new IllegalStateException("ICE servers missing");
+                    boolean turnConfigured=root.optBoolean("turnConfigured",false);
+                    handler.post(()->{status.setText(turnConfigured?"تم تحميل TURN الإنتاجي — بدء المكالمة":"تم تحميل ICE — بدء المكالمة المباشرة");startCallEngine();});
+                }catch(Exception e){runOnUiThread(()->fail("إعدادات ICE غير صالحة"));}
+            }
+        });
+    }
+
+    private void startCallEngine(){
         try{
-            status.setText(isIncoming()?"جاري قبول المكالمة…":"جاري تهيئة المكالمة…");
             PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(this).createInitializationOptions());
             if(!audioOnly){egl=EglBase.create();localView.init(egl.getEglBaseContext(),null);remoteView.init(egl.getEglBaseContext(),null);localView.setMirror(true);}
             audioManager=(AudioManager)getSystemService(Context.AUDIO_SERVICE);
@@ -154,14 +189,8 @@ public final class VideoCallActivity extends Activity {
     // Do not derive caller/callee from Wethaq IDs: either user must be able to call the other.
     private boolean isInitiator(){return incomingOffer==null||incomingOffer.trim().isEmpty();}
     private void createPeer(){
-        List<PeerConnection.IceServer> servers=new ArrayList<>();
-        servers.add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer());
-        servers.add(PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer());
-        // TURN over TLS/TCP on 443 is important on mobile networks that block UDP or plain TURN/TCP.
-        // The relay credentials are public/demo credentials; production should replace them with a private TURN service.
-        servers.add(PeerConnection.IceServer.builder("turns:openrelay.metered.ca:443?transport=tcp").setUsername("openrelayproject").setPassword("openrelayproject").createIceServer());
-        String u="openrelayproject",p="openrelayproject";
-        for(String uri:Arrays.asList("turn:openrelay.metered.ca:3478?transport=udp","turn:openrelay.metered.ca:3478?transport=tcp","turn:openrelay.metered.ca:80?transport=tcp","turn:openrelay.metered.ca:443?transport=tcp"))servers.add(PeerConnection.IceServer.builder(uri).setUsername(u).setPassword(p).createIceServer());
+        List<PeerConnection.IceServer> servers=new ArrayList<>(configuredIceServers);
+        if(servers.isEmpty())throw new IllegalStateException("ICE configuration is empty");
         PeerConnection.RTCConfiguration cfg=new PeerConnection.RTCConfiguration(servers);cfg.sdpSemantics=PeerConnection.SdpSemantics.UNIFIED_PLAN;cfg.continualGatheringPolicy=PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY;cfg.iceCandidatePoolSize=8;
         peer=factory.createPeerConnection(cfg,new PeerConnection.Observer(){
             public void onSignalingChange(PeerConnection.SignalingState s){}
