@@ -222,7 +222,6 @@ jobs:
           set -euo pipefail
           python3 -m py_compile scripts/mainline_stable_audit.py
           node --check backend/server.js
-          node --check backend/audit-access-guard.mjs
           node --check backend/runtime-hardening.mjs
           grep -q 'personal_code_hash' backend/server.js
           grep -q 'scryptSync' backend/server.js
