@@ -1,5 +1,6 @@
 name: Wethaq Unified CI and Production Release
 # Mainline gates: backend/security, Android 16, APK+AAB, protected production signing.
+# Production guard: audit access is enforced inside backend/server.js.
 
 on:
   push:
