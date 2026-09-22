@@ -28,3 +28,4 @@ body.addView(card("🔐 الحماية: رموز المنصب والرموز ا�
     private void request(String method,String path,CB cb){new Thread(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(API+path).openConnection();c.setRequestMethod(method);c.setConnectTimeout(5000);c.setReadTimeout(8000);c.setUseCaches(false);c.setRequestProperty("Accept","application/json");int code=c.getResponseCode();InputStream in=code<400?c.getInputStream():c.getErrorStream();ByteArrayOutputStream out=new ByteArrayOutputStream();if(in!=null){byte[]buf=new byte[4096];int n;while((n=in.read(buf))!=-1)out.write(buf,0,n);in.close();}String s=new String(out.toByteArray(),StandardCharsets.UTF_8);runOnUiThread(()->{if(code>=200&&code<300)cb.ok(s);else showLoadError();});}catch(Exception e){runOnUiThread(this::showLoadError);}}).start();}
     private interface CB{void ok(String s);}
 }
+
