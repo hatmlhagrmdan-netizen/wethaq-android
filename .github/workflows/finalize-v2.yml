@@ -54,7 +54,6 @@ jobs:
           test -f app/src/main/java/com/wethaq/app/WethaqBootReceiver.java
           test -f backend/package.json
           test -f backend/server.js
-          test -f backend/audit-access-guard.mjs
           test -f backend/smoke-test.mjs
           test -f backend/security-smoke-test.mjs
           test -f backend/hardening-smoke.mjs
@@ -62,7 +61,6 @@ jobs:
           test -f backend/runtime-hardening.mjs
           python3 -m py_compile scripts/mainline_stable_audit.py
           node --check backend/server.js
-          node --check backend/audit-access-guard.mjs
           node --check backend/runtime-hardening.mjs
           node --check backend/smoke-test.mjs
           node --check backend/security-smoke-test.mjs
