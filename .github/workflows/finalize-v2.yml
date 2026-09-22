@@ -114,7 +114,6 @@ jobs:
           timeout 90s env PORT=3100 node security-smoke-test.mjs
           timeout 90s env PORT=3100 node smoke-test.mjs
           timeout 90s env PORT=3100 node hardening-smoke.mjs
-          timeout 90s env PORT=3100 node hardening-smoke.mjs
       - name: Build CI APK and AAB
         run: gradle --no-daemon clean test assembleCi bundleCi --stacktrace --console=plain
       - name: Enable KVM for Android 16 emulator
