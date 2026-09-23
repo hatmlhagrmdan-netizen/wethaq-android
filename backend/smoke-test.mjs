@@ -115,6 +115,44 @@ const callEnd = await request('/api/calls/signal', {
 assert(callEnd.response.status === 201, 'call end signaling failed');
 wsB.close();
 
+// Server-backed call-history contract: missed calls are synchronized across devices,
+// while explicitly ended/answered calls never appear in the missed-call feed.
+const missedCallId = `smoke-missed-${suffix}`;
+const missedStart = await request('/api/calls/history/start', {
+  method: 'POST',
+  headers: { authorization: `Bearer ${a.body.token}` },
+  body: JSON.stringify({ callId: missedCallId, to: b.body.user.wethaq_id, audioOnly: true })
+});
+assert(missedStart.response.status === 201 && missedStart.body.callId === missedCallId, 'call history start failed');
+const missedStatus = await request('/api/calls/history/status', {
+  method: 'POST',
+  headers: { authorization: `Bearer ${a.body.token}` },
+  body: JSON.stringify({ callId: missedCallId, status: 'missed' })
+});
+assert(missedStatus.response.ok && missedStatus.body.ok === true, 'missed call history status failed');
+const missedFeed = await request(`/api/calls/history/${encodeURIComponent(b.body.user.wethaq_id)}`, {
+  headers: { authorization: `Bearer ${a.body.token}` }
+});
+assert(missedFeed.response.ok && missedFeed.body.calls?.some(c => c.call_id === missedCallId && Number(c.audio_only) === 1 && c.status === 'missed'), 'missed call history was not returned');
+
+const endedCallId = `smoke-ended-${suffix}`;
+const endedStart = await request('/api/calls/history/start', {
+  method: 'POST',
+  headers: { authorization: `Bearer ${a.body.token}` },
+  body: JSON.stringify({ callId: endedCallId, to: b.body.user.wethaq_id, audioOnly: false })
+});
+assert(endedStart.response.status === 201, 'ended call history start failed');
+const endedStatus = await request('/api/calls/history/status', {
+  method: 'POST',
+  headers: { authorization: `Bearer ${a.body.token}` },
+  body: JSON.stringify({ callId: endedCallId, status: 'ended' })
+});
+assert(endedStatus.response.ok, 'ended call history status failed');
+const endedFeed = await request(`/api/calls/history/${encodeURIComponent(b.body.user.wethaq_id)}`, {
+  headers: { authorization: `Bearer ${a.body.token}` }
+});
+assert(endedFeed.response.ok && !endedFeed.body.calls?.some(c => c.call_id === endedCallId), 'ended call incorrectly appeared as missed');
+
 
 // Normal users must never reach protected administrative capabilities.
 // /api/admin/structure is intentionally public: it powers the public administration board.
