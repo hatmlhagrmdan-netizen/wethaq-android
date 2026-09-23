@@ -9,6 +9,7 @@ import android.content.BroadcastReceiver;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.media.AudioManager;
+import android.media.ToneGenerator;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -63,14 +64,14 @@ public final class VideoCallActivity extends Activity {
     private AudioManager audioManager;
     private boolean previousSpeaker;
     private String target,token,myId,incomingOffer;
-    private boolean audioOnly,cleaned,offerSent,remoteDescriptionSet,micMuted;private Runnable callTimeout;
+    private boolean audioOnly,cleaned,offerSent,remoteDescriptionSet,micMuted,callEstablished;private Runnable callTimeout;private ToneGenerator ringTone;private Runnable ringLoop;private long callRecordId;
     private final BroadcastReceiver callSignalReceiver=new BroadcastReceiver(){@Override public void onReceive(Context context,Intent intent){if(!"com.wethaq.CALL_SIGNAL".equals(intent.getAction())||cleaned)return;String sender=intent.getStringExtra("sender_wethaq_id");if(sender==null||!sender.equals(target))return;String type=intent.getStringExtra("type");String payload=intent.getStringExtra("payload");long signalId=intent.getLongExtra("signal_id",0);if(signalId>0&&!seenSignals.add(String.valueOf(signalId)))return;handler.post(()->handle(type==null?"":type,payload==null?"":payload));}};
     private TextView status;
     private LinearLayout controls;
 
     @Override public void onBackPressed(){if(!cleaned)endCall();else super.onBackPressed();}
 
-    @Override public void onDestroy(){cancelCallTimeout();unregisterCallSignalReceiver();callIo.shutdownNow();callClient.dispatcher().cancelAll();callClient.connectionPool().evictAll();super.onDestroy();}
+    @Override public void onDestroy(){cancelCallTimeout();stopOutgoingRinging();unregisterCallSignalReceiver();callIo.shutdownNow();callClient.dispatcher().cancelAll();callClient.connectionPool().evictAll();super.onDestroy();}
 
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
@@ -80,6 +81,8 @@ public final class VideoCallActivity extends Activity {
         myId=getSharedPreferences("wethaq",MODE_PRIVATE).getString("wethaq_id","");
         audioOnly=getIntent().getBooleanExtra("audioOnly",false);
         incomingOffer=getIntent().getStringExtra("incomingOffer");
+        if(isIncoming()){callRecordId=CallHistory.pendingFor(this,target);if(callRecordId==0)callRecordId=CallHistory.record(this,target,getIntent().getStringExtra("name"),audioOnly,false,CallHistory.PENDING_INCOMING);}
+        else{callRecordId=CallHistory.record(this,target,getIntent().getStringExtra("name"),audioOnly,true,CallHistory.PENDING_OUTGOING);}
         setContentView(makeUi());
         registerCallSignalReceiver();
         if(target==null||target.trim().isEmpty()||token.isEmpty()||myId.isEmpty()){fail("تعذر بدء المكالمة");return;}
@@ -135,6 +138,7 @@ public final class VideoCallActivity extends Activity {
     private int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
 
     private void startCall(){
+        if(!isIncoming())startOutgoingRinging();
         status.setText(isIncoming()?"جاري قبول المكالمة…":"جاري تهيئة المكالمة…");
         loadIceConfigAndStart();
     }
@@ -194,7 +198,7 @@ public final class VideoCallActivity extends Activity {
         PeerConnection.RTCConfiguration cfg=new PeerConnection.RTCConfiguration(servers);cfg.sdpSemantics=PeerConnection.SdpSemantics.UNIFIED_PLAN;cfg.continualGatheringPolicy=PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY;cfg.iceCandidatePoolSize=8;
         peer=factory.createPeerConnection(cfg,new PeerConnection.Observer(){
             public void onSignalingChange(PeerConnection.SignalingState s){}
-            public void onIceConnectionChange(PeerConnection.IceConnectionState s){android.util.Log.i("WETHAQ_CALL","ICE state="+s+" target="+target);runOnUiThread(()->{if(s==PeerConnection.IceConnectionState.CONNECTED||s==PeerConnection.IceConnectionState.COMPLETED){cancelCallTimeout();status.setText("تم الاتصال ✓");}else if(s==PeerConnection.IceConnectionState.CHECKING)status.setText("جاري تثبيت الاتصال…");else if(s==PeerConnection.IceConnectionState.DISCONNECTED)status.setText("إعادة الاتصال…");else if(s==PeerConnection.IceConnectionState.FAILED)status.setText("تعذر الاتصال بالطرف الآخر");});}
+            public void onIceConnectionChange(PeerConnection.IceConnectionState s){android.util.Log.i("WETHAQ_CALL","ICE state="+s+" target="+target);runOnUiThread(()->{if(s==PeerConnection.IceConnectionState.CONNECTED||s==PeerConnection.IceConnectionState.COMPLETED){cancelCallTimeout();callEstablished=true;stopOutgoingRinging();CallHistory.setStatus(VideoCallActivity.this,callRecordId,CallHistory.ANSWERED);CallHistory.clearPending(VideoCallActivity.this,target);status.setText("تم الاتصال ✓");}else if(s==PeerConnection.IceConnectionState.CHECKING)status.setText("جاري تثبيت الاتصال…");else if(s==PeerConnection.IceConnectionState.DISCONNECTED)status.setText("إعادة الاتصال…");else if(s==PeerConnection.IceConnectionState.FAILED)status.setText("تعذر الاتصال بالطرف الآخر");});}
             public void onIceConnectionReceivingChange(boolean b){}
             public void onIceGatheringChange(PeerConnection.IceGatheringState s){android.util.Log.i("WETHAQ_CALL","ICE gathering="+s+" target="+target);}
             public void onIceCandidate(IceCandidate c){android.util.Log.d("WETHAQ_CALL","ICE candidate generated");sendSignal("ice",candidateJson(c));}
@@ -230,9 +234,11 @@ public final class VideoCallActivity extends Activity {
     private String sdpJson(SessionDescription d){try{return new JSONObject().put("sdp",d.description).toString();}catch(Exception e){return "{}";}}
     private String candidateJson(IceCandidate c){try{return new JSONObject().put("candidate",c.sdp).put("sdpMid",c.sdpMid).put("sdpMLineIndex",c.sdpMLineIndex).toString();}catch(Exception e){return "{}";}}
     private void sendSignal(String type,String payload){try{JSONObject q=new JSONObject().put("to",target).put("type",type).put("payload",payload);Request req=new Request.Builder().url(API+"/api/calls/signal").header("Authorization","Bearer "+token).post(RequestBody.create(q.toString(),JSON)).build();callClient.newCall(req).enqueue(new Callback(){public void onFailure(Call call,java.io.IOException e){android.util.Log.w("WETHAQ_CALL","signal send failed type="+type,e);}public void onResponse(Call call,Response response){try(Response r=response){if(!r.isSuccessful())android.util.Log.w("WETHAQ_CALL","signal send HTTP "+r.code()+" type="+type);}}});}catch(Exception e){android.util.Log.w("WETHAQ_CALL","signal build failed type="+type,e);}}
-    private void cancelCallTimeout(){if(callTimeout!=null){handler.removeCallbacks(callTimeout);callTimeout=null;}} private void cancelCallNotification(){try{android.app.NotificationManager nm=getSystemService(android.app.NotificationManager.class);if(nm!=null)nm.cancel(4102);}catch(Exception ignored){}} private void rejectCall(){cancelCallNotification();cancelCallTimeout();sendSignal("end","{}");cleaned=true;callIo.shutdownNow();finish();}
-    private void fail(String text){if(status!=null)status.setText(text);else toast(text);handler.postDelayed(this::endCall,1800);}
-    private void endCall(){if(cleaned)return;cancelCallNotification();cancelCallTimeout();sendSignal("end","{}");cleaned=true;callIo.shutdownNow();try{if(capturer!=null)capturer.stopCapture();}catch(Exception ignored){}try{if(peer!=null)peer.close();}catch(Exception ignored){}try{if(factory!=null)factory.dispose();}catch(Exception ignored){}try{if(videoSource!=null)videoSource.dispose();}catch(Exception ignored){}try{if(audioSource!=null)audioSource.dispose();}catch(Exception ignored){}try{if(localView!=null)localView.release();if(remoteView!=null)remoteView.release();if(egl!=null)egl.release();}catch(Exception ignored){}if(audioManager!=null){audioManager.setSpeakerphoneOn(previousSpeaker);audioManager.setMode(AudioManager.MODE_NORMAL);}finish();}
+    private void startOutgoingRinging(){stopOutgoingRinging();try{ringTone=new ToneGenerator(AudioManager.STREAM_VOICE_CALL,85);}catch(Exception ignored){ringTone=null;}ringLoop=()->{if(cleaned||callEstablished){stopOutgoingRinging();return;}try{if(ringTone!=null)ringTone.startTone(ToneGenerator.TONE_SUP_RINGTONE,900);}catch(Exception ignored){}handler.postDelayed(ringLoop,1800);};handler.post(ringLoop);}
+    private void stopOutgoingRinging(){if(ringLoop!=null){handler.removeCallbacks(ringLoop);ringLoop=null;}if(ringTone!=null){try{ringTone.stopTone();ringTone.release();}catch(Exception ignored){}ringTone=null;}}
+    private void cancelCallTimeout(){if(callTimeout!=null){handler.removeCallbacks(callTimeout);callTimeout=null;}} private void cancelCallNotification(){try{android.app.NotificationManager nm=getSystemService(android.app.NotificationManager.class);if(nm!=null)nm.cancel(4102);}catch(Exception ignored){}} private void rejectCall(){cancelCallNotification();cancelCallTimeout();stopOutgoingRinging();if(!callEstablished)CallHistory.setStatus(this,callRecordId,CallHistory.MISSED);CallHistory.clearPending(this,target);sendSignal("end","{}");cleaned=true;callIo.shutdownNow();finish();}
+    private void fail(String text){if(status!=null)status.setText(text);else toast(text);if(!callEstablished)CallHistory.setStatus(this,callRecordId,CallHistory.MISSED);stopOutgoingRinging();handler.postDelayed(this::endCall,1800);}
+    private void endCall(){if(cleaned)return;cancelCallNotification();cancelCallTimeout();stopOutgoingRinging();if(!callEstablished)CallHistory.setStatus(this,callRecordId,CallHistory.MISSED);else CallHistory.setStatus(this,callRecordId,CallHistory.ANSWERED);CallHistory.clearPending(this,target);sendSignal("end","{}");cleaned=true;callIo.shutdownNow();try{if(capturer!=null)capturer.stopCapture();}catch(Exception ignored){}try{if(peer!=null)peer.close();}catch(Exception ignored){}try{if(factory!=null)factory.dispose();}catch(Exception ignored){}try{if(videoSource!=null)videoSource.dispose();}catch(Exception ignored){}try{if(audioSource!=null)audioSource.dispose();}catch(Exception ignored){}try{if(localView!=null)localView.release();if(remoteView!=null)remoteView.release();if(egl!=null)egl.release();}catch(Exception ignored){}if(audioManager!=null){audioManager.setSpeakerphoneOn(previousSpeaker);audioManager.setMode(AudioManager.MODE_NORMAL);}finish();}
     private void toast(String s){android.widget.Toast.makeText(this,s,android.widget.Toast.LENGTH_LONG).show();}
     @Override public void onRequestPermissionsResult(int r,String[] p,int[] g){super.onRequestPermissionsResult(r,p,g);if(r==PERM_CALL){boolean ok=audioOnly?(g.length>0&&g[0]==PackageManager.PERMISSION_GRANTED):(g.length>=2&&g[0]==PackageManager.PERMISSION_GRANTED&&g[1]==PackageManager.PERMISSION_GRANTED);if(ok){if(isIncoming())showIncomingControls();else startCall();}else{toast(audioOnly?"يجب السماح بالميكروفون للمكالمة":"يجب السماح بالميكروفون والكاميرا للمكالمة");finish();}}}
     private abstract static class SimpleSdp implements SdpObserver{public void onCreateSuccess(SessionDescription d){}public void onSetSuccess(){}public void onCreateFailure(String s){}public void onSetFailure(String s){}}
