@@ -20,7 +20,7 @@ import java.nio.charset.StandardCharsets;
 import org.json.*;
 
 public final class AdminAccessActivity extends Activity {
-    private static final String API="https://wethaq-backend-production.up.railway.app";
+    private static final String API=WethaqConfig.API;
     private SharedPreferences prefs;
     private LinearLayout root,content;
     private String adminToken="",selectedUserId="",selectedAssignmentId="",selectedRole="";
