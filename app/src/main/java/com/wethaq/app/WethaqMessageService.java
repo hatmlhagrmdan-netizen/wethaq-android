@@ -56,7 +56,7 @@ public final class WethaqMessageService extends Service {
             if("message".equals(event)){
                 JSONObject m=o.optJSONObject("message");String id=m==null?"":m.optString("id","");if(!firstTimeMessage(id))return;
                 String sender=m==null?"مستخدم":m.optString("sender_name","مستخدم");String senderId=m==null?"":m.optString("sender_wethaq_id","");String body=m==null?"رسالة جديدة":m.optString("body","");String type=m==null?"text":m.optString("message_type","text");
-                String content=body.isEmpty()?("audio".equals(type)?"🎙 رسالة صوتية":"image".equals(type)?"🖼 صورة":"رسالة جديدة"):body;
+                String content=body.isEmpty()?("audio".equals(type)?"🎙 رسالة صوتية":"image".equals(type)?"🖼 صورة":"رسالة جديدة"):body;\n                saveIncomingContactIfNeeded(senderId,sender);
                 if("admin_assignment".equals(type)||"admin_alert".equals(type)){} else showMessage(sender,senderId,content);
                 publishLiveMessage(senderId,sender);
             }else if("action".equals(event)){
@@ -70,7 +70,7 @@ public final class WethaqMessageService extends Service {
         }catch(Exception ignored){}
     }
 
-    private void publishCallSignal(String senderId,String type,String payload,long signalId){if(senderId==null||senderId.isEmpty()||type==null||type.isEmpty())return;Intent i=new Intent(CALL_SIGNAL_ACTION);i.setPackage(getPackageName());i.putExtra("sender_wethaq_id",senderId);i.putExtra("type",type);i.putExtra("payload",payload==null?"":payload);i.putExtra("signal_id",signalId);sendBroadcast(i);}
+    private void saveIncomingContactIfNeeded(String senderId,String senderName){\n        if(senderId==null||senderId.trim().isEmpty())return;\n        try{\n            String ownId=getSharedPreferences("wethaq",MODE_PRIVATE).getString("wethaq_id","");\n            if(senderId.equals(ownId))return;\n            android.content.SharedPreferences p=getSharedPreferences("wethaq",MODE_PRIVATE);\n            JSONArray contacts;\n            try{contacts=new JSONArray(p.getString("saved_contacts","[]"));}catch(Exception e){contacts=new JSONArray();}\n            for(int i=0;i<contacts.length();i++){\n                JSONObject c=contacts.optJSONObject(i);\n                if(c!=null&&senderId.equals(c.optString("wethaq_id","")))return;\n            }\n            JSONObject c=new JSONObject();\n            c.put("wethaq_id",senderId);\n            c.put("name",senderName==null||senderName.trim().isEmpty()?"مستخدم":senderName.trim());\n            contacts.put(c);\n            p.edit().putString("saved_contacts",contacts.toString()).apply();\n        }catch(Exception ignored){}\n    }\n    private void publishCallSignal(String senderId,String type,String payload,long signalId){if(senderId==null||senderId.isEmpty()||type==null||type.isEmpty())return;Intent i=new Intent(CALL_SIGNAL_ACTION);i.setPackage(getPackageName());i.putExtra("sender_wethaq_id",senderId);i.putExtra("type",type);i.putExtra("payload",payload==null?"":payload);i.putExtra("signal_id",signalId);sendBroadcast(i);}
 
     private void syncPendingNotifications(){
         final String token=getSharedPreferences("wethaq",MODE_PRIVATE).getString("token","");
