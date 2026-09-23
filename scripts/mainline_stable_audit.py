@@ -16,6 +16,7 @@ def read(path: str) -> str:
 
 build = read("app/build.gradle")
 main = read("app/src/main/java/com/wethaq/app/MainActivity.java")
+config = read("app/src/main/java/com/wethaq/app/WethaqConfig.java")
 server = read("backend/server.js")
 workflow = read(".github/workflows/finalize-v2.yml")
 
@@ -48,8 +49,8 @@ if re.search(r"-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY-----", source_text):
 if re.search(r"(?:storePassword|keyPassword)\s+['\"][^'\"]+['\"]", source_text):
     errors.append("hardcoded signing password detected in runtime source")
 
-if "https://wethaq-backend-production.up.railway.app" not in main:
-    errors.append("expected HTTPS Wethaq backend endpoint missing")
+if "https://wethaq-backend-production.up.railway.app" not in config:
+    errors.append("expected HTTPS Wethaq backend endpoint missing from WethaqConfig")
 if "open" + "relayproject" in main:
     errors.append("public demo TURN credentials must not remain in Android source")
 if "/api/calls/ice-config" not in server:
