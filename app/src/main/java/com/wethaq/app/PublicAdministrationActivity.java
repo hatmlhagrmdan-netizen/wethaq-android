@@ -21,7 +21,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public final class PublicAdministrationActivity extends Activity {
-    private static final String API="https://wethaq-backend-production.up.railway.app";
+    private static final String API=WethaqConfig.API;
     private LinearLayout body;
     private int dp(int v){return(int)(v*getResources().getDisplayMetrics().density+.5f);}
     private TextView text(String s,float size,int color){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);t.setPadding(dp(14),dp(12),dp(14),dp(12));t.setGravity(Gravity.RIGHT);return t;}
