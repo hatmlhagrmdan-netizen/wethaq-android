@@ -107,7 +107,7 @@ public final class WethaqMessageService extends Service {
                     try(Response rr=response){
                         if(!rr.isSuccessful()||rr.body()==null)return;
                         JSONObject z=new JSONObject(rr.body().string());JSONArray a=z.optJSONArray("messages");java.util.ArrayList<Integer> ids=new java.util.ArrayList<>();
-                        if(a!=null)for(int i=0;i<a.length();i++){JSONObject m=a.optJSONObject(i);if(m==null)continue;int id=m.optInt("id",0);String sender=m.optString("sender_name","مستخدم"),senderId=m.optString("sender_wethaq_id",""),body=m.optString("body",""),type=m.optString("message_type","text");String preview=body.isEmpty()?("audio".equals(type)?"🎙 رسالة صوتية":"image".equals(type)?"🖼 صورة":"رسالة جديدة"):body;saveIncomingContactIfNeeded(senderId,sender);if(!"admin_assignment".equals(type)&&!"admin_alert".equals(type)&&firstTimeMessage(String.valueOf(id)))showMessage(sender,senderId,preview);if(id>0)ids.add(id);}
+                        if(a!=null)for(int i=0;i<a.length();i++){JSONObject m=a.optJSONObject(i);if(m==null)continue;int id=m.optInt("id",0);String sender=m.optString("sender_name","مستخدم"),senderId=m.optString("sender_wethaq_id",""),body=m.optString("body",""),type=m.optString("message_type","text");String preview=body.isEmpty()?("audio".equals(type)?"🎙 رسالة صوتية":"image".equals(type)?"🖼 صورة":"رسالة جديدة"):body;if(!"admin_assignment".equals(type)&&!"admin_alert".equals(type)&&firstTimeMessage(String.valueOf(id)))showMessage(sender,senderId,preview);if(id>0)ids.add(id);}
                         acknowledgeMessages(ids);
                     }catch(Exception ignored){}
                 }
