@@ -21,7 +21,7 @@ public final class WethaqApp extends Application implements Application.Activity
     private static final String PREFS="wethaq";
     private static final String CONTACTS="saved_contacts";
     private static final String BACKUP="wethaq_contacts_backup";
-    private static final String API="https://wethaq-backend-production.up.railway.app";
+    private static final String API=WethaqConfig.API;
     private SharedPreferences prefs;
     private SharedPreferences backup;
     private boolean restoring;
