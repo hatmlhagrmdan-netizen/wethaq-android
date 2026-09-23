@@ -42,7 +42,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public final class VideoCallActivity extends Activity {
-    private static final String API="https://wethaq-backend-production.up.railway.app";
+    private static final String API=WethaqConfig.API;
     private static final int PERM_CALL=500;
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final Set<String> seenSignals=new HashSet<>();
