@@ -4,7 +4,7 @@ import android.app.Activity;import android.app.Application;import android.graphi
 
 /** Wethaq 3D UI: shared visual layer for buttons, avatars and RTL user rows. */
 public final class WethaqUi{
- private static final int GOLD=Color.rgb(212,175,55),DARK=Color.rgb(20,20,24),PRESSED=Color.rgb(55,45,24);private static final String API="https://wethaq-backend-production.up.railway.app";
+ private static final int GOLD=Color.rgb(212,175,55),DARK=Color.rgb(20,20,24),PRESSED=Color.rgb(55,45,24);private static final String API=WethaqConfig.API;
  private WethaqUi(){}
  public static void apply(Application app,Activity a){Window w=a.getWindow();w.setStatusBarColor(Color.BLACK);w.setNavigationBarColor(Color.BLACK);View r=a.findViewById(android.R.id.content);if(r instanceof ViewGroup){r.setBackgroundColor(Color.BLACK);styleTree(a,(ViewGroup)r);}}
  private static void styleTree(Activity a,ViewGroup g){for(int i=0;i<g.getChildCount();i++){View v=g.getChildAt(i);if(v instanceof Button)styleButton((Button)v);if(v instanceof TextView)styleText(a,(TextView)v);if(v instanceof ImageView)styleImage((ImageView)v);if(v instanceof ViewGroup)styleTree(a,(ViewGroup)v);}}
