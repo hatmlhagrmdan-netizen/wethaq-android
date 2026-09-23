@@ -103,21 +103,21 @@ public final class VideoCallActivity extends Activity {
 
 
     private View makeUi(){
-        FrameLayout root=new FrameLayout(this);root.setBackgroundColor(Color.BLACK);
+        FrameLayout root=new FrameLayout(this);root.setBackgroundResource(R.drawable.bg_wethaq);
         if(!audioOnly){
             remoteView=new SurfaceViewRenderer(this);localView=new SurfaceViewRenderer(this);
             root.addView(remoteView,new FrameLayout.LayoutParams(-1,-1));
-            FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(dp(120),dp(180),Gravity.RIGHT|Gravity.TOP);lp.setMargins(0,dp(24),dp(16),0);root.addView(localView,lp);
+            FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(dp(120),dp(180),Gravity.RIGHT|Gravity.TOP);lp.setMargins(0,dp(76),dp(16),0);root.addView(localView,lp);
         }else{
-            TextView call=new TextView(this);call.setText("📞\nمكالمة صوتية\n"+String.valueOf(getIntent().getStringExtra("name")));call.setTextColor(Color.WHITE);call.setTextSize(25);call.setGravity(Gravity.CENTER);root.addView(call,new FrameLayout.LayoutParams(-1,-1));
+            TextView call=new TextView(this);call.setText("📞\nمكالمة صوتية\n"+String.valueOf(getIntent().getStringExtra("name")));call.setTextColor(Color.WHITE);call.setTextSize(25);call.setGravity(Gravity.CENTER);call.setTypeface(android.graphics.Typeface.DEFAULT,android.graphics.Typeface.BOLD);root.addView(call,new FrameLayout.LayoutParams(-1,-1));
         }
-        status=new TextView(this);status.setText(isIncoming()?"مكالمة واردة":"جاري الاتصال…");status.setTextColor(Color.WHITE);status.setTextSize(18);status.setGravity(Gravity.CENTER);root.addView(status,new FrameLayout.LayoutParams(-1,dp(72),Gravity.TOP));
-        controls=new LinearLayout(this);controls.setOrientation(LinearLayout.HORIZONTAL);controls.setGravity(Gravity.CENTER);controls.setPadding(dp(10),dp(8),dp(10),dp(16));FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams(-1,dp(92),Gravity.BOTTOM);cp.setMargins(dp(8),0,dp(8),dp(8));root.addView(controls,cp);
+        status=new TextView(this);status.setText(isIncoming()?"مكالمة واردة":"جاري الاتصال…");status.setTextColor(Color.rgb(246,222,132));status.setTextSize(18);status.setGravity(Gravity.CENTER);status.setPadding(dp(12),dp(8),dp(12),dp(8));status.setBackgroundResource(R.drawable.bg_wethaq_header);FrameLayout.LayoutParams sp=new FrameLayout.LayoutParams(-1,dp(72),Gravity.TOP);sp.setMargins(dp(8),dp(8),dp(8),0);root.addView(status,sp);
+        controls=new LinearLayout(this);controls.setOrientation(LinearLayout.HORIZONTAL);controls.setGravity(Gravity.CENTER);controls.setPadding(dp(10),dp(8),dp(10),dp(16));controls.setBackgroundResource(R.drawable.bg_wethaq_header);FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams(-1,dp(104),Gravity.BOTTOM);cp.setMargins(dp(8),0,dp(8),dp(8));root.addView(controls,cp);
         return root;
     }
 
     private Button actionButton(String text){
-        Button b=new Button(this);b.setText(text);b.setTextSize(16);b.setAllCaps(false);b.setTextColor(Color.WHITE);b.setMinHeight(dp(68));b.setMinimumWidth(0);b.setPadding(dp(10),0,dp(10),0);return b;
+        Button b=new Button(this);b.setText(text);b.setTextSize(16);b.setAllCaps(false);b.setTextColor(Color.WHITE);b.setTypeface(android.graphics.Typeface.DEFAULT,android.graphics.Typeface.BOLD);b.setMinHeight(dp(68));b.setMinimumWidth(0);b.setPadding(dp(10),0,dp(10),0);b.setBackgroundResource(R.drawable.bg_wethaq_button);b.setElevation(dp(5));return b;
     }
 
     private void showIncomingControls(){

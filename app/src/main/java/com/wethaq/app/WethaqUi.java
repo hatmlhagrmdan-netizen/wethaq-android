@@ -12,14 +12,15 @@ import java.net.*;
 import java.nio.charset.StandardCharsets;
 
 public final class WethaqUi{
-    private static final int GOLD=Color.rgb(229,193,71),DARK=Color.rgb(10,29,43),PRESSED=Color.rgb(18,50,71);
+    private static final int GOLD=Color.rgb(229,193,71),GOLD_SOFT=Color.rgb(246,222,132),DARK=Color.rgb(10,29,43),PRESSED=Color.rgb(18,50,71),MUTED=Color.rgb(165,178,188);
     private static final String API=WethaqConfig.API;
     private WethaqUi(){}
 
     public static void apply(Application app,Activity a){
         Window w=a.getWindow();
-        w.setStatusBarColor(Color.rgb(5,15,23));
+        w.setStatusBarColor(Color.rgb(3,10,16));
         w.setNavigationBarColor(Color.rgb(2,7,12));
+        w.getDecorView().setSystemUiVisibility(w.getDecorView().getSystemUiVisibility() & ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR & ~View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         View r=a.findViewById(android.R.id.content);
         if(r instanceof ViewGroup){
             r.setBackgroundResource(R.drawable.bg_wethaq);
@@ -39,8 +40,8 @@ public final class WethaqUi{
     }
 
     private static void styleButton(Button b){
-        if(Boolean.TRUE.equals(b.getTag()))return;
-        b.setTag(Boolean.TRUE);
+        if("wethaq_button".equals(b.getTag()))return;
+        b.setTag("wethaq_button");
         b.setAllCaps(false);
         b.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
         b.setMinHeight(dp(b,68));
@@ -50,18 +51,16 @@ public final class WethaqUi{
         b.setPadding(dp(b,14),0,dp(b,14),0);
         b.setGravity(Gravity.CENTER);
         b.setTextColor(Color.WHITE);
-        StateListDrawable s=new StateListDrawable();
-        s.addState(new int[]{android.R.attr.state_pressed},face(b,PRESSED,2));
-        s.addState(new int[]{-android.R.attr.state_enabled},face(b,Color.rgb(38,48,56),1));
-        s.addState(new int[]{},face(b,DARK,1));
-        b.setBackground(s);
-        b.setElevation(dp(b,5));
+        b.setIncludeFontPadding(false);
+        b.setBackgroundResource(R.drawable.bg_wethaq_button);
+        b.setElevation(dp(b,6));
         b.setTranslationZ(dp(b,1));
+        if(b.getContentDescription()==null||b.getContentDescription().length()==0)b.setContentDescription(b.getText());
         b.setOnTouchListener((v,e)->{
             if(e.getAction()==MotionEvent.ACTION_DOWN)
-                v.animate().scaleX(.98f).scaleY(.96f).translationZ(0).setDuration(70).start();
+                v.animate().scaleX(.985f).scaleY(.97f).translationZ(0).setDuration(70).start();
             else if(e.getAction()==MotionEvent.ACTION_UP||e.getAction()==MotionEvent.ACTION_CANCEL)
-                v.animate().scaleX(1f).scaleY(1f).translationZ(dp(v,1)).setDuration(100).start();
+                v.animate().scaleX(1f).scaleY(1f).translationZ(dp(v,1)).setDuration(110).start();
             return false;
         });
     }
@@ -70,11 +69,12 @@ public final class WethaqUi{
         if(Boolean.TRUE.equals(e.getTag()))return;
         e.setTag(Boolean.TRUE);
         e.setTextColor(Color.WHITE);
-        e.setHintTextColor(Color.rgb(165,178,188));
+        e.setHintTextColor(MUTED);
         e.setBackgroundResource(R.drawable.bg_wethaq_field);
         e.setPadding(dp(e,14),0,dp(e,14),0);
         e.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
         e.setMinHeight(dp(e,60));
+        e.setSelectAllOnFocus(false);
     }
 
     private static GradientDrawable face(View v,int c,int st){
@@ -88,11 +88,17 @@ public final class WethaqUi{
     private static void styleText(Activity a,TextView t){
         if(t.getText()==null)return;
         t.setIncludeFontPadding(true);
-        if(t.getTextSize()<dp(t,16))t.setTextSize(16);
         if(t.getGravity()==0)t.setGravity(Gravity.CENTER_VERTICAL|Gravity.RIGHT);
         String s=t.getText().toString().trim();
         if(s.isEmpty()||Boolean.TRUE.equals(t.getTag()))return;
-        String[] p=s.split("\\n");
+
+        if(s.equals("وَثاق")||s.equals("هوية رقمية آمنة")||t.getTextSize()>=dp(t,22)){
+            t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
+            t.setTextColor(s.equals("وَثاق")?GOLD:GOLD_SOFT);
+            t.setShadowLayer(dp(t,5),0,dp(t,2),Color.argb(120,0,0,0));
+        }
+
+        String[] p=s.split("\n");
         String id="";
         if(p.length>=2&&p[1].trim().length()>=2)id=p[1].trim();
         else id=contactIdForName(a,s);
@@ -113,7 +119,7 @@ public final class WethaqUi{
     private static Drawable placeholder(View v){
         GradientDrawable d=new GradientDrawable();
         d.setShape(GradientDrawable.OVAL);
-        d.setColor(Color.rgb(48,48,54));
+        d.setColor(Color.rgb(17,46,62));
         d.setStroke(dp(v,2),GOLD);
         d.setSize(dp(v,42),dp(v,42));
         return d;
