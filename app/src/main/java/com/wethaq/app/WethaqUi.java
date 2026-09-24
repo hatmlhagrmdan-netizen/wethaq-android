@@ -64,7 +64,6 @@ public final class WethaqUi{
                     break;
                 case MotionEvent.ACTION_UP:
                     v.animate().cancel();
-                    v.performClick();
                     v.animate().scaleX(1f).scaleY(1f).translationY(0).translationZ(dp(v,2)).setDuration(145).setInterpolator(new android.view.animation.OvershootInterpolator(1.35f)).start();
                     break;
                 case MotionEvent.ACTION_CANCEL:
