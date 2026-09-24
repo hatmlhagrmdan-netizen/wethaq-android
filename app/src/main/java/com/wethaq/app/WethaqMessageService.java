@@ -68,7 +68,7 @@ public final class WethaqMessageService extends Service {
             }else if("call".equals(event)){
                 JSONObject from=o.optJSONObject("from");String id=from==null?"":from.optString("wethaq_id","");String name=from==null?"مستخدم":from.optString("name","مستخدم");String type=o.optString("type","");String payload=o.optString("payload","");publishCallSignal(id,type,payload,o.optLong("signal_id",0));
                 if("offer".equals(type)&&!id.isEmpty())showIncomingCall(id,name,!payload.contains("m=video"),payload);
-                else if("end".equals(type)&&!id.isEmpty()){long pending=CallHistory.pendingFor(this,id);if(pending>0)CallHistory.setStatus(this,pending,CallHistory.MISSED);CallHistory.clearPending(this,id);cancelIncomingCallNotification();}
+                else if("end".equals(type)&&!id.isEmpty()){long pending=CallHistory.pendingFor(this,id);if(pending>0){CallHistory.setStatus(this,pending,CallHistory.MISSED);broadcastCallHistoryChanged(id);}CallHistory.clearPending(this,id);cancelIncomingCallNotification();}
             }
         }catch(Exception ignored){}
     }
@@ -96,7 +96,7 @@ public final class WethaqMessageService extends Service {
             p.edit().putString("saved_contacts",contacts.toString()).apply();
         }catch(Exception ignored){}
     }
-    private void publishCallSignal(String senderId,String type,String payload,long signalId){if(senderId==null||senderId.isEmpty()||type==null||type.isEmpty())return;Intent i=new Intent(CALL_SIGNAL_ACTION);i.setPackage(getPackageName());i.putExtra("sender_wethaq_id",senderId);i.putExtra("type",type);i.putExtra("payload",payload==null?"":payload);i.putExtra("signal_id",signalId);sendBroadcast(i);}
+    private void publishCallSignal(String senderId,String type,String payload,long signalId){if(senderId==null||senderId.isEmpty()||type==null||type.isEmpty())return;Intent i=new Intent(CALL_SIGNAL_ACTION);i.setPackage(getPackageName());i.putExtra("sender_wethaq_id",senderId);i.putExtra("type",type);i.putExtra("payload",payload==null?"":payload);i.putExtra("signal_id",signalId);sendBroadcast(i);} private void broadcastCallHistoryChanged(String targetId){if(targetId==null||targetId.isEmpty())return;Intent i=new Intent("com.wethaq.CALL_HISTORY_CHANGED");i.setPackage(getPackageName());i.putExtra("target_wethaq_id",targetId);sendBroadcast(i);}
 
     private void syncPendingNotifications(){
         final String token=getSharedPreferences("wethaq",MODE_PRIVATE).getString("token","");
