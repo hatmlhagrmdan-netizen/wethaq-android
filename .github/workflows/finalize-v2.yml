@@ -151,20 +151,30 @@ jobs:
             set -u
             LOG=/tmp/wethaq-android16-logcat.txt
             adb logcat -c
-            trap 'adb logcat -d -v time > "$LOG" || true; echo "===== WETHAQ LOGCAT ====="; tail -n 500 "$LOG" || true' EXIT
             adb install -r app/build/outputs/apk/ci/app-ci.apk
             adb shell getprop ro.build.version.sdk | grep -qx '36'
             adb shell pm list packages | grep -Fq 'package:com.wethaq.app'
             adb shell am force-stop com.wethaq.app || true
             adb shell am start -W -n com.wethaq.app/.MainActivity 2>&1 | tee /tmp/wethaq-start.txt
             sleep 3
-            if adb shell pidof com.wethaq.app >/dev/null; then
+            PID_CHECK=1
+            adb shell pidof com.wethaq.app >/dev/null 2>&1 && PID_CHECK=0 || true
+            adb logcat -d -v time > "$LOG" || true
+            echo "===== WETHAQ START RESULT ====="
+            cat /tmp/wethaq-start.txt || true
+            if [ "$PID_CHECK" -eq 0 ]; then
               echo 'WETHAQ_ANDROID16_STARTUP_OK'
+              echo '===== WETHAQ LOGCAT (last 200) ====='
+              tail -n 200 "$LOG" || true
               exit 0
+            else
+              echo 'WETHAQ_ANDROID16_STARTUP_FAILED'
+              echo '===== WETHAQ LOGCAT (last 500) ====='
+              tail -n 500 "$LOG" || true
+              echo '===== WETHAQ ACTIVITY STATE ====='
+              adb shell dumpsys activity activities | tail -n 120 || true
+              exit 1
             fi
-            echo 'WETHAQ_ANDROID16_STARTUP_FAILED'
-            adb shell dumpsys activity activities | tail -n 120 || true
-            exit 1
       - name: Verify CI APK and AAB
         shell: bash
         run: |
