@@ -16,6 +16,7 @@ public final class WethaqMessageService extends Service {
     private static final int FOREGROUND_ID=4101;
     private static final int ADMIN_NOTIFICATION_ID_BASE=52000;
     private static final int ACTION_NOTIFICATION_ID_BASE=62000;
+    private static final int MISSED_CALL_NOTIFICATION_ID_BASE=72000;
     private static final String SERVICE_CHANNEL="wethaq_service";
     private static final String MESSAGE_CHANNEL="wethaq_messages_v2";
     private static final String CALL_CHANNEL="wethaq_calls";
@@ -49,6 +50,26 @@ public final class WethaqMessageService extends Service {
     private void update(String text){NotificationManager nm=getSystemService(NotificationManager.class);if(nm!=null)nm.notify(FOREGROUND_ID,baseNotification(text));}
     private boolean firstTimeMessage(String id){if(id==null||id.isEmpty())return true;synchronized(seenMessageIds){if(seenMessageIds.contains(id))return false;if(seenMessageIds.size()>=256){java.util.Iterator<String> it=seenMessageIds.iterator();if(it.hasNext()){it.next();it.remove();}}seenMessageIds.add(id);return true;}}
     private void publishLiveMessage(String senderId,String senderName){if(senderId==null||senderId.isEmpty())return;Intent live=new Intent(LIVE_MESSAGE_ACTION);live.setPackage(getPackageName());live.putExtra("sender_wethaq_id",senderId);live.putExtra("sender_name",senderName==null?"مستخدم":senderName);sendBroadcast(live);}
+    private void showMissedCallNotification(String senderId,String senderName){
+        if(senderId==null||senderId.isEmpty())return;
+        Intent i=new Intent(this,MainActivity.class);
+        i.putExtra("notification_target",senderId);
+        i.putExtra("notification_name",senderName==null||senderName.isEmpty()?"مستخدم":senderName);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent pi=PendingIntent.getActivity(this,Math.abs(senderId.hashCode()),i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+        NotificationCompat.Builder b=new NotificationCompat.Builder(this,CALL_CHANNEL)
+            .setSmallIcon(android.R.drawable.sym_call_missed)
+            .setContentTitle("مكالمة فائتة")
+            .setContentText("لم يتم الرد على مكالمة من "+(senderName==null||senderName.isEmpty()?"مستخدم":senderName))
+            .setContentIntent(pi)
+            .setAutoCancel(true)
+            .setShowWhen(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_MISSED_CALL)
+            .setDefaults(NotificationCompat.DEFAULT_ALL);
+        NotificationManager nm=getSystemService(NotificationManager.class);
+        if(nm!=null)nm.notify(MISSED_CALL_NOTIFICATION_ID_BASE+Math.abs(senderId.hashCode()%1000),b.build());
+    }
 
     private void handle(String text){
         try{
@@ -68,7 +89,7 @@ public final class WethaqMessageService extends Service {
             }else if("call".equals(event)){
                 JSONObject from=o.optJSONObject("from");String id=from==null?"":from.optString("wethaq_id","");String name=from==null?"مستخدم":from.optString("name","مستخدم");String type=o.optString("type","");String payload=o.optString("payload","");publishCallSignal(id,type,payload,o.optLong("signal_id",0));
                 if("offer".equals(type)&&!id.isEmpty())showIncomingCall(id,name,!payload.contains("m=video"),payload);
-                else if("end".equals(type)&&!id.isEmpty()){long pending=CallHistory.pendingFor(this,id);if(pending>0){CallHistory.setStatus(this,pending,CallHistory.MISSED);broadcastCallHistoryChanged(id);}CallHistory.clearPending(this,id);cancelIncomingCallNotification();}
+                else if("end".equals(type)&&!id.isEmpty()){long pending=CallHistory.pendingFor(this,id);if(pending>0){CallHistory.setStatus(this,pending,CallHistory.MISSED);broadcastCallHistoryChanged(id);showMissedCallNotification(id,name);}CallHistory.clearPending(this,id);cancelIncomingCallNotification();}
             }
         }catch(Exception ignored){}
     }
