@@ -44,8 +44,8 @@ public final class WethaqUi{
         b.setTag("wethaq_button");
         b.setAllCaps(false);
         b.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
-        b.setMinHeight(dp(b,68));
-        b.setMinimumHeight(dp(b,68));
+        b.setMinHeight(dp(b,60));
+        b.setMinimumHeight(dp(b,60));
         b.setMinWidth(0);
         b.setMinimumWidth(0);
         b.setPadding(dp(b,14),0,dp(b,14),0);
@@ -53,14 +53,24 @@ public final class WethaqUi{
         b.setTextColor(Color.WHITE);
         b.setIncludeFontPadding(false);
         b.setBackgroundResource(R.drawable.bg_wethaq_button);
-        b.setElevation(dp(b,6));
-        b.setTranslationZ(dp(b,1));
+        b.setElevation(dp(b,7));
+        b.setTranslationZ(dp(b,2));
         if(b.getContentDescription()==null||b.getContentDescription().length()==0)b.setContentDescription(b.getText());
         b.setOnTouchListener((v,e)->{
-            if(e.getAction()==MotionEvent.ACTION_DOWN)
-                v.animate().scaleX(.985f).scaleY(.97f).translationZ(0).setDuration(70).start();
-            else if(e.getAction()==MotionEvent.ACTION_UP||e.getAction()==MotionEvent.ACTION_CANCEL)
-                v.animate().scaleX(1f).scaleY(1f).translationZ(dp(v,1)).setDuration(110).start();
+            switch(e.getAction()){
+                case MotionEvent.ACTION_DOWN:
+                    v.animate().cancel();
+                    v.animate().scaleX(.965f).scaleY(.94f).translationY(dp(v,2)).translationZ(0).setDuration(85).start();
+                    break;
+                case MotionEvent.ACTION_UP:
+                    v.animate().cancel();
+                    v.animate().scaleX(1f).scaleY(1f).translationY(0).translationZ(dp(v,2)).setDuration(145).setInterpolator(new android.view.animation.OvershootInterpolator(1.35f)).start();
+                    break;
+                case MotionEvent.ACTION_CANCEL:
+                    v.animate().cancel();
+                    v.animate().scaleX(1f).scaleY(1f).translationY(0).translationZ(dp(v,2)).setDuration(100).start();
+                    break;
+            }
             return false;
         });
     }

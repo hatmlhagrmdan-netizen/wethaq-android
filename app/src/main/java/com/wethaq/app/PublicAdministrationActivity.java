@@ -32,7 +32,7 @@ public final class PublicAdministrationActivity extends Activity {
     private TextView pricingCard(){return card("💳 المناصب الإدارية في وَثاق بنظام اشتراك سنوي\n\n🏛 المدير التنفيذي: 100$ سنويًا\n🥇 النائب الأول: 70$ سنويًا\n🥈 النائب الثاني: 50$ سنويًا\n🥉 النائب الثالث: 30$ سنويًا\n🛡 المشرف: 15$ سنويًا\n👥 عضو الإدارة: 7$ سنويًا\n⭐ عضو مميز: 2$ سنويًا\n\n📌 ملاحظة: شغل أي منصب إداري مدفوع يتطلب اشتراكًا سنويًا صالحًا، وتظهر حالة الصلاحية وتاريخ الانتهاء للمستخدم وصاحب المنصب حسب مستوى الوصول.",true);}
     @Override public void onCreate(Bundle b){super.onCreate(b);build();loadPublicAdministration();}
     private void build(){LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(14),dp(14),dp(14),dp(14));root.setBackgroundColor(Color.BLACK);TextView title=text("👥 وَثاق — الإدارة العامة",23,Color.rgb(212,175,55));title.setGravity(Gravity.CENTER);title.setTypeface(Typeface.DEFAULT,Typeface.BOLD);root.addView(title,new LinearLayout.LayoutParams(-1,dp(72)));Button access=button("🔐 دخول الإدارة / تفعيل المنصب");root.addView(access,new LinearLayout.LayoutParams(-1,dp(64)));access.setOnClickListener(v->startActivity(new Intent(this,AdminAccessActivity.class)));ScrollView sc=new ScrollView(this);body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);body.addView(pricingCard());body.addView(card("⏳ جاري تحميل شاغلي المناصب الحاليين من خادم وَثاق...",true));sc.addView(body);root.addView(sc,new LinearLayout.LayoutParams(-1,0,1));Button back=button("رجوع");root.addView(back,new LinearLayout.LayoutParams(-1,dp(64)));back.setOnClickListener(v->finish());setContentView(root);}
-    private LinearLayout memberRow(String name,String id,String appointedAt,String appointedBy){
+    private LinearLayout memberRow(String roleLabel,String roleIcon,String name,String id,String appointedAt,String appointedBy){
         LinearLayout row=new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL|Gravity.RIGHT);
@@ -49,7 +49,7 @@ public final class PublicAdministrationActivity extends Activity {
         details.setOrientation(LinearLayout.VERTICAL);
         details.setGravity(Gravity.RIGHT);
 
-        TextView n=text("👤 "+name,18,Color.WHITE);
+        TextView n=text((roleIcon==null||roleIcon.isEmpty()?"👤":roleIcon)+" "+roleLabel+" — "+name,18,Color.WHITE);
         n.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
         details.addView(n);
         details.addView(text("🆔 "+id,13,Color.LTGRAY));
@@ -103,11 +103,13 @@ public final class PublicAdministrationActivity extends Activity {
                         for(int j=0;j<members.length();j++){
                             JSONObject m=members.getJSONObject(j);
                             body.addView(memberRow(
-                                m.optString("name","غير متوفر"),
-                                m.optString("wethaq_id","غير متوفر"),
-                                m.optString("appointedAt","غير متوفر"),
-                                m.optString("appointedBy","")
-                            ));
+                                 role.optString("label","منصب إداري"),
+                                 role.optString("icon","👤"),
+                                 m.optString("name","غير متوفر"),
+                                 m.optString("wethaq_id","غير متوفر"),
+                                 m.optString("appointedAt","غير متوفر"),
+                                 m.optString("appointedBy","")
+                             ));
                             body.addView(new android.view.View(this),new LinearLayout.LayoutParams(-1,dp(8)));
                         }
                     }
