@@ -114,8 +114,8 @@ public final class WethaqApp extends Application implements Application.Activity
 
     private void refresh(Activity a){
         syncContactsIfNeeded();
-        a.getWindow().setStatusBarColor(android.graphics.Color.rgb(8,8,10));
-        a.getWindow().setNavigationBarColor(android.graphics.Color.rgb(8,8,10));
+        a.getWindow().setStatusBarColor(android.graphics.Color.rgb(3,18,24));
+        a.getWindow().setNavigationBarColor(android.graphics.Color.rgb(2,10,14));
         a.getWindow().getDecorView().postDelayed(()->WethaqUi.apply(this,a),120);
         a.getWindow().getDecorView().postDelayed(()->WethaqUi.apply(this,a),500);
     }

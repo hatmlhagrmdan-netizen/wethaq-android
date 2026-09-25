@@ -33,9 +33,9 @@ public final class AdminAccessActivity extends Activity {
     private int dp(int v){return(int)(v*getResources().getDisplayMetrics().density+.5f);}
     private TextView tv(String s,float z,int c){TextView t=new TextView(this);t.setText(s);t.setTextSize(z);t.setTextColor(c);t.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);t.setPadding(dp(12),dp(10),dp(12),dp(10));return t;}
     private EditText field(String hint){EditText e=new EditText(this);e.setHint(hint);e.setHintTextColor(Color.LTGRAY);e.setTextColor(Color.WHITE);e.setTextSize(17);e.setSingleLine(true);e.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);e.setPadding(dp(14),0,dp(14),0);GradientDrawable d=new GradientDrawable();d.setColor(Color.rgb(24,24,27));d.setCornerRadius(dp(14));d.setStroke(dp(2),Color.rgb(75,75,80));e.setBackground(d);e.setMinHeight(dp(62));return e;}
-    private Button btn(String s){Button b=new Button(this);b.setText(s);b.setTextColor(Color.WHITE);b.setTextSize(17);b.setAllCaps(false);b.setTypeface(Typeface.DEFAULT,Typeface.BOLD);b.setStateListAnimator(null);GradientDrawable d=new GradientDrawable();d.setColor(Color.rgb(28,28,32));d.setCornerRadius(dp(14));d.setStroke(dp(2),gold());b.setBackground(d);b.setMinHeight(dp(62));return b;}
-    private LinearLayout card(String title){LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(14),dp(12),dp(14),dp(14));GradientDrawable d=new GradientDrawable();d.setColor(Color.rgb(22,22,25));d.setCornerRadius(dp(18));d.setStroke(dp(2),gold());box.setBackground(d);TextView h=tv(title,20,gold());h.setTypeface(Typeface.DEFAULT,Typeface.BOLD);h.setGravity(Gravity.CENTER);box.addView(h,new LinearLayout.LayoutParams(-1,dp(52)));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(14);box.setLayoutParams(p);return box;}
-    private void base(String title){root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(14),dp(14),dp(14),dp(14));root.setBackgroundColor(Color.BLACK);TextView h=tv(title,22,gold());h.setGravity(Gravity.CENTER);h.setTypeface(Typeface.DEFAULT,Typeface.BOLD);root.addView(h,new LinearLayout.LayoutParams(-1,dp(68)));ScrollView sc=new ScrollView(this);content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);sc.addView(content);root.addView(sc,new LinearLayout.LayoutParams(-1,0,1));setContentView(root);}
+    private Button btn(String s){Button b=new Button(this);b.setText(s);b.setTextColor(Color.WHITE);b.setTextSize(17);b.setAllCaps(false);b.setTypeface(Typeface.DEFAULT,Typeface.BOLD);b.setStateListAnimator(null);GradientDrawable d=new GradientDrawable();d.setColor(Color.rgb(8,48,52));d.setCornerRadius(dp(14));d.setStroke(dp(1),Color.rgb(42,214,162));b.setBackground(d);b.setMinHeight(dp(62));return b;}
+    private LinearLayout card(String title){LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(14),dp(12),dp(14),dp(14));GradientDrawable d=new GradientDrawable();d.setColor(Color.rgb(8,39,46));d.setCornerRadius(dp(18));d.setStroke(dp(1),Color.rgb(42,214,162));box.setBackground(d);TextView h=tv(title,20,Color.rgb(83,240,191));h.setTypeface(Typeface.DEFAULT,Typeface.BOLD);h.setGravity(Gravity.CENTER);box.addView(h,new LinearLayout.LayoutParams(-1,dp(52)));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(14);box.setLayoutParams(p);return box;}
+    private void base(String title){root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(14),dp(14),dp(14),dp(14));root.setBackgroundResource(R.drawable.bg_wethaq);TextView h=tv(title,22,Color.rgb(83,240,191));h.setGravity(Gravity.CENTER);h.setTypeface(Typeface.DEFAULT,Typeface.BOLD);root.addView(h,new LinearLayout.LayoutParams(-1,dp(68)));ScrollView sc=new ScrollView(this);content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);sc.addView(content);root.addView(sc,new LinearLayout.LayoutParams(-1,0,1));setContentView(root);}
 
     @Override public void onCreate(Bundle b){super.onCreate(b);prefs=getSharedPreferences("wethaq",MODE_PRIVATE);startMessageService();adminToken=WethaqSession.get(this,"admin_token");if(isOwner()){founderSession();}else if(!adminToken.isEmpty()){loadRole();}else{showAdminLogin();}}
     private void startMessageService(){try{Intent i=new Intent(this,WethaqMessageService.class);if(Build.VERSION.SDK_INT>=26)startForegroundService(i);else startService(i);}catch(Exception ignored){}}
@@ -48,12 +48,33 @@ public final class AdminAccessActivity extends Activity {
     private void buildCapabilities(JSONObject z){capabilities=z.optJSONObject("capabilities");if(capabilities!=null&&capabilities.length()>0)return;capabilities=new JSONObject();String role=currentRole;boolean founder="founder".equals(role),senior=founder||"executive".equals(role)||"deputy1".equals(role)||"deputy2".equals(role)||"deputy3".equals(role)||"supervisor".equals(role);try{capabilities.put("manageUsers",senior);capabilities.put("banPermanent",founder||"executive".equals(role)||"deputy1".equals(role));capabilities.put("banTemporary",senior);capabilities.put("unban",senior);capabilities.put("warn",senior);capabilities.put("assign",founder||"executive".equals(role)||"deputy1".equals(role)||"deputy2".equals(role)||"deputy3".equals(role));capabilities.put("removeRole",founder||"executive".equals(role)||"deputy1".equals(role)||"deputy2".equals(role)||"deputy3".equals(role));capabilities.put("viewStructure",senior);capabilities.put("viewAudit",founder);}catch(Exception ignored){}}
     private boolean can(String key){return capabilities.optBoolean(key,false);}
 
-    private void showPanel(JSONObject role){String label=role.optString("label",currentRole);String icon=role.optString("icon","");base(icon+" لوحة "+label+" — وَثاق");String expiry=role.optString("subscriptionExpiresAt","");String status="المنصب: "+icon+" "+label+"\nانتهاء الصلاحية: "+(expiry.isEmpty()?"بلا انتهاء":expiry);content.addView(tv(status,17,Color.WHITE));
+    private void showPanel(JSONObject role){String label=role.optString("label",currentRole);String icon=role.optString("icon","");base(icon+" لوحة "+label+" — وَثاق");String expiry=role.optString("subscriptionExpiresAt","");String status="المنصب: "+icon+" "+label+"\nانتهاء الصلاحية: "+(expiry.isEmpty()?"بلا انتهاء":expiry);content.addView(tv(status,17,Color.WHITE));addCapabilitySummary();if(can("viewAudit"))addFounderHero();
         if(can("manageUsers"))addUserControlCard();
         if(can("assign"))addAssignmentCard(role);
         if(can("viewStructure")&&!can("viewAudit"))addStructureCard();
         if(can("viewAudit"))addAuditCards();
         Button logout=btn("🚪 خروج من لوحة المنصب");content.addView(logout);logout.setOnClickListener(v->{WethaqSession.remove(this,"admin_token");prefs.edit().remove("admin_role").apply();adminToken="";finish();});}
+
+    private void addFounderHero(){
+        LinearLayout box=card("لوحة المؤسس — مركز القيادة");
+        ImageView portrait=new ImageView(this);portrait.setImageResource(R.drawable.profile_photo);portrait.setScaleType(ImageView.ScaleType.CENTER_CROP);portrait.setContentDescription("صورة مؤسس وَثاق");
+        box.addView(portrait,new LinearLayout.LayoutParams(-1,dp(150)));
+        TextView identity=tv("حاتم حسين الحاج رمضان\nالمؤسس والمسؤول الأعلى عن الحوكمة والأمان",17,Color.WHITE);identity.setGravity(Gravity.CENTER);box.addView(identity);
+        LinearLayout grid=new LinearLayout(this);grid.setOrientation(LinearLayout.VERTICAL);
+        grid.addView(tv("✓ إدارة المستخدمين والحظر والتنبيهات",15,Color.rgb(83,240,191)));
+        grid.addView(tv("✓ تعيين المناصب ومراجعة الصلاحيات",15,Color.rgb(83,240,191)));
+        grid.addView(tv("✓ سجلات الدخول والتعيينات والتدقيق",15,Color.rgb(83,240,191)));
+        grid.addView(tv("✓ مراقبة الرسائل والمكالمات وحالة النظام",15,Color.rgb(83,240,191)));
+        box.addView(grid);
+        content.addView(box);
+    }
+
+    private void addCapabilitySummary(){
+        LinearLayout box=card("الصلاحيات الفعلية لهذا المنصب");
+        String[][] labels={{"manageUsers","إدارة المستخدمين"},{"assign","تعيين المناصب"},{"banTemporary","حظر مؤقت"},{"banPermanent","حظر دائم"},{"warn","إرسال تنبيه"},{"removeRole","إزالة منصب"},{"viewStructure","عرض الهيكل"},{"viewAudit","سجلات التدقيق"}};
+        for(String[] entry:labels){boolean enabled=can(entry[0]);box.addView(tv((enabled?"✓ ":"— ")+entry[1],15,enabled?Color.rgb(83,240,191):Color.rgb(150,165,170)));}
+        content.addView(box);
+    }
 
     private void addUserControlCard(){LinearLayout box=card("🛡 إدارة المستخدمين ضمن نطاق منصبك");targetName=field("الاسم الثلاثي للمستخدم");targetBirth=field("سنة الميلاد");targetBirth.setInputType(InputType.TYPE_CLASS_NUMBER);box.addView(targetName);box.addView(targetBirth);Button find=btn("🔎 بحث واختيار المستخدم");box.addView(find);targetStatus=tv("لم يتم اختيار مستخدم.",15,Color.WHITE);box.addView(targetStatus);
         LinearLayout row1=new LinearLayout(this);row1.setOrientation(LinearLayout.HORIZONTAL);Button temp=btn("حظر مؤقت"),permanent=btn("حظر دائم");temp.setEnabled(can("banTemporary"));permanent.setEnabled(can("banPermanent"));row1.addView(temp,new LinearLayout.LayoutParams(0,dp(64),1));row1.addView(permanent,new LinearLayout.LayoutParams(0,dp(64),1));box.addView(row1);

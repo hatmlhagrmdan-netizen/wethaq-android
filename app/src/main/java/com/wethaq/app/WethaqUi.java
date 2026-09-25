@@ -2,6 +2,7 @@ package com.wethaq.app;
 
 import android.app.Activity;
 import android.app.Application;
+import android.util.LruCache;
 import android.graphics.*;
 import android.graphics.drawable.*;
 import android.view.*;
@@ -10,16 +11,20 @@ import org.json.*;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public final class WethaqUi{
     private static final int GOLD=Color.rgb(229,193,71),GOLD_SOFT=Color.rgb(246,222,132),DARK=Color.rgb(10,29,43),PRESSED=Color.rgb(18,50,71),MUTED=Color.rgb(165,178,188);
     private static final String API=WethaqConfig.API;
+    private static final ExecutorService AVATAR_EXECUTOR=Executors.newFixedThreadPool(3);
+    private static final LruCache<String,Bitmap> AVATAR_CACHE=new LruCache<String,Bitmap>(8*1024){@Override protected int sizeOf(String k,Bitmap b){return Math.max(1,b.getByteCount()/1024);}};
     private WethaqUi(){}
 
     public static void apply(Application app,Activity a){
         Window w=a.getWindow();
-        w.setStatusBarColor(Color.rgb(3,10,16));
-        w.setNavigationBarColor(Color.rgb(2,7,12));
+        w.setStatusBarColor(Color.rgb(3,18,24));
+        w.setNavigationBarColor(Color.rgb(2,10,14));
         w.getDecorView().setSystemUiVisibility(w.getDecorView().getSystemUiVisibility() & ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR & ~View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         View r=a.findViewById(android.R.id.content);
         if(r instanceof ViewGroup){
@@ -138,7 +143,9 @@ public final class WethaqUi{
     private static void styleImage(ImageView v){
         if(v.getTag()!=null)return;
         v.setTag("wethaq_avatar_style");
-        v.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        CharSequence description=v.getContentDescription();
+        String label=description==null?"":description.toString();
+        v.setScaleType(label.contains("شعار")||label.contains("هوية")?ImageView.ScaleType.CENTER_INSIDE:ImageView.ScaleType.CENTER_CROP);
     }
 
     private static int dp(View v,int n){
@@ -153,7 +160,9 @@ public final class WethaqUi{
 
     private static void loadAvatarDrawable(String id,String token,DrawableConsumer consumer){
         if(id==null||id.trim().isEmpty()||token==null||token.isEmpty())return;
-        new Thread(()->{
+        Bitmap cached=AVATAR_CACHE.get(id);
+        if(cached!=null){consumer.accept(new CircularBitmapDrawable(cached));return;}
+        AVATAR_EXECUTOR.execute(()->{
             try{
                 HttpURLConnection c=(HttpURLConnection)new URL(API+"/api/users/"+URLEncoder.encode(id,"UTF-8")+"/avatar").openConnection();
                 c.setRequestProperty("Authorization","Bearer "+token);
@@ -169,7 +178,7 @@ public final class WethaqUi{
                 if(data.isEmpty())return;
                 byte[] raw=android.util.Base64.decode(data,android.util.Base64.DEFAULT);
                 Bitmap bm=BitmapFactory.decodeByteArray(raw,0,raw.length);
-                if(bm!=null)consumer.accept(new CircularBitmapDrawable(bm));
+                if(bm!=null){AVATAR_CACHE.put(id,bm);consumer.accept(new CircularBitmapDrawable(bm));}
             }catch(Exception ignored){}
         }).start();
     }
