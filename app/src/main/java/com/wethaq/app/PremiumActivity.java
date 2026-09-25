@@ -11,7 +11,7 @@ import android.widget.*;
 public final class PremiumActivity extends Activity {
     private static final int GOLD=Color.rgb(212,175,55), BG=Color.rgb(5,5,5), CARD=Color.rgb(18,18,18);
     private LinearLayout root,body; private SharedPreferences prefs;
-    @Override protected void onCreate(Bundle state){super.onCreate(state);prefs=getSharedPreferences("wethaq",MODE_PRIVATE);if(prefs.getString("token","").length()<10){startActivity(new Intent(this,MainActivity.class));finish();return;}home();}
+    @Override protected void onCreate(Bundle state){super.onCreate(state);prefs=getSharedPreferences("wethaq",MODE_PRIVATE);if(WethaqSession.get(this,"token").length()<10){startActivity(new Intent(this,MainActivity.class));finish();return;}home();}
     private TextView text(String s,float size){TextView t=new TextView(this);t.setText(s);t.setTextColor(GOLD);t.setTextSize(size);t.setGravity(Gravity.CENTER);t.setPadding(18,18,18,18);return t;}
     private Button button(String s){Button b=new Button(this);b.setText(s);b.setTextColor(GOLD);b.setTextSize(16);b.setAllCaps(false);b.setBackgroundColor(CARD);return b;}
     private void shell(String title){root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(BG);root.setPadding(14,14,14,14);root.addView(text(title,22),new LinearLayout.LayoutParams(-1,-2));ScrollView sc=new ScrollView(this);body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);sc.addView(body);root.addView(sc,new LinearLayout.LayoutParams(-1,0,1));setContentView(root);}

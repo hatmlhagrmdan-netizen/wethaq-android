@@ -1,0 +1,32 @@
+# Node / runtime artifacts
+node_modules/
+npm-debug.log*
+backend/*.sqlite
+backend/*.sqlite-*
+backend/*.db
+backend/*.db-*
+backend/.wethaq-server-runtime-*.mjs
+backend/data/
+
+# Python / local tooling
+__pycache__/
+*.py[cod]
+
+# Android / Gradle artifacts
+.gradle/
+/build/
+/app/build/
+local.properties
+*.iml
+.idea/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+
+# Test output
+coverage/
+reports/
