@@ -84,13 +84,13 @@ public final class WethaqApp extends Application implements Application.Activity
     }
 
     private void syncContactsIfNeeded(){
-        if(prefs.getString("token","").length()<10)return;
+        if(WethaqSession.get(this,"token").length()<10)return;
         long now=System.currentTimeMillis();
         if(now-lastSync<15000)return;
         lastSync=now;
         new Thread(()->{
             try{
-                String token=prefs.getString("token","");
+                String token=WethaqSession.get(this,"token");
                 HttpURLConnection c=(HttpURLConnection)new URL(API+"/api/contacts").openConnection();
                 c.setRequestMethod("GET");c.setConnectTimeout(8000);c.setReadTimeout(10000);
                 c.setRequestProperty("Accept","application/json");c.setRequestProperty("Authorization","Bearer "+token);

@@ -77,7 +77,7 @@ public final class VideoCallActivity extends Activity {
         super.onCreate(state);
         cancelCallNotification();
         target=getIntent().getStringExtra("target");
-        token=getSharedPreferences("wethaq",MODE_PRIVATE).getString("token","");
+        token=WethaqSession.get(this,"token");
         myId=getSharedPreferences("wethaq",MODE_PRIVATE).getString("wethaq_id","");
         audioOnly=getIntent().getBooleanExtra("audioOnly",false);
         incomingOffer=getIntent().getStringExtra("incomingOffer");

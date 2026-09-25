@@ -115,7 +115,7 @@ public final class WethaqUi{
         if(id.isEmpty())return;
         t.setTag(Boolean.TRUE);
         setDefaultAvatar(t);
-        String token=a.getSharedPreferences("wethaq",0).getString("token","");
+        String token=WethaqSession.get(a,"token");
         loadAvatarDrawable(id,token,d->t.post(()->{
             t.setCompoundDrawablesWithIntrinsicBounds(null,null,d,null);
             t.setCompoundDrawablePadding(dp(t,10));

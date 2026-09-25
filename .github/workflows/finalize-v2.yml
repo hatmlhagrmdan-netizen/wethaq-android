@@ -290,7 +290,8 @@ jobs:
           test -x "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/apksigner.txt"
           grep -q 'Number of signers: 1' "$RUNNER_TEMP/apksigner.txt"
-          EXPECTED='64:4B:F1:1F:70:99:10:F4:FB:53:16:FB:76:E7:AD:FB:30:4C:03:71:62:69:F0:27:A7:BF:37:F7:45:DF:FE:D3'
+          test -n "$WETHAQ_CERT_SHA256" || { echo 'Missing WETHAQ_CERT_SHA256 secret'; exit 1; }
+          EXPECTED="$WETHAQ_CERT_SHA256"
           APK_CERT_DIGEST="$(grep -i 'certificate SHA-256 digest:' "$RUNNER_TEMP/apksigner.txt" | head -n1 | sed 's/.*certificate SHA-256 digest:[[:space:]]*//' | tr -cd '0-9A-Fa-f' | tr '[:lower:]' '[:upper:]')"
           EXPECTED_NORMALIZED="$(printf '%s' "$EXPECTED" | tr -cd '0-9A-Fa-f' | tr '[:lower:]' '[:upper:]')"
           test "$APK_CERT_DIGEST" = "$EXPECTED_NORMALIZED" || { echo 'Production APK signer certificate fingerprint mismatch.'; exit 1; }

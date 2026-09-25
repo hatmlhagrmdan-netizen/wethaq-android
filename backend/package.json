@@ -9,7 +9,7 @@
     "security:audit": "npm audit --omit=dev --audit-level=high"
   },
   "engines": {
-    "node": "22.23.2"
+    "node": ">=22.13.0 <23"
   },
   "dependencies": {
     "cors": "2.8.5",

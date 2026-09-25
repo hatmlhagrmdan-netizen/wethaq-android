@@ -31,7 +31,7 @@ public final class PublicAdministrationActivity extends Activity {
     private Button button(String s){Button b=new Button(this);b.setText(s);b.setTextColor(Color.WHITE);b.setTextSize(17);b.setAllCaps(false);b.setTypeface(Typeface.DEFAULT,Typeface.BOLD);GradientDrawable d=new GradientDrawable();d.setColor(Color.rgb(28,28,30));d.setCornerRadius(dp(14));d.setStroke(dp(2),Color.rgb(212,175,55));b.setBackground(d);b.setMinHeight(dp(62));return b;}
     private TextView pricingCard(){return card("💳 المناصب الإدارية في وَثاق بنظام اشتراك سنوي\n\n🏛 المدير التنفيذي: 100$ سنويًا\n🥇 النائب الأول: 70$ سنويًا\n🥈 النائب الثاني: 50$ سنويًا\n🥉 النائب الثالث: 30$ سنويًا\n🛡 المشرف: 15$ سنويًا\n👥 عضو الإدارة: 7$ سنويًا\n⭐ عضو مميز: 2$ سنويًا\n\n📌 ملاحظة: شغل أي منصب إداري مدفوع يتطلب اشتراكًا سنويًا صالحًا، وتظهر حالة الصلاحية وتاريخ الانتهاء للمستخدم وصاحب المنصب حسب مستوى الوصول.",true);}
     @Override public void onCreate(Bundle b){super.onCreate(b);build();loadPublicAdministration();}
-    private void build(){LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(14),dp(14),dp(14),dp(14));root.setBackgroundColor(Color.BLACK);TextView title=text("👥 وَثاق — الإدارة العامة",23,Color.rgb(212,175,55));title.setGravity(Gravity.CENTER);title.setTypeface(Typeface.DEFAULT,Typeface.BOLD);root.addView(title,new LinearLayout.LayoutParams(-1,dp(72)));Button access=button("🔐 دخول الإدارة / تفعيل المنصب");root.addView(access,new LinearLayout.LayoutParams(-1,dp(64)));access.setOnClickListener(v->startActivity(new Intent(this,AdminAccessActivity.class)));ScrollView sc=new ScrollView(this);body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);body.addView(pricingCard());body.addView(card("⏳ جاري تحميل شاغلي المناصب الحاليين من خادم وَثاق...",true));sc.addView(body);root.addView(sc,new LinearLayout.LayoutParams(-1,0,1));Button back=button("رجوع");root.addView(back,new LinearLayout.LayoutParams(-1,dp(64)));back.setOnClickListener(v->finish());setContentView(root);}
+    private void build(){LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(14),dp(14),dp(14),dp(14));root.setBackgroundColor(Color.BLACK);TextView title=text("👥 وَثاق — الإدارة العامة",23,Color.rgb(212,175,55));title.setGravity(Gravity.CENTER);title.setTypeface(Typeface.DEFAULT,Typeface.BOLD);root.addView(title,new LinearLayout.LayoutParams(-1,dp(72)));ImageView portrait=new ImageView(this);portrait.setImageResource(R.drawable.profile_photo);portrait.setScaleType(ImageView.ScaleType.CENTER_CROP);portrait.setContentDescription("صورة مؤسس وَثاق");root.addView(portrait,new LinearLayout.LayoutParams(-1,dp(126)));Button access=button("🔐 دخول الإدارة / تفعيل المنصب");root.addView(access,new LinearLayout.LayoutParams(-1,dp(64)));access.setOnClickListener(v->startActivity(new Intent(this,AdminAccessActivity.class)));ScrollView sc=new ScrollView(this);body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);body.addView(pricingCard());body.addView(card("⏳ جاري تحميل شاغلي المناصب الحاليين من خادم وَثاق...",true));sc.addView(body);root.addView(sc,new LinearLayout.LayoutParams(-1,0,1));Button back=button("رجوع");root.addView(back,new LinearLayout.LayoutParams(-1,dp(64)));back.setOnClickListener(v->finish());setContentView(root);}
     private LinearLayout memberRow(String roleLabel,String roleIcon,String name,String id,String appointedAt,String appointedBy){
         LinearLayout row=new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -43,6 +43,7 @@ public final class PublicAdministrationActivity extends Activity {
         ImageView avatar=new ImageView(this);
         avatar.setImageDrawable(defaultAvatar());
         avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        avatar.setContentDescription("صورة شاغل المنصب "+name);
         row.addView(avatar,new LinearLayout.LayoutParams(dp(58),dp(58)));
 
         LinearLayout details=new LinearLayout(this);
@@ -57,7 +58,7 @@ public final class PublicAdministrationActivity extends Activity {
         if(appointedBy!=null&&!appointedBy.isEmpty())details.addView(text("👑 عيّنه: "+appointedBy,13,Color.LTGRAY));
 
         row.addView(details,new LinearLayout.LayoutParams(0,-2,1));
-        String token=getSharedPreferences("wethaq",MODE_PRIVATE).getString("token","");
+        String token=WethaqSession.get(this,"token");
         if(!token.isEmpty()&&!id.isEmpty())WethaqUi.loadAvatar(id,token,avatar);
         return row;
     }

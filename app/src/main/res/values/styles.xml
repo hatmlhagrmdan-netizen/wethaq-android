@@ -2,8 +2,9 @@
 <resources>
     <style name="WethaqTheme" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans-serif</item>
-        <item name="android:windowNoTitle">true</item>
         <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:windowNoTitle">true</item>
         <item name="android:windowBackground">#040A10</item>
         <item name="android:colorAccent">#E5C147</item>
         <item name="android:colorControlNormal">#FFFFFF</item>
