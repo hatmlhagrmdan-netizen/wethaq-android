@@ -77,10 +77,7 @@ public final class PublicAdministrationActivity extends Activity {
                 body.removeAllViews();
                 body.addView(pricingCard());
 
-                ImageView visual=new ImageView(this);
-                visual.setImageResource(R.drawable.wethaq_identity);
-                visual.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-                body.addView(visual,new LinearLayout.LayoutParams(-1,dp(120)));
+                body.addView(WethaqUi.liveHero(this,"الإدارة العامة في وَثاق","هوية موثوقة • أدوار واضحة • حماية رقمية"),new LinearLayout.LayoutParams(-1,dp(190)));
 
                 body.addView(card("✅ الهيكل الإداري الحالي — صور شاغلي المناصب وأسماؤهم",true));
                 if(roles==null||roles.length()==0){
