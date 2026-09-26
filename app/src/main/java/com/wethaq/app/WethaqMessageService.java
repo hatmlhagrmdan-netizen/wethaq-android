@@ -39,9 +39,9 @@ public final class WethaqMessageService extends Service {
         NotificationChannel service=new NotificationChannel(SERVICE_CHANNEL,"خدمة وَثاق",NotificationManager.IMPORTANCE_LOW);
         service.setSound(null,null);service.setShowBadge(false);nm.createNotificationChannel(service);
         NotificationChannel messages=new NotificationChannel(MESSAGE_CHANNEL,"رسائل وَثاق",NotificationManager.IMPORTANCE_HIGH);
-        messages.enableVibration(true);messages.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),notificationAudio());messages.setShowBadge(true);nm.createNotificationChannel(messages);
+        messages.enableVibration(true);String messageUri=getSharedPreferences("wethaq",MODE_PRIVATE).getString("message_tone_uri","");android.net.Uri messageSound=messageUri.isEmpty()?RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION):android.net.Uri.parse(messageUri);messages.setSound(messageSound,notificationAudio());messages.setShowBadge(true);nm.createNotificationChannel(messages);
         NotificationChannel calls=new NotificationChannel(CALL_CHANNEL,"مكالمات وَثاق",NotificationManager.IMPORTANCE_HIGH);
-        calls.enableVibration(true);calls.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE),notificationAudio());calls.setShowBadge(true);nm.createNotificationChannel(calls);
+        calls.enableVibration(true);String ringUri=getSharedPreferences("wethaq",MODE_PRIVATE).getString("ringtone_uri","");android.net.Uri ring=ringUri.isEmpty()?RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE):android.net.Uri.parse(ringUri);calls.setSound(ring,notificationAudio());calls.setShowBadge(true);nm.createNotificationChannel(calls);
     }
 
     private Notification baseNotification(String text){return new NotificationCompat.Builder(this,SERVICE_CHANNEL).setSmallIcon(android.R.drawable.ic_dialog_email).setContentTitle("وَثاق").setContentText(text).setOngoing(true).setCategory(NotificationCompat.CATEGORY_SERVICE).build();}
