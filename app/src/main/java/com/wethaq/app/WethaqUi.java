@@ -2,7 +2,6 @@ package com.wethaq.app;
 
 import android.content.Context;
 import android.app.Activity;
-import android.app.Application;
 import android.graphics.*;
 import android.graphics.drawable.*;
 import android.animation.AnimatorSet;
