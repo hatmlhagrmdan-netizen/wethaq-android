@@ -4,6 +4,10 @@ import android.app.Activity;
 import android.app.Application;
 import android.graphics.*;
 import android.graphics.drawable.*;
+import android.animation.AnimatorSet;
+import android.animation.ObjectAnimator;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.*;
 import android.widget.*;
 import org.json.*;
@@ -133,6 +137,165 @@ public final class WethaqUi{
 
     private static int dp(View v,int n){
         return(int)(n*v.getResources().getDisplayMetrics().density+.5f);
+    }
+
+    public static View liveHero(Activity a,String headline,String subtitle){
+        FrameLayout shell=new FrameLayout(a);
+        shell.setTag("wethaq_live_hero");
+        shell.setClipToOutline(true);
+        GradientDrawable panel=new GradientDrawable();
+        panel.setCornerRadius(dp(shell,24));
+        panel.setStroke(dp(shell,1),Color.argb(170,229,193,71));
+        panel.setColor(Color.rgb(5,16,25));
+        shell.setBackground(panel);
+
+        ImageView image=new ImageView(a);
+        image.setTag("wethaq_live_image");
+        image.setImageResource(R.drawable.profile_photo);
+        image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        image.setAlpha(.98f);
+        shell.addView(image,new FrameLayout.LayoutParams(-1,-1));
+
+        ViewShade shade=new ViewShade(a);
+        shell.addView(shade,new FrameLayout.LayoutParams(-1,-1));
+
+        ImageView portrait=new ImageView(a);
+        portrait.setTag("wethaq_live_portrait");
+        portrait.setImageResource(R.drawable.profile_photo);
+        portrait.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        portrait.setBackground(ovalBorder(a));
+        portrait.setClipToOutline(true);
+        if(Build.VERSION.SDK_INT>=21)portrait.setOutlineProvider(new ViewOutlineProvider(){
+            @Override public void getOutline(View v,Outline o){o.setOval(0,0,v.getWidth(),v.getHeight());}
+        });
+        FrameLayout.LayoutParams pp=new FrameLayout.LayoutParams(dp(shell,76),dp(shell,76),Gravity.RIGHT|Gravity.TOP);
+        pp.setMargins(0,dp(shell,14),dp(shell,14),0);
+        shell.addView(portrait,pp);
+
+        LinearLayout text=new LinearLayout(a);
+        text.setOrientation(LinearLayout.VERTICAL);
+        text.setGravity(Gravity.RIGHT);
+        TextView h=new TextView(a);
+        h.setText(headline);
+        h.setTextColor(GOLD);
+        h.setTextSize(27);
+        h.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
+        h.setShadowLayer(dp(shell,5),0,dp(shell,2),Color.BLACK);
+        h.setGravity(Gravity.RIGHT);
+        TextView sub=new TextView(a);
+        sub.setText(subtitle);
+        sub.setTextColor(Color.WHITE);
+        sub.setTextSize(14);
+        sub.setGravity(Gravity.RIGHT);
+        sub.setShadowLayer(dp(shell,4),0,dp(shell,2),Color.BLACK);
+        text.addView(h,new LinearLayout.LayoutParams(-1,-2));
+        text.addView(sub,new LinearLayout.LayoutParams(-1,-2));
+        FrameLayout.LayoutParams tp=new FrameLayout.LayoutParams(-1,-2,Gravity.RIGHT|Gravity.BOTTOM);
+        tp.setMargins(dp(shell,16),0,dp(shell,18),dp(shell,16));
+        shell.addView(text,tp);
+
+        TextView live=new TextView(a);
+        live.setText("● LIVE • هوية وَثاق");
+        live.setTextColor(GOLD_SOFT);
+        live.setTextSize(11);
+        live.setGravity(Gravity.CENTER);
+        live.setPadding(dp(shell,12),0,dp(shell,12),0);
+        GradientDrawable lb=new GradientDrawable();
+        lb.setColor(Color.argb(205,6,25,38));
+        lb.setCornerRadius(dp(shell,20));
+        lb.setStroke(dp(shell,1),Color.argb(165,229,193,71));
+        live.setBackground(lb);
+        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(-2,dp(shell,30),Gravity.LEFT|Gravity.TOP);
+        lp.setMargins(dp(shell,14),dp(shell,14),0,0);
+        shell.addView(live,lp);
+
+        AnimatorSet motion=new AnimatorSet();
+        ObjectAnimator sx=ObjectAnimator.ofFloat(image,View.SCALE_X,1.0f,1.085f);
+        ObjectAnimator sy=ObjectAnimator.ofFloat(image,View.SCALE_Y,1.0f,1.085f);
+        ObjectAnimator tx=ObjectAnimator.ofFloat(image,View.TRANSLATION_X,-dp(shell,8),dp(shell,8));
+        sx.setDuration(7600);sy.setDuration(7600);tx.setDuration(7600);
+        sx.setRepeatMode(ObjectAnimator.REVERSE);sy.setRepeatMode(ObjectAnimator.REVERSE);tx.setRepeatMode(ObjectAnimator.REVERSE);
+        sx.setRepeatCount(ObjectAnimator.INFINITE);sy.setRepeatCount(ObjectAnimator.INFINITE);tx.setRepeatCount(ObjectAnimator.INFINITE);
+        motion.playTogether(sx,sy,tx);
+        motion.start();
+
+        final String[] remote={
+            "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=1200&q=88",
+            "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=88",
+            "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=88"
+        };
+        Handler handler=new Handler(Looper.getMainLooper());
+        final int[] index={-1};
+        Runnable[] cycle=new Runnable[1];
+        cycle[0]=()->{
+            int next=(index[0]+1)%remote.length;
+            index[0]=next;
+            new Thread(()->{
+                Bitmap b=downloadBitmap(remote[next]);
+                if(b==null)return;
+                handler.post(()->{
+                    image.animate().alpha(0f).setDuration(220).withEndAction(()->{
+                        image.setImageBitmap(b);
+                        image.setAlpha(0f);
+                        image.animate().alpha(.98f).setDuration(520).start();
+                    }).start();
+                });
+            },"wethaq-live-image").start();
+            handler.postDelayed(cycle[0],7800);
+        };
+        handler.postDelayed(cycle[0],1200);
+        shell.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){
+            @Override public void onViewAttachedToWindow(View v){}
+            @Override public void onViewDetachedFromWindow(View v){
+                handler.removeCallbacks(cycle[0]);
+                motion.cancel();
+            }
+        });
+        return shell;
+    }
+
+    private static GradientDrawable ovalBorder(View v){
+        GradientDrawable d=new GradientDrawable();
+        d.setShape(GradientDrawable.OVAL);
+        d.setColor(Color.argb(40,0,0,0));
+        d.setStroke(dp(v,3),GOLD);
+        return d;
+    }
+
+    private static Bitmap downloadBitmap(String url){
+        HttpURLConnection c=null;
+        try{
+            c=(HttpURLConnection)new URL(url).openConnection();
+            c.setConnectTimeout(7000);
+            c.setReadTimeout(10000);
+            c.setUseCaches(true);
+            c.setRequestProperty("Accept","image/avif,image/webp,image/apng,image/*,*/*;q=0.8");
+            c.setRequestProperty("User-Agent","Wethaq-Android/2.5");
+            if(c.getResponseCode()!=200)return null;
+            try(InputStream in=c.getInputStream()){
+                return BitmapFactory.decodeStream(in);
+            }
+        }catch(Exception ignored){
+            return null;
+        }finally{
+            if(c!=null)c.disconnect();
+        }
+    }
+
+    private static final class ViewShade extends View{
+        private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
+        ViewShade(Context c){super(c);}
+        @Override protected void onDraw(Canvas c){
+            super.onDraw(c);
+            LinearGradient g=new LinearGradient(0,0,0,getHeight(),
+                    new int[]{Color.argb(45,0,0,0),Color.argb(105,0,0,0),Color.argb(220,2,9,15)},
+                    new float[]{0f,.48f,1f},Shader.TileMode.CLAMP);
+            p.setShader(g);
+            c.drawRect(0,0,getWidth(),getHeight(),p);
+            p.setShader(null);
+            p.setColor(Color.argb(85,229,193,71));
+            c.drawCircle(getWidth()*0.16f,getHeight()*0.16f,getWidth()*0.13f,p);
+        }
     }
 
     public static void loadAvatar(String id,String token,ImageView view){
