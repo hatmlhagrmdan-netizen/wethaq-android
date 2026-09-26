@@ -19,6 +19,11 @@ main = read("app/src/main/java/com/wethaq/app/MainActivity.java")
 config = read("app/src/main/java/com/wethaq/app/WethaqConfig.java")
 server = read("backend/server.js")
 workflow = read(".github/workflows/finalize-v2.yml")
+ui = read("app/src/main/java/com/wethaq/app/WethaqUi.java")
+app_lifecycle = read("app/src/main/java/com/wethaq/app/WethaqApp.java")
+admin = read("app/src/main/java/com/wethaq/app/AdminAccessActivity.java")
+public_admin = read("app/src/main/java/com/wethaq/app/PublicAdministrationActivity.java")
+manifest = read("app/src/main/AndroidManifest.xml")
 
 for needle, message in [
     ("applicationId 'com.wethaq.app'", "applicationId changed or missing"),
@@ -43,6 +48,41 @@ if re.search(r"READ_MEDIA_IMAGES", read("app/src/main/AndroidManifest.xml")):
     errors.append("READ_MEDIA_IMAGES must remain removed; use the system photo picker") 
 if "ACTION_PICK_IMAGES" not in main:
     errors.append("system photo picker integration missing") 
+
+# Visual identity invariants: these prevent a drift back to parallel UI systems.
+for needle, message in [
+    ("public static void apply(Activity a)", "WethaqUi global entry point drifted"),
+    ("public static View liveHero(Activity a,String headline,String subtitle)", "live visual hero is missing"),
+    ('root.setBackgroundResource(R.drawable.bg_wethaq)', "AdminAccess root is outside the shared Wethaq background"),
+]:
+    haystack = ui + admin
+    if needle not in haystack:
+        errors.append(message)
+
+for needle, message in [
+    ("root.setBackgroundResource(R.drawable.bg_wethaq)", "PublicAdministration root is outside the shared Wethaq background"),
+    ('WethaqUi.liveHero(this,"الإدارة العامة في وَثاق"', "PublicAdministration lost the live identity hero"),
+]:
+    if needle not in public_admin:
+        errors.append(message)
+
+if "setBackgroundColor(Color.BLACK)" in admin + public_admin:
+    errors.append("hard black activity roots reintroduce a parallel visual system")
+
+if "PremiumActivity" in manifest:
+    errors.append("unreferenced PremiumActivity must not remain in the application manifest")
+
+if "root.post(()->WethaqUi.apply(this));" not in main:
+    errors.append("MainActivity rebuilt screens must re-apply the shared visual system")
+
+if "WethaqUi.apply(a)" not in app_lifecycle:
+    errors.append("Application lifecycle must apply the shared visual system")
+
+if "imageExecutor.shutdownNow()" not in ui or "AtomicBoolean active" not in ui:
+    errors.append("live visual image executor must have a bounded lifecycle")
+
+if ui.count("https://images.unsplash.com/") < 3:
+    errors.append("live visual gallery must keep at least three image sources")
 
 if re.search(r"-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY-----", source_text):
     errors.append("private-key material detected in runtime source")
