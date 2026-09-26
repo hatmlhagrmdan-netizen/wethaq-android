@@ -86,6 +86,16 @@ app.post('/api/me/actions/read',auth,(req,res)=>{
   res.json({ok:true});
 });
 
+app.delete('/api/contacts/:wethaqId',auth,(req,res)=>{
+  const targetId=String(req.params.wethaqId||'').trim();
+  if(!targetId)return res.status(400).json({error:'invalid_contact'});
+  const target=db.prepare('SELECT id,wethaq_id FROM users WHERE wethaq_id=?').get(targetId);
+  if(!target)return res.status(404).json({error:'user_not_found'});
+  const me=Number(req.user.sub),targetDb=Number(target.id);
+  const removed=db.prepare('DELETE FROM contacts WHERE user_id=? AND contact_id=?').run(me,targetDb).changes;
+  res.json({ok:true,removed});
+});
+
 app.get('/api/contacts',auth,(req,res)=>{
   const rows=db.prepare(`
     SELECT c.contact_id,u.wethaq_id,u.name,u.created_at,u.last_seen,
