@@ -113,9 +113,9 @@ const __wethaqFixMiddleware=(req,res,next)=>{
     if(target.wethaq_id===OWNER_WETHAQ_ID)return res.status(403).json({error:'founder_protected'});
     const tr=activeAdminRole(target.id),targetRole=tr?.role||'user';
     if(!canManageTarget(req.adminRow.role,targetRole))return res.status(403).json({error:'unban_scope_denied'});
-    db.prepare('DELETE FROM bans WHERE user_id=?').run(target.id);
-    audit(req.adminRow.user_id,target.id,'unban',req.adminRow.role,'');
-    return res.json({ok:true});
+    const removed=db.prepare('DELETE FROM bans WHERE user_id=?').run(target.id).changes;
+    audit(req.adminRow.user_id,target.id,'unban',req.adminRow.role,JSON.stringify({removed}));
+    return res.json({ok:true,removed});
   });
 };
 app.use(__wethaqFixMiddleware);
