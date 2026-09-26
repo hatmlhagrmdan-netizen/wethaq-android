@@ -25,7 +25,7 @@ public final class WethaqUi{
     private static final String API=WethaqConfig.API;
     private WethaqUi(){}
 
-    public static void apply(Application app,Activity a){
+    public static void apply(Activity a){
         Window w=a.getWindow();
         w.setStatusBarColor(Color.rgb(3,10,16));
         w.setNavigationBarColor(Color.rgb(2,7,12));
