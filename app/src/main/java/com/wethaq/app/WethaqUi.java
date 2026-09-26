@@ -16,6 +16,9 @@ import org.json.*;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class WethaqUi{
     private static final int GOLD=Color.rgb(229,193,71),GOLD_SOFT=Color.rgb(246,222,132),DARK=Color.rgb(10,29,43),PRESSED=Color.rgb(18,50,71),MUTED=Color.rgb(165,178,188);
@@ -81,14 +84,6 @@ public final class WethaqUi{
         e.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
         e.setMinHeight(dp(e,60));
         e.setSelectAllOnFocus(false);
-    }
-
-    private static GradientDrawable face(View v,int c,int st){
-        GradientDrawable d=new GradientDrawable();
-        d.setColor(c);
-        d.setCornerRadius(dp(v,16));
-        d.setStroke(dp(v,st),GOLD);
-        return d;
     }
 
     private static void styleText(Activity a,TextView t){
@@ -165,7 +160,7 @@ public final class WethaqUi{
         portrait.setTag("wethaq_live_portrait");
         portrait.setImageResource(R.drawable.profile_photo);
         portrait.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        portrait.setBackground(ovalBorder(a));
+        portrait.setBackground(ovalBorder(portrait));
         portrait.setClipToOutline(true);
         if(Build.VERSION.SDK_INT>=21)portrait.setOutlineProvider(new ViewOutlineProvider(){
             @Override public void getOutline(View v,Outline o){o.setOval(0,0,v.getWidth(),v.getHeight());}
@@ -227,30 +222,46 @@ public final class WethaqUi{
             "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=88"
         };
         Handler handler=new Handler(Looper.getMainLooper());
+        ExecutorService imageExecutor=Executors.newSingleThreadExecutor(r->{
+            Thread t=new Thread(r,"wethaq-live-image");
+            t.setDaemon(true);
+            return t;
+        });
+        AtomicBoolean active=new AtomicBoolean(false);
         final int[] index={-1};
+        final boolean[] started={false};
         Runnable[] cycle=new Runnable[1];
         cycle[0]=()->{
+            if(!active.get())return;
             int next=(index[0]+1)%remote.length;
             index[0]=next;
-            new Thread(()->{
+            imageExecutor.execute(()->{
                 Bitmap b=downloadBitmap(remote[next]);
-                if(b==null)return;
+                if(b==null||!active.get())return;
                 handler.post(()->{
+                    if(!active.get())return;
                     image.animate().alpha(0f).setDuration(220).withEndAction(()->{
+                        if(!active.get())return;
                         image.setImageBitmap(b);
                         image.setAlpha(0f);
                         image.animate().alpha(.98f).setDuration(520).start();
                     }).start();
                 });
-            },"wethaq-live-image").start();
+            });
             handler.postDelayed(cycle[0],7800);
         };
-        handler.postDelayed(cycle[0],1200);
         shell.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){
-            @Override public void onViewAttachedToWindow(View v){}
+            @Override public void onViewAttachedToWindow(View v){
+                if(started[0])return;
+                started[0]=true;
+                active.set(true);
+                handler.postDelayed(cycle[0],1200);
+            }
             @Override public void onViewDetachedFromWindow(View v){
+                active.set(false);
                 handler.removeCallbacks(cycle[0]);
                 motion.cancel();
+                imageExecutor.shutdownNow();
             }
         });
         return shell;
