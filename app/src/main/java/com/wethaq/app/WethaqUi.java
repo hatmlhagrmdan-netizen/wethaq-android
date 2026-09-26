@@ -137,8 +137,9 @@ public final class WethaqUi{
 
     private static void styleImage(ImageView v){
         if(v.getTag()!=null)return;
-        v.setTag("wethaq_avatar_style");
-        v.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        // Preserve the scale mode selected by each screen. Login/home identity artwork
+        // uses CENTER_INSIDE; contact avatars explicitly use CENTER_CROP.
+        v.setTag("wethaq_image_style");
     }
 
     private static int dp(View v,int n){
