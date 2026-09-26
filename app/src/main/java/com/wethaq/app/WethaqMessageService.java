@@ -102,7 +102,7 @@ public final class WethaqMessageService extends Service {
             android.content.SharedPreferences p=getSharedPreferences("wethaq",MODE_PRIVATE);
             JSONArray contacts;
             try{
-                contacts=new JSONArray(p.getString("saved_contacts","[]"));
+                contacts=new JSONArray(p.getString("saved_contacts_"+ownId,"[]"));
             }catch(Exception e){
                 contacts=new JSONArray();
             }
@@ -114,7 +114,7 @@ public final class WethaqMessageService extends Service {
             c.put("wethaq_id",senderId);
             c.put("name",senderName==null||senderName.trim().isEmpty()?"مستخدم":senderName.trim());
             contacts.put(c);
-            p.edit().putString("saved_contacts",contacts.toString()).apply();
+            p.edit().putString("saved_contacts_"+ownId,contacts.toString()).apply();
         }catch(Exception ignored){}
     }
     private void publishCallSignal(String senderId,String type,String payload,long signalId){if(senderId==null||senderId.isEmpty()||type==null||type.isEmpty())return;Intent i=new Intent(CALL_SIGNAL_ACTION);i.setPackage(getPackageName());i.putExtra("sender_wethaq_id",senderId);i.putExtra("type",type);i.putExtra("payload",payload==null?"":payload);i.putExtra("signal_id",signalId);sendBroadcast(i);} private void broadcastCallHistoryChanged(String targetId){if(targetId==null||targetId.isEmpty())return;Intent i=new Intent("com.wethaq.CALL_HISTORY_CHANGED");i.setPackage(getPackageName());i.putExtra("target_wethaq_id",targetId);sendBroadcast(i);}
