@@ -78,11 +78,27 @@ if "root.post(()->WethaqUi.apply(this));" not in main:
 if "WethaqUi.apply(a)" not in app_lifecycle:
     errors.append("Application lifecycle must apply the shared visual system")
 
-if "imageExecutor.shutdownNow()" not in ui or "AtomicBoolean active" not in ui:
-    errors.append("live visual image executor must have a bounded lifecycle")
+if "onViewDetachedFromWindow" not in ui or "handler.removeCallbacks(cycle[0])" not in ui:
+    errors.append("live visual gallery must stop its lifecycle callbacks when detached")
 
-if ui.count("https://images.unsplash.com/") < 3:
-    errors.append("live visual gallery must keep at least three image sources")
+for hero in ("wethaq_hero_trust", "wethaq_hero_network", "wethaq_hero_secure"):
+    if f"R.drawable.{hero}" not in ui:
+        errors.append(f"missing local Wethaq hero asset: {hero}")
+
+if "images.unsplash.com" in ui:
+    errors.append("live visual gallery must not depend on external image hosts")
+
+if "unread_" not in main:
+    errors.append("contacts must expose unread-message state")
+
+if "setOnLongClickListener" not in main or "/api/contacts/" not in main:
+    errors.append("contacts must support long-press deletion")
+
+if "pickSound(801)" not in main or "pickSound(802)" not in main:
+    errors.append("settings must expose ringtone and message-tone pickers")
+
+if "app.delete('/api/contacts/:wethaqId'" not in read("backend/production-injection.mjsinc"):
+    errors.append("backend contact deletion endpoint missing")
 
 if re.search(r"-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY-----", source_text):
     errors.append("private-key material detected in runtime source")
