@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: wethaq-unified-${{ github.ref }}
@@ -316,6 +316,24 @@ jobs:
             app/build/outputs/apk/release/PROVENANCE.txt
           if-no-files-found: error
           retention-days: 30
+      - name: Publish public GitHub Release with APK and AAB
+        if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='app/build/outputs/apk/release/app-release.apk'
+          AAB='app/build/outputs/bundle/release/app-release.aab'
+          SUMS='app/build/outputs/apk/release/SHA256SUMS.txt'
+          TAG="wethaq-production-${GITHUB_SHA:0:12}"
+          TITLE="Wethaq Production ${GITHUB_SHA:0:12}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK" "$AAB" "$SUMS" --clobber
+            gh release edit "$TAG" --title "$TITLE" --notes "Production build from commit $GITHUB_SHA. APK and AAB verified by the protected production job."
+          else
+            gh release create "$TAG" "$APK" "$AAB" "$SUMS" --target "$GITHUB_SHA" --title "$TITLE" --notes "Production build from commit $GITHUB_SHA. APK and AAB verified by the protected production job."
+          fi
       - name: Secure cleanup
         if: always()
         shell: bash
