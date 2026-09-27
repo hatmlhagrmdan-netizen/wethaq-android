@@ -159,27 +159,6 @@ jobs:
             echo "===== WETHAQ START RESULT ====="
             cat /tmp/wethaq-start.txt || true
             if adb shell pidof com.wethaq.app >/dev/null 2>&1; then echo 'WETHAQ_ANDROID16_STARTUP_OK'; tail -n 200 /tmp/wethaq-android16-logcat.txt || true; else echo 'WETHAQ_ANDROID16_STARTUP_FAILED'; tail -n 500 /tmp/wethaq-android16-logcat.txt || true; adb shell dumpsys activity activities | tail -n 120 || true; exit 1; fi
-      - name: Android 16 compatibility smoke
-        id: android16
-        uses: ReactiveCircus/android-emulator-runner@v2
-        with:
-          api-level: 36
-          target: google_apis
-          arch: x86_64
-          profile: pixel_7_pro
-          disable-linux-hw-accel: false
-          script: |
-            adb logcat -c
-            adb install -r app/build/outputs/apk/ci/app-ci.apk
-            adb shell getprop ro.build.version.sdk | grep -qx '36'
-            adb shell pm list packages | grep -Fq 'package:com.wethaq.app'
-            adb shell am force-stop com.wethaq.app || true
-            adb shell am start -W -n com.wethaq.app/.MainActivity 2>&1 | tee /tmp/wethaq-start.txt
-            sleep 3
-            adb logcat -d -v time > /tmp/wethaq-android16-logcat.txt || true
-            echo "===== WETHAQ START RESULT ====="
-            cat /tmp/wethaq-start.txt || true
-            if adb shell pidof com.wethaq.app >/dev/null 2>&1; then echo 'WETHAQ_ANDROID16_STARTUP_OK'; tail -n 200 /tmp/wethaq-android16-logcat.txt || true; else echo 'WETHAQ_ANDROID16_STARTUP_FAILED'; tail -n 500 /tmp/wethaq-android16-logcat.txt || true; adb shell dumpsys activity activities | tail -n 120 || true; exit 1; fi
           # Keep the performance baseline inside the emulator-runner session.
           values=()
           for i in 1 2 3 4 5; do
