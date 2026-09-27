@@ -15,9 +15,6 @@ import org.json.*;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class WethaqUi{
     private static final int GOLD=Color.rgb(229,193,71),GOLD_SOFT=Color.rgb(246,222,132),DARK=Color.rgb(10,29,43),PRESSED=Color.rgb(18,50,71),MUTED=Color.rgb(165,178,188);
@@ -215,52 +212,33 @@ public final class WethaqUi{
         motion.playTogether(sx,sy,tx);
         motion.start();
 
-        final String[] remote={
-            "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=1200&q=88",
-            "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=88",
-            "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=88"
-        };
+        final int[] localImages={R.drawable.wethaq_hero_trust,R.drawable.wethaq_hero_network,R.drawable.wethaq_hero_secure};
         Handler handler=new Handler(Looper.getMainLooper());
-        ExecutorService imageExecutor=Executors.newSingleThreadExecutor(r->{
-            Thread t=new Thread(r,"wethaq-live-image");
-            t.setDaemon(true);
-            return t;
-        });
-        AtomicBoolean active=new AtomicBoolean(false);
-        final int[] index={-1};
+        final int[] index={0};
         final boolean[] started={false};
         Runnable[] cycle=new Runnable[1];
         cycle[0]=()->{
-            if(!active.get())return;
-            int next=(index[0]+1)%remote.length;
+            if(!started[0])return;
+            int next=(index[0]+1)%localImages.length;
             index[0]=next;
-            imageExecutor.execute(()->{
-                Bitmap b=downloadBitmap(remote[next]);
-                if(b==null||!active.get())return;
-                handler.post(()->{
-                    if(!active.get())return;
-                    image.animate().alpha(0f).setDuration(220).withEndAction(()->{
-                        if(!active.get())return;
-                        image.setImageBitmap(b);
-                        image.setAlpha(0f);
-                        image.animate().alpha(.98f).setDuration(520).start();
-                    }).start();
-                });
-            });
+            image.animate().alpha(0f).setDuration(220).withEndAction(()->{
+                if(!started[0])return;
+                image.setImageResource(localImages[next]);
+                image.setAlpha(0f);
+                image.animate().alpha(.98f).setDuration(520).start();
+            }).start();
             handler.postDelayed(cycle[0],7800);
         };
         shell.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){
             @Override public void onViewAttachedToWindow(View v){
                 if(started[0])return;
                 started[0]=true;
-                active.set(true);
-                handler.postDelayed(cycle[0],1200);
+                handler.postDelayed(cycle[0],1800);
             }
             @Override public void onViewDetachedFromWindow(View v){
-                active.set(false);
+                started[0]=false;
                 handler.removeCallbacks(cycle[0]);
                 motion.cancel();
-                imageExecutor.shutdownNow();
             }
         });
         return shell;
@@ -341,7 +319,7 @@ public final class WethaqUi{
 
     public static String contactIdForName(android.content.Context c,String name){
         try{
-            JSONArray a=new JSONArray(c.getSharedPreferences("wethaq",0).getString("saved_contacts","[]"));
+            String id=c.getSharedPreferences("wethaq",0).getString("wethaq_id","guest");JSONArray a=new JSONArray(c.getSharedPreferences("wethaq",0).getString("saved_contacts_"+id,"[]"));
             for(int i=0;i<a.length();i++){
                 JSONObject o=a.optJSONObject(i);
                 if(o!=null&&name.equals(o.optString("name")))return o.optString("wethaq_id");

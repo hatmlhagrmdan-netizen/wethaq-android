@@ -19,7 +19,7 @@ import java.nio.charset.StandardCharsets;
 
 public final class WethaqApp extends Application implements Application.ActivityLifecycleCallbacks {
     private static final String PREFS="wethaq";
-    private static final String CONTACTS="saved_contacts";
+    private static final String CONTACTS="saved_contacts_";
     private static final String BACKUP="wethaq_contacts_backup";
     private static final String API=WethaqConfig.API;
     private SharedPreferences prefs;
@@ -27,7 +27,7 @@ public final class WethaqApp extends Application implements Application.Activity
     private boolean restoring;
     private long lastSync;
     private final SharedPreferences.OnSharedPreferenceChangeListener prefListener=(sp,key)->{
-        if(restoring||!CONTACTS.equals(key))return;
+        if(restoring||!key.startsWith(CONTACTS))return;
         preserveAndRestoreContacts();
     };
     private final BroadcastReceiver messageReceiver=new BroadcastReceiver(){
@@ -37,6 +37,7 @@ public final class WethaqApp extends Application implements Application.Activity
             String name=intent.getStringExtra("sender_name");
             if(id==null||id.trim().isEmpty())return;
             addContact(id,name==null||name.trim().isEmpty()?"مستخدم":name.trim());
+            if(!id.equals(prefs.getString("active_conversation","")))prefs.edit().putInt("unread_"+id,prefs.getInt("unread_"+id,0)+1).apply();
         }
     };
 
@@ -54,12 +55,13 @@ public final class WethaqApp extends Application implements Application.Activity
 
     private synchronized void preserveAndRestoreContacts(){
         try{
-            String current=prefs.getString(CONTACTS,"");
-            String saved=backup.getString(CONTACTS,"[]");
-            if(current!=null&&!current.isEmpty()&&!"[]".equals(current))backup.edit().putString(CONTACTS,current).apply();
+            String key=contactsKey();
+            String current=prefs.getString(key,"");
+            String saved=backup.getString(key,"[]");
+            if(current!=null&&!current.isEmpty()&&!"[]".equals(current))backup.edit().putString(key,current).apply();
             else if(saved!=null&&!saved.isEmpty()&&!"[]".equals(saved)){
                 restoring=true;
-                prefs.edit().putString(CONTACTS,saved).apply();
+                prefs.edit().putString(key,saved).apply();
                 restoring=false;
             }
         }catch(Exception ignored){restoring=false;}
@@ -67,7 +69,7 @@ public final class WethaqApp extends Application implements Application.Activity
 
     private synchronized void addContact(String id,String name){
         try{
-            JSONArray a=new JSONArray(prefs.getString(CONTACTS,backup.getString(CONTACTS,"[]")));
+            String key=contactsKey();JSONArray a=new JSONArray(prefs.getString(key,backup.getString(key,"[]")));
             boolean found=false;
             for(int i=0;i<a.length();i++){
                 JSONObject o=a.optJSONObject(i);
@@ -78,10 +80,12 @@ public final class WethaqApp extends Application implements Application.Activity
             }
             if(!found){JSONObject o=new JSONObject();o.put("wethaq_id",id);o.put("name",name);a.put(o);}
             String value=a.toString();
-            prefs.edit().putString(CONTACTS,value).apply();
-            backup.edit().putString(CONTACTS,value).apply();
+            prefs.edit().putString(key,value).apply();
+            backup.edit().putString(key,value).apply();
         }catch(Exception ignored){}
     }
+
+    private String contactsKey(){return CONTACTS+prefs.getString("wethaq_id","guest");}
 
     private void syncContactsIfNeeded(){
         if(prefs.getString("token","").length()<10)return;

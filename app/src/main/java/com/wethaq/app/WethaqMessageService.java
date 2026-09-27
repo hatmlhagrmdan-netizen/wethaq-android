@@ -39,9 +39,9 @@ public final class WethaqMessageService extends Service {
         NotificationChannel service=new NotificationChannel(SERVICE_CHANNEL,"خدمة وَثاق",NotificationManager.IMPORTANCE_LOW);
         service.setSound(null,null);service.setShowBadge(false);nm.createNotificationChannel(service);
         NotificationChannel messages=new NotificationChannel(MESSAGE_CHANNEL,"رسائل وَثاق",NotificationManager.IMPORTANCE_HIGH);
-        messages.enableVibration(true);messages.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),notificationAudio());messages.setShowBadge(true);nm.createNotificationChannel(messages);
+        messages.enableVibration(true);String messageUri=getSharedPreferences("wethaq",MODE_PRIVATE).getString("message_tone_uri","");android.net.Uri messageSound=messageUri.isEmpty()?RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION):android.net.Uri.parse(messageUri);messages.setSound(messageSound,notificationAudio());messages.setShowBadge(true);nm.createNotificationChannel(messages);
         NotificationChannel calls=new NotificationChannel(CALL_CHANNEL,"مكالمات وَثاق",NotificationManager.IMPORTANCE_HIGH);
-        calls.enableVibration(true);calls.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE),notificationAudio());calls.setShowBadge(true);nm.createNotificationChannel(calls);
+        calls.enableVibration(true);String ringUri=getSharedPreferences("wethaq",MODE_PRIVATE).getString("ringtone_uri","");android.net.Uri ring=ringUri.isEmpty()?RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE):android.net.Uri.parse(ringUri);calls.setSound(ring,notificationAudio());calls.setShowBadge(true);nm.createNotificationChannel(calls);
     }
 
     private Notification baseNotification(String text){return new NotificationCompat.Builder(this,SERVICE_CHANNEL).setSmallIcon(android.R.drawable.ic_dialog_email).setContentTitle("وَثاق").setContentText(text).setOngoing(true).setCategory(NotificationCompat.CATEGORY_SERVICE).build();}
@@ -102,7 +102,7 @@ public final class WethaqMessageService extends Service {
             android.content.SharedPreferences p=getSharedPreferences("wethaq",MODE_PRIVATE);
             JSONArray contacts;
             try{
-                contacts=new JSONArray(p.getString("saved_contacts","[]"));
+                contacts=new JSONArray(p.getString("saved_contacts_"+ownId,"[]"));
             }catch(Exception e){
                 contacts=new JSONArray();
             }
@@ -114,7 +114,7 @@ public final class WethaqMessageService extends Service {
             c.put("wethaq_id",senderId);
             c.put("name",senderName==null||senderName.trim().isEmpty()?"مستخدم":senderName.trim());
             contacts.put(c);
-            p.edit().putString("saved_contacts",contacts.toString()).apply();
+            p.edit().putString("saved_contacts_"+ownId,contacts.toString()).apply();
         }catch(Exception ignored){}
     }
     private void publishCallSignal(String senderId,String type,String payload,long signalId){if(senderId==null||senderId.isEmpty()||type==null||type.isEmpty())return;Intent i=new Intent(CALL_SIGNAL_ACTION);i.setPackage(getPackageName());i.putExtra("sender_wethaq_id",senderId);i.putExtra("type",type);i.putExtra("payload",payload==null?"":payload);i.putExtra("signal_id",signalId);sendBroadcast(i);} private void broadcastCallHistoryChanged(String targetId){if(targetId==null||targetId.isEmpty())return;Intent i=new Intent("com.wethaq.CALL_HISTORY_CHANGED");i.setPackage(getPackageName());i.putExtra("target_wethaq_id",targetId);sendBroadcast(i);}
