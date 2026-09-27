@@ -92,17 +92,22 @@ if "images.unsplash.com" in ui:
 if "unread_" not in main:
     errors.append("contacts must expose unread-message state")
 
-# Notification channel invariant: the foreground message service and UI must
-# publish through exactly the same production channel identifier.
-for haystack, label in ((main, "MainActivity"), (message_service, "WethaqMessageService")):
-    if 'MESSAGE_CHANNEL="wethaq_messages_v2"' not in haystack:
-        errors.append(f"{label} must use wethaq_messages_v2")
-if 'new NotificationChannel("wethaq_messages"' in main:
-    errors.append("legacy wethaq_messages channel must not be created")
-if "new NotificationChannel(MESSAGE_CHANNEL" not in main:
-    errors.append("MainActivity must create the shared message channel")
-if 'nm.deleteNotificationChannel("wethaq_messages")' not in main:
-    errors.append("legacy notification channel migration is missing")
+# Notification channel invariant: message notifications use a stable default channel
+# and versioned IDs for explicit custom tones, without deleting channels owned by Android users.
+if 'MESSAGE_CHANNEL="wethaq_messages_v2_default"' not in main:
+    errors.append("MainActivity must define the stable default message channel")
+if 'MESSAGE_CHANNEL_PREFIX="wethaq_messages_v3_"' not in main:
+    errors.append("MainActivity must define versioned custom message channels")
+if 'MESSAGE_CHANNEL="wethaq_messages_v2_default"' not in message_service:
+    errors.append("WethaqMessageService must use the same stable default message channel")
+if 'MESSAGE_CHANNEL_PREFIX="wethaq_messages_v3_"' not in message_service:
+    errors.append("WethaqMessageService must use the same custom message channel prefix")
+if 'new NotificationChannel("wethaq_messages"' in main or 'deleteNotificationChannel("wethaq_messages")' in main:
+    errors.append("legacy message channel must never be deleted or recreated by the app")
+if "NotificationChannel(id," not in main or 'prefs.edit().putString("message_channel_id",id)' not in main:
+    errors.append("MainActivity must create/store the current message channel ID")
+if "messageChannel()" not in message_service:
+    errors.append("WethaqMessageService must resolve the current message channel dynamically")
 
 
 if "setOnLongClickListener" not in main or "/api/contacts/" not in main:
