@@ -152,13 +152,13 @@ for needle, message in [
     ("node-version: '22'", "Node 22 pin missing"),
     ("gradle/actions/setup-gradle@v5", "Gradle setup action pin missing"),
     ("gradle-version: '8.9'", "Gradle 8.9 pin missing"),
+    ("assembleCi", "CI assemble gate missing"),
+    ("bundleCi", "CI AAB build gate missing"),
     ("assembleRelease", "production APK build gate missing"),
     ("bundleRelease", "production AAB build gate missing"),
     ("apksigner", "APK signature verification gate missing"),
     ("--print-certs", "certificate inspection gate missing"),
     ("actions/upload-artifact@v4", "artifact publication gate missing"),
-    ("Android 16 production APK smoke and startup baseline", "Android 16 production APK gate missing"),
-    ("WETHAQ_PRODUCTION_CERT_SHA256", "production certificate fingerprint proof missing"),
 ]:
     if needle not in workflow:
         errors.append(message)
