@@ -62,7 +62,7 @@ public final class VideoCallActivity extends Activity {
     private AudioTrack localAudioTrack;
     private VideoTrack localVideoTrack;
     private AudioManager audioManager;
-    private boolean previousSpeaker;private static volatile boolean WEBRTC_INITIALIZED;
+    private boolean previousSpeaker,speakerOn;private static volatile boolean WEBRTC_INITIALIZED;
     private String target,token,myId,incomingOffer;
     private boolean audioOnly,cleaned,offerSent,remoteDescriptionSet,micMuted,callEstablished,shouldRecordMissed;private Runnable callTimeout;private ToneGenerator ringTone;private Runnable ringLoop;private long callRecordId;private String serverCallId;
     private final BroadcastReceiver callSignalReceiver=new BroadcastReceiver(){@Override public void onReceive(Context context,Intent intent){if(!"com.wethaq.CALL_SIGNAL".equals(intent.getAction())||cleaned)return;String sender=intent.getStringExtra("sender_wethaq_id");if(sender==null||!sender.equals(target))return;String type=intent.getStringExtra("type");String payload=intent.getStringExtra("payload");long signalId=intent.getLongExtra("signal_id",0);if(signalId>0&&!seenSignals.add(String.valueOf(signalId)))return;handler.post(()->handle(type==null?"":type,payload==null?"":payload));}};
@@ -127,13 +127,13 @@ public final class VideoCallActivity extends Activity {
     }
 
     private void ensureWebRtcInitialized(){if(WEBRTC_INITIALIZED)return;synchronized(VideoCallActivity.class){if(WEBRTC_INITIALIZED)return;PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(this).createInitializationOptions());WEBRTC_INITIALIZED=true;}}
-    private void routeAudio(boolean speaker){if(audioManager==null)return;if(Build.VERSION.SDK_INT>=31){int wanted=speaker?android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER:android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE;for(android.media.AudioDeviceInfo d:audioManager.getAvailableCommunicationDevices()){if(d.getType()==wanted){try{audioManager.setCommunicationDevice(d);return;}catch(Exception ignored){}}}}audioManager.setSpeakerphoneOn(speaker);}
+    private void routeAudio(boolean speaker){speakerOn=speaker;if(audioManager==null)return;if(Build.VERSION.SDK_INT>=31){int wanted=speaker?android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER:android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE;for(android.media.AudioDeviceInfo d:audioManager.getAvailableCommunicationDevices()){if(d.getType()==wanted){try{audioManager.setCommunicationDevice(d);return;}catch(Exception ignored){}}}}audioManager.setSpeakerphoneOn(speaker);}
 
     private void showInCallControls(){
         controls.removeAllViews();
         Button mic=actionButton("🎙 كتم الميكروفون"),speaker=actionButton("🔊 مكبر الصوت"),end=actionButton("⛔ إنهاء");
         mic.setOnClickListener(v->{if(localAudioTrack==null)return;micMuted=!micMuted;localAudioTrack.setEnabled(!micMuted);mic.setText(micMuted?"🎙 تشغيل الميكروفون":"🔇 كتم الميكروفون");status.setText(micMuted?"الميكروفون مكتوم":"تم الاتصال ✓");});
-        speaker.setOnClickListener(v->{if(audioManager==null)return;boolean on=!audioManager.isSpeakerphoneOn();routeAudio(on);speaker.setText(on?"🔊 إيقاف مكبر الصوت":"📱 سماعة الهاتف");});
+        speaker.setOnClickListener(v->{if(audioManager==null)return;boolean on=!speakerOn;routeAudio(on);speaker.setText(on?"🔊 إيقاف مكبر الصوت":"📱 سماعة الهاتف");});
         end.setOnClickListener(v->endCall());
         controls.addView(mic,new LinearLayout.LayoutParams(0,dp(72),1));controls.addView(speaker,new LinearLayout.LayoutParams(0,dp(72),1));controls.addView(end,new LinearLayout.LayoutParams(0,dp(72),1));
     }
@@ -181,7 +181,7 @@ public final class VideoCallActivity extends Activity {
             ensureWebRtcInitialized();
             if(!audioOnly){egl=EglBase.create();localView.init(egl.getEglBaseContext(),null);remoteView.init(egl.getEglBaseContext(),null);localView.setMirror(true);}
             audioManager=(AudioManager)getSystemService(Context.AUDIO_SERVICE);
-            if(audioManager!=null){previousSpeaker=audioManager.isSpeakerphoneOn();audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);routeAudio(true);}
+            if(audioManager!=null){previousSpeaker=audioManager.isSpeakerphoneOn();audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);speakerOn=true;routeAudio(true);}
             PeerConnectionFactory.Builder builder=PeerConnectionFactory.builder();
             if(!audioOnly)builder.setVideoEncoderFactory(new DefaultVideoEncoderFactory(egl.getEglBaseContext(),true,true)).setVideoDecoderFactory(new DefaultVideoDecoderFactory(egl.getEglBaseContext()));
             factory=builder.createPeerConnectionFactory();createPeer();startLocal();showInCallControls();
