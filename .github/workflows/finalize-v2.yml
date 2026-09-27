@@ -159,14 +159,11 @@ jobs:
             echo "===== WETHAQ START RESULT ====="
             cat /tmp/wethaq-start.txt || true
             if adb shell pidof com.wethaq.app >/dev/null 2>&1; then echo 'WETHAQ_ANDROID16_STARTUP_OK'; tail -n 200 /tmp/wethaq-android16-logcat.txt || true; else echo 'WETHAQ_ANDROID16_STARTUP_FAILED'; tail -n 500 /tmp/wethaq-android16-logcat.txt || true; adb shell dumpsys activity activities | tail -n 120 || true; exit 1; fi
-      - name: Android 16 startup performance baseline
-        shell: bash
-        run: |
-          set -euo pipefail
+          # Keep the performance baseline inside the emulator-runner session.
           values=()
           for i in 1 2 3 4 5; do
-            adb shell am force-stop com.wethaq.app || true
-            out="$(adb shell am start -W -n com.wethaq.app/.MainActivity 2>/dev/null || true)"
+            adb shell am force-stop com.wethaq.app
+            out="$(adb shell am start -W -n com.wethaq.app/.MainActivity 2>/dev/null)"
             total="$(printf '%s\n' "$out" | awk -F: '/TotalTime:/ {gsub(/[^0-9]/,"",$2); print $2; exit}')"
             test -n "$total"
             values+=( "$total" )
