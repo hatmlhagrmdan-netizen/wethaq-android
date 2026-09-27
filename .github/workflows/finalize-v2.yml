@@ -157,20 +157,6 @@ jobs:
             echo "===== WETHAQ START RESULT ====="
             cat /tmp/wethaq-start.txt || true
             if adb shell pidof com.wethaq.app >/dev/null 2>&1; then echo 'WETHAQ_ANDROID16_STARTUP_OK'; tail -n 200 /tmp/wethaq-android16-logcat.txt || true; else echo 'WETHAQ_ANDROID16_STARTUP_FAILED'; tail -n 500 /tmp/wethaq-android16-logcat.txt || true; adb shell dumpsys activity activities | tail -n 120 || true; exit 1; fi
-            TIMES_FILE="/tmp/wethaq-cold-start-times.txt"
-            : > "$TIMES_FILE"
-            for i in 1 2 3 4 5; do
-              adb shell am force-stop com.wethaq.app
-              out="$(timeout 30s adb shell am start -W -n com.wethaq.app/.MainActivity 2>/dev/null)"
-              total="$(printf '%s\n' "$out" | awk -F: '/TotalTime:/ {gsub(/[^0-9]/,"",$2); print $2; exit}')"
-              test -n "$total"
-              printf '%s\n' "$total" >> "$TIMES_FILE"
-              echo "cold_start_${i}_ms=${total}"
-            done
-            median="$(sort -n "$TIMES_FILE" | awk 'NR==3{print;exit}')"
-            test -n "$median"
-            echo "ANDROID16_COLD_START_MEDIAN_MS=${median}"
-            adb shell dumpsys meminfo com.wethaq.app | awk '/TOTAL PSS/ {print "ANDROID16_TOTAL_PSS_KB="$3}' || true
       - name: Verify CI APK and AAB
         shell: bash
         run: |
