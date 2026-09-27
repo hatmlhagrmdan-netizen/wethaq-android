@@ -50,6 +50,13 @@ assert(search.body.users.every(u => !Object.prototype.hasOwnProperty.call(u, 'bi
 const me = await request('/api/me', { headers: { authorization: `Bearer ${newDeviceLogin.body.token}` } });
 assert(me.response.ok && me.body.user?.wethaq_id === a.body.user.wethaq_id, 'me failed');
 
+// Avatar contract regression: valid Wethaq IDs must serve uploaded avatars; malformed IDs are never used by the Android client.
+const avatar1x1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+const avatarUpload = await request('/api/profile/avatar', { method: 'POST', headers: { authorization: `Bearer ${a.body.token}` }, body: JSON.stringify({ imageBase64: avatar1x1, mimeType: 'image/png' }) });
+assert(avatarUpload.response.ok && avatarUpload.body.ok === true, 'avatar upload failed');
+const avatarRead = await request(`/api/users/${encodeURIComponent(a.body.user.wethaq_id)}/avatar`, { headers: { authorization: `Bearer ${b.body.token}` } });
+assert(avatarRead.response.ok && avatarRead.body.imageBase64 === avatar1x1, 'avatar retrieval failed');
+
 const invalidToken = await request('/api/me', { headers: { authorization: 'Bearer invalid-token-for-smoke-test' } });
 assert(invalidToken.response.status === 401, 'invalid JWT was accepted');
 
