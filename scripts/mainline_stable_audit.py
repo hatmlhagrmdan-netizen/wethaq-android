@@ -16,6 +16,7 @@ def read(path: str) -> str:
 
 build = read("app/build.gradle")
 main = read("app/src/main/java/com/wethaq/app/MainActivity.java")
+message_service = read("app/src/main/java/com/wethaq/app/WethaqMessageService.java")
 config = read("app/src/main/java/com/wethaq/app/WethaqConfig.java")
 server = read("backend/server.js")
 workflow = read(".github/workflows/finalize-v2.yml")
@@ -90,6 +91,19 @@ if "images.unsplash.com" in ui:
 
 if "unread_" not in main:
     errors.append("contacts must expose unread-message state")
+
+# Notification channel invariant: the foreground message service and UI must
+# publish through exactly the same production channel identifier.
+for haystack, label in ((main, "MainActivity"), (message_service, "WethaqMessageService")):
+    if 'MESSAGE_CHANNEL="wethaq_messages_v2"' not in haystack:
+        errors.append(f"{label} must use wethaq_messages_v2")
+if 'new NotificationChannel("wethaq_messages"' in main:
+    errors.append("legacy wethaq_messages channel must not be created")
+if "new NotificationChannel(MESSAGE_CHANNEL" not in main:
+    errors.append("MainActivity must create the shared message channel")
+if 'nm.deleteNotificationChannel("wethaq_messages")' not in main:
+    errors.append("legacy notification channel migration is missing")
+
 
 if "setOnLongClickListener" not in main or "/api/contacts/" not in main:
     errors.append("contacts must support long-press deletion")
