@@ -89,8 +89,8 @@ for hero in ("wethaq_hero_trust", "wethaq_hero_network", "wethaq_hero_secure"):
 if "images.unsplash.com" in ui:
     errors.append("live visual gallery must not depend on external image hosts")
 
-if "unread_" not in main:
-    errors.append("contacts must expose unread-message state")
+if "unread_" not in main or "unread_count" not in main:
+    errors.append("contacts must expose server-authoritative unread-message state")
 
 # Notification channel invariant: message notifications use a stable default channel
 # and versioned IDs for explicit custom tones, without deleting channels owned by Android users.
@@ -108,6 +108,8 @@ if "NotificationChannel(id," not in main or 'prefs.edit().putString("message_cha
     errors.append("MainActivity must create/store the current message channel ID")
 if "messageChannel()" not in message_service:
     errors.append("WethaqMessageService must resolve the current message channel dynamically")
+if "reconnectDelayMs" not in message_service or "reconnectHandler.removeCallbacks" not in message_service:
+    errors.append("message service reconnect must use bounded exponential backoff")
 
 
 if "setOnLongClickListener" not in main or "/api/contacts/" not in main:
@@ -118,6 +120,10 @@ if "pickSound(801)" not in main or "pickSound(802)" not in main:
 
 if "app.delete('/api/contacts/:wethaqId'" not in read("backend/production-injection.mjsinc"):
     errors.append("backend contact deletion endpoint missing")
+if "identity-name:" not in server or "login-name:" not in server:
+    errors.append("identity and login brute-force rate limiting missing")
+if "complaint:" not in server or "invalid_complaint" not in server:
+    errors.append("complaint rate/size limiting missing")
 
 if re.search(r"-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY-----", source_text):
     errors.append("private-key material detected in runtime source")
@@ -126,6 +132,8 @@ if re.search(r"(?:storePassword|keyPassword)\s+['\"][^'\"]+['\"]", source_text):
 
 if "https://wethaq-backend-production.up.railway.app" not in config:
     errors.append("expected HTTPS Wethaq backend endpoint missing from WethaqConfig")
+if 'matches("[A-Za-z0-9_]{3,120}")' not in ui:
+    errors.append("shared avatar loader must reject malformed Wethaq IDs")
 if "open" + "relayproject" in main:
     errors.append("public demo TURN credentials must not remain in Android source")
 if "/api/calls/ice-config" not in server:
