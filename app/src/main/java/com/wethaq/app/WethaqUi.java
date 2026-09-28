@@ -295,7 +295,7 @@ public final class WethaqUi{
     private interface DrawableConsumer{void accept(Drawable d);}
 
     private static void loadAvatarDrawable(String id,String token,DrawableConsumer consumer){
-        if(id==null||id.trim().isEmpty()||token==null||token.isEmpty())return;
+        if(id==null||!id.matches("[A-Za-z0-9_]{3,120}")||token==null||token.isEmpty())return;
         new Thread(()->{
             try{
                 HttpURLConnection c=(HttpURLConnection)new URL(API+"/api/users/"+URLEncoder.encode(id,"UTF-8")+"/avatar").openConnection();
