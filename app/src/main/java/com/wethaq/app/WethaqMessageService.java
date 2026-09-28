@@ -54,7 +54,6 @@ public final class WethaqMessageService extends Service {
     private void scheduleReconnect(){if(stopping)return;reconnectHandler.removeCallbacks(reconnectRunnable);reconnectHandler.postDelayed(reconnectRunnable,reconnectDelayMs);reconnectDelayMs=Math.min(reconnectDelayMs*2,30000);}
     private void update(String text){NotificationManager nm=getSystemService(NotificationManager.class);if(nm!=null)nm.notify(FOREGROUND_ID,baseNotification(text));}
     private boolean firstTimeMessage(String id){if(id==null||id.isEmpty())return true;synchronized(seenMessageIds){if(seenMessageIds.contains(id))return false;if(seenMessageIds.size()>=256){java.util.Iterator<String> it=seenMessageIds.iterator();if(it.hasNext()){it.next();it.remove();}}seenMessageIds.add(id);return true;}}
-    private void incrementUnread(String senderId){if(senderId==null||senderId.trim().isEmpty())return;try{android.content.SharedPreferences p=getSharedPreferences("wethaq",MODE_PRIVATE);String ownId=p.getString("wethaq_id","");if(ownId.isEmpty()||ownId.equals(senderId))return;int n=p.getInt("unread_"+senderId,0);p.edit().putInt("unread_"+senderId,Math.min(n+1,999)).apply();}catch(Exception ignored){}}
     private void publishLiveMessage(String senderId,String senderName){if(senderId==null||senderId.isEmpty())return;Intent live=new Intent(LIVE_MESSAGE_ACTION);live.setPackage(getPackageName());live.putExtra("sender_wethaq_id",senderId);live.putExtra("sender_name",senderName==null?"مستخدم":senderName);sendBroadcast(live);}
     private void showMissedCallNotification(String senderId,String senderName){
         if(senderId==null||senderId.isEmpty())return;
@@ -85,7 +84,7 @@ public final class WethaqMessageService extends Service {
                 String sender=m==null?"مستخدم":m.optString("sender_name","مستخدم");String senderId=m==null?"":m.optString("sender_wethaq_id","");String body=m==null?"رسالة جديدة":m.optString("body","");String type=m==null?"text":m.optString("message_type","text");
                 String content=body.isEmpty()?("audio".equals(type)?"🎙 رسالة صوتية":"image".equals(type)?"🖼 صورة":"رسالة جديدة"):body;
                 saveIncomingContactIfNeeded(senderId,sender);
-                if(!"admin_assignment".equals(type)&&!"admin_alert".equals(type)){incrementUnread(senderId);showMessage(sender,senderId,content);}
+                if(!"admin_assignment".equals(type)&&!"admin_alert".equals(type))showMessage(sender,senderId,content);
                 publishLiveMessage(senderId,sender);
             }else if("action".equals(event)){
                 JSONObject a=o.optJSONObject("action");
