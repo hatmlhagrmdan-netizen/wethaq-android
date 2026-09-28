@@ -26,6 +26,9 @@ public final class WethaqMessageService extends Service {
     private OkHttpClient client;
     private WebSocket socket;
     private boolean stopping;
+    private final Handler reconnectHandler=new Handler(Looper.getMainLooper());
+    private int reconnectDelayMs=3000;
+    private final Runnable reconnectRunnable=()->{if(!stopping&&socket==null)connect();};
 
     @Override public void onCreate(){super.onCreate();createChannels();client=new OkHttpClient.Builder().pingInterval(20,TimeUnit.SECONDS).retryOnConnectionFailure(true).build();startForeground(FOREGROUND_ID,baseNotification("الاتصال بخدمة الرسائل"));connect();}
 
@@ -47,8 +50,8 @@ public final class WethaqMessageService extends Service {
     }
 
     private Notification baseNotification(String text){return new NotificationCompat.Builder(this,SERVICE_CHANNEL).setSmallIcon(android.R.drawable.ic_dialog_email).setContentTitle("وَثاق").setContentText(text).setOngoing(true).setCategory(NotificationCompat.CATEGORY_SERVICE).build();}
-    private void connect(){if(stopping)return;String token=getSharedPreferences("wethaq",MODE_PRIVATE).getString("token","");if(token.length()<10){scheduleReconnect();return;}try{String encoded=URLEncoder.encode(token,"UTF-8");Request r=new Request.Builder().url(WethaqConfig.WS+"?token="+encoded).build();socket=client.newWebSocket(r,new WebSocketListener(){@Override public void onOpen(WebSocket w,Response x){update("متصل — استقبال الرسائل والمكالمات والإجراءات فعال");syncPendingNotifications();}@Override public void onMessage(WebSocket w,String text){handle(text);}@Override public void onClosed(WebSocket w,int code,String reason){socket=null;scheduleReconnect();}@Override public void onFailure(WebSocket w,Throwable t,Response r){socket=null;scheduleReconnect();}});}catch(Exception e){scheduleReconnect();}}
-    private void scheduleReconnect(){if(stopping)return;new Handler(Looper.getMainLooper()).postDelayed(()->{if(!stopping&&socket==null)connect();},3000);}
+    private void connect(){if(stopping)return;String token=getSharedPreferences("wethaq",MODE_PRIVATE).getString("token","");if(token.length()<10){scheduleReconnect();return;}try{String encoded=URLEncoder.encode(token,"UTF-8");Request r=new Request.Builder().url(WethaqConfig.WS+"?token="+encoded).build();socket=client.newWebSocket(r,new WebSocketListener(){@Override public void onOpen(WebSocket w,Response x){reconnectHandler.removeCallbacks(reconnectRunnable);reconnectDelayMs=3000;update("متصل — استقبال الرسائل والمكالمات والإجراءات فعال");syncPendingNotifications();}@Override public void onMessage(WebSocket w,String text){handle(text);}@Override public void onClosed(WebSocket w,int code,String reason){socket=null;scheduleReconnect();}@Override public void onFailure(WebSocket w,Throwable t,Response r){socket=null;scheduleReconnect();}});}catch(Exception e){scheduleReconnect();}}
+    private void scheduleReconnect(){if(stopping)return;reconnectHandler.removeCallbacks(reconnectRunnable);reconnectHandler.postDelayed(reconnectRunnable,reconnectDelayMs);reconnectDelayMs=Math.min(reconnectDelayMs*2,30000);}
     private void update(String text){NotificationManager nm=getSystemService(NotificationManager.class);if(nm!=null)nm.notify(FOREGROUND_ID,baseNotification(text));}
     private boolean firstTimeMessage(String id){if(id==null||id.isEmpty())return true;synchronized(seenMessageIds){if(seenMessageIds.contains(id))return false;if(seenMessageIds.size()>=256){java.util.Iterator<String> it=seenMessageIds.iterator();if(it.hasNext()){it.next();it.remove();}}seenMessageIds.add(id);return true;}}
     private void publishLiveMessage(String senderId,String senderName){if(senderId==null||senderId.isEmpty())return;Intent live=new Intent(LIVE_MESSAGE_ACTION);live.setPackage(getPackageName());live.putExtra("sender_wethaq_id",senderId);live.putExtra("sender_name",senderName==null?"مستخدم":senderName);sendBroadcast(live);}
@@ -81,7 +84,7 @@ public final class WethaqMessageService extends Service {
                 String sender=m==null?"مستخدم":m.optString("sender_name","مستخدم");String senderId=m==null?"":m.optString("sender_wethaq_id","");String body=m==null?"رسالة جديدة":m.optString("body","");String type=m==null?"text":m.optString("message_type","text");
                 String content=body.isEmpty()?("audio".equals(type)?"🎙 رسالة صوتية":"image".equals(type)?"🖼 صورة":"رسالة جديدة"):body;
                 saveIncomingContactIfNeeded(senderId,sender);
-                if("admin_assignment".equals(type)||"admin_alert".equals(type)){} else showMessage(sender,senderId,content);
+                if(!"admin_assignment".equals(type)&&!"admin_alert".equals(type))showMessage(sender,senderId,content);
                 publishLiveMessage(senderId,sender);
             }else if("action".equals(event)){
                 JSONObject a=o.optJSONObject("action");
@@ -160,6 +163,6 @@ public final class WethaqMessageService extends Service {
     private void showIncomingCall(String target,String name,boolean audioOnly,String offerPayload){long recordId=CallHistory.pendingFor(this,target);if(recordId==0)recordId=CallHistory.record(this,target,name,audioOnly,false,CallHistory.PENDING_INCOMING);Intent i=new Intent(this,VideoCallActivity.class);i.putExtra("target",target);i.putExtra("name",name);i.putExtra("audioOnly",audioOnly);i.putExtra("incomingOffer",offerPayload);i.putExtra("call_record_id",recordId);i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);PendingIntent pi=PendingIntent.getActivity(this,(target+name).hashCode(),i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);NotificationCompat.Builder b=new NotificationCompat.Builder(this,CALL_CHANNEL).setSmallIcon(android.R.drawable.sym_call_incoming).setContentTitle((audioOnly?"مكالمة صوتية واردة من ":"مكالمة فيديو واردة من ")+name).setContentText("اضغط للرد على المكالمة").setContentIntent(pi).setFullScreenIntent(pi,true).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_MAX).setCategory(NotificationCompat.CATEGORY_CALL).setOngoing(true).setTimeoutAfter(60000).setDefaults(NotificationCompat.DEFAULT_ALL);NotificationManager nm=getSystemService(NotificationManager.class);if(nm!=null)nm.notify(4102,b.build());}
     private void cancelIncomingCallNotification(){try{NotificationManager nm=getSystemService(NotificationManager.class);if(nm!=null)nm.cancel(4102);}catch(Exception ignored){}}
     @Override public int onStartCommand(Intent i,int flags,int startId){stopping=false;if(socket==null)connect();return START_STICKY;}
-    @Override public void onDestroy(){stopping=true;if(socket!=null){socket.close(1000,"service stopped");socket=null;}if(client!=null)client.dispatcher().executorService().shutdown();super.onDestroy();}
+    @Override public void onDestroy(){stopping=true;reconnectHandler.removeCallbacks(reconnectRunnable);if(socket!=null){socket.close(1000,"service stopped");socket=null;}if(client!=null)client.dispatcher().executorService().shutdown();super.onDestroy();}
     @Override public android.os.IBinder onBind(Intent i){return null;}
 }

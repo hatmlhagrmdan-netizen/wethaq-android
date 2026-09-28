@@ -37,8 +37,18 @@ const wrongCode = await request('/api/login', {
   body: JSON.stringify({ name: `أمان وثاق ${suffix}`, birthYear: 1995, personalCode: '731205', deviceKey: `bbbbbbbbbbbbbbbbbbbbbbbb${suffix}` })
 });
 assert(wrongCode.response.status === 401 && wrongCode.body.error === 'invalid_personal_code', 'wrong personal code was accepted');
+for(let i=0;i<7;i++)await request('/api/login',{method:'POST',body:JSON.stringify({name:`أمان وثاق ${suffix}`,birthYear:1995,personalCode:'731205',deviceKey:`cccccccccccccccccccccccc${suffix}`})});
+const rateLimitedLogin=await request('/api/login',{method:'POST',body:JSON.stringify({name:`أمان وثاق ${suffix}`,birthYear:1995,personalCode:'731205',deviceKey:`dddddddddddddddddddddddd${suffix}`})});
+assert(rateLimitedLogin.response.status===429&&rateLimitedLogin.body.error==='too_many_attempts','login rate limiting did not engage');
 
 const token = identity.body.token;
+const oversizedComplaint = await request('/api/complaints', {
+  method: 'POST',
+  headers: { authorization: `Bearer ${token}` },
+  body: JSON.stringify({ message: 'x'.repeat(2001) })
+});
+assert(oversizedComplaint.response.status === 400 && oversizedComplaint.body.error === 'invalid_complaint', 'oversized complaint was not rejected');
+
 const invalidRecipient = await request('/api/messages', {
   method: 'POST',
   headers: { authorization: `Bearer ${token}` },
