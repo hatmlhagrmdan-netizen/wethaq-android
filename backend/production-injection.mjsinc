@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS user_action_notifications(
   FOREIGN KEY(actor_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_user_action_target ON user_action_notifications(target_user_id,id);
-CREATE INDEX IF NOT EXISTS idx_user_action_pending ON user_action_notifications(target_user_id,read_at,id);
+CREATE INDEX IF NOT EXISTS idx_user_action_pending ON user_action_notifications(target_user_id,read_at,id);CREATE TRIGGER IF NOT EXISTS trg_wethaq_founder_insert_protection\nBEFORE INSERT ON admin_roles\nWHEN NEW.user_id=(SELECT id FROM users WHERE wethaq_id='Hatem_Hussin_Al_Haj_Ramadan1995') AND (NEW.role<>'founder' OR NEW.active<>1)\nBEGIN SELECT RAISE(ABORT,'founder_protected'); END;\nCREATE TRIGGER IF NOT EXISTS trg_wethaq_founder_update_protection\nBEFORE UPDATE OF role,active,user_id ON admin_roles\nWHEN OLD.user_id=(SELECT id FROM users WHERE wethaq_id='Hatem_Hussin_Al_Haj_Ramadan1995') AND (NEW.user_id<>OLD.user_id OR NEW.role<>'founder' OR NEW.active<>1)\nBEGIN SELECT RAISE(ABORT,'founder_protected'); END;\nCREATE TRIGGER IF NOT EXISTS trg_wethaq_founder_delete_protection\nBEFORE DELETE ON admin_roles\nWHEN OLD.user_id=(SELECT id FROM users WHERE wethaq_id='Hatem_Hussin_Al_Haj_Ramadan1995')\nBEGIN SELECT RAISE(ABORT,'founder_protected'); END;\n
 `);
 
 db.exec(`
