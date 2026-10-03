@@ -1,3 +1,4 @@
+ensureColumn('admin_roles','admin_code_ciphertext','TEXT');
 // WETHAQ_PRODUCTION_FIXES_2026_09_17
 // طبقة تشغيلية تكمّل الخادم الحالي دون حذف منطق الإنتاج الأصلي.
 
@@ -186,7 +187,7 @@ if(__wethaqRouter?.stack){
 }
 
 // توحيد الصلاحيات والسجلات من نقطة واحدة للخادم.
-const __wethaqResponseLayer=(req,res,next)=>{
+\n\n// ترسيخ كل تعيين إداري كسجل قرار للمستخدم، بما في ذلك إعادة التعيين/تجديد المنصب.\nfunction __recordAdminAppointmentDecision(req,payload){\n  try{\n    if(req.path!=='/api/admin/assign'||!payload?.ok||!payload?.adminCode||!payload?.user?.wethaq_id)return;\n    const target=db.prepare('SELECT id,name,wethaq_id FROM users WHERE wethaq_id=?').get(String(payload.user.wethaq_id));\n    if(!target)return;\n    const roleLabel=(typeof ADMIN_POLICY!=='undefined'&&ADMIN_POLICY[payload.role]?.label)||String(payload.role||'منصب إداري');\n    ensureColumn('admin_roles','admin_code_ciphertext','TEXT');\n    db.prepare('UPDATE admin_roles SET admin_code_ciphertext=? WHERE user_id=?').run(encryptPersonalCode(payload.adminCode),target.id);\n    const body='تم تعيينك رسميًا في المنصب الإداري: '+roleLabel+'.\\nرمزك الإداري: '+String(payload.adminCode)+'\\nيمكنك الاحتفاظ به، ويستطيع المؤسس رؤيته ونسخه من سجل المستخدم.';\n    db.prepare('INSERT INTO user_action_notifications(target_user_id,actor_user_id,action_type,title,body) VALUES(?,?,?,?,?)').run(target.id,req.adminRow?.user_id||null,'role_assigned','تعيين إداري',body);\n  }catch(e){console.error('admin appointment decision audit failed',e?.message||e);}\n}\nconst __wethaqResponseLayer=(req,res,next)=>{
   const originalJson=res.json.bind(res);
   res.json=(payload)=>{
     try{
@@ -213,7 +214,7 @@ const __wethaqResponseLayer=(req,res,next)=>{
         payload={...payload,logs:[...payload.logs].sort((a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||'')))};
       }
     }catch{}
-    return originalJson(payload);
+    __recordAdminAppointmentDecision(req,payload);\n    return originalJson(payload);
   };
   next();
 };
