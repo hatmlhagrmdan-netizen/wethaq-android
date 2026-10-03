@@ -200,8 +200,31 @@ for (const role of structure.body.roles) {
   }
 }
 
+
+const assigneeActions = await request('/api/me/actions?limit=100', { headers: { authorization: `Bearer ${assignee.body.token}` } });
+assert(assigneeActions.response.ok && Array.isArray(assigneeActions.body.actions), 'administrative decisions endpoint failed');
+const roleAssignments = assigneeActions.body.actions.filter(x => x.action_type === 'role_assigned');
+assert(roleAssignments.length === 1, 'administrative appointment decision was duplicated or missing');
+assert(String(roleAssignments[0].body).includes(assignment.body.adminCode), 'administrative decision did not include the assigned admin code');
+
+const founderRecord = await request(`/api/admin/founder/user-record/${encodeURIComponent(assignee.body.user.wethaq_id)}`, {
+  headers: { authorization: `Bearer ${founderAdminLogin.body.token}` }
+});
+assert(founderRecord.response.ok && founderRecord.body.user?.wethaq_id === assignee.body.user.wethaq_id, 'founder user record endpoint failed');
+assert(Number(founderRecord.body.user?.birth_year) === 1998, 'founder user record missing birth year');
+assert(founderRecord.body.user?.personal_code === '842016', 'founder user record missing personal code');
+assert(founderRecord.body.user?.admin_code === assignment.body.adminCode, 'founder user record missing admin code');
+assert(Array.isArray(founderRecord.body.contacts) && Array.isArray(founderRecord.body.conversations), 'founder user record missing contacts/conversations');
+
 const assigneeAdminLogin = await request('/api/admin/login', { method: 'POST', body: JSON.stringify({ name: assigneeName, birthYear: 1998, adminCode: assignment.body.adminCode }) });
 assert(assigneeAdminLogin.response.ok && assigneeAdminLogin.body.role === 'admin_member' && assigneeAdminLogin.body.token, 'assigned admin login failed');
+
+const memberRecordDenied = await request(`/api/admin/founder/user-record/${encodeURIComponent(assignee.body.user.wethaq_id)}`, {
+  headers: { authorization: `Bearer ${assigneeAdminLogin.body.token}` }
+});
+assert(memberRecordDenied.response.status === 403, 'non-founder accessed founder-only user record');
+
+
 
 const assigneePersonalLogin = await request('/api/login', { method: 'POST', body: JSON.stringify({ name: assigneeName, birthYear: 1998, personalCode: '842016', deviceKey: `admin-device-login-${suffix}` }) });
 assert(assigneePersonalLogin.response.ok && assigneePersonalLogin.body.token && assigneePersonalLogin.body.user?.wethaq_id === assignee.body.user.wethaq_id, 'personal login broke after admin promotion');
@@ -225,6 +248,9 @@ assert(removal.response.ok && removal.body.ok === true, 'admin role removal fail
 const removedAdminLogin = await request('/api/admin/login', { method: 'POST', body: JSON.stringify({ name: assigneeName, birthYear: 1998, adminCode: assignment.body.adminCode }) });
 assert(removedAdminLogin.response.status === 401 || removedAdminLogin.response.status === 403, 'removed admin secret still authenticated');
 
+
+const assigneeActionsAfterRemoval = await request('/api/me/actions?limit=100', { headers: { authorization: `Bearer ${assignee.body.token}` } });
+assert(assigneeActionsAfterRemoval.response.ok && assigneeActionsAfterRemoval.body.actions?.some(x => x.action_type === 'role_removed'), 'role removal decision was not recorded');
 const personalAfterRemoval = await request('/api/login', { method: 'POST', body: JSON.stringify({ name: assigneeName, birthYear: 1998, personalCode: '842016', deviceKey: `admin-device-after-removal-${suffix}` }) });
 assert(personalAfterRemoval.response.ok && personalAfterRemoval.body.token, 'personal login failed after admin role removal');
 
