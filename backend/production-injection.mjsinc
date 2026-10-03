@@ -75,6 +75,9 @@ END;
 `);
 
 
+// يُنشأ قرار التعيين مرة واحدة من طبقة الاستجابة حتى يتضمن رمز المنصب.
+db.exec(`DROP TRIGGER IF EXISTS trg_wethaq_action_role_assign;`);
+
 function recordFounderSecurityAttempt(actorId,actorRole,actionType,req,targetId){
   const actor=Number(actorId||0)||null;
   const target=String(targetId||OWNER_WETHAQ_ID);
