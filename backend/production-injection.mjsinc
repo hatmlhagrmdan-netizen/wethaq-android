@@ -28,7 +28,19 @@ CREATE INDEX IF NOT EXISTS idx_user_action_pending ON user_action_notifications(
   FOREIGN KEY(actor_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_founder_security_actor ON founder_security_incidents(actor_user_id,created_at);
-CREATE TRIGGER IF NOT EXISTS trg_wethaq_founder_insert_protection\nBEFORE INSERT ON admin_roles\nWHEN NEW.user_id=(SELECT id FROM users WHERE wethaq_id='Hatem_Hussin_Al_Haj_Ramadan1995') AND (NEW.role<>'founder' OR NEW.active<>1)\nBEGIN SELECT RAISE(ABORT,'founder_protected'); END;\nCREATE TRIGGER IF NOT EXISTS trg_wethaq_founder_update_protection\nBEFORE UPDATE OF role,active,user_id ON admin_roles\nWHEN OLD.user_id=(SELECT id FROM users WHERE wethaq_id='Hatem_Hussin_Al_Haj_Ramadan1995') AND (NEW.user_id<>OLD.user_id OR NEW.role<>'founder' OR NEW.active<>1)\nBEGIN SELECT RAISE(ABORT,'founder_protected'); END;\nCREATE TRIGGER IF NOT EXISTS trg_wethaq_founder_delete_protection\nBEFORE DELETE ON admin_roles\nWHEN OLD.user_id=(SELECT id FROM users WHERE wethaq_id='Hatem_Hussin_Al_Haj_Ramadan1995')\nBEGIN SELECT RAISE(ABORT,'founder_protected'); END;\n
+CREATE TRIGGER IF NOT EXISTS trg_wethaq_founder_insert_protection
+BEFORE INSERT ON admin_roles
+WHEN NEW.user_id=(SELECT id FROM users WHERE wethaq_id='Hatem_Hussin_Al_Haj_Ramadan1995') AND (NEW.role<>'founder' OR NEW.active<>1)
+BEGIN SELECT RAISE(ABORT,'founder_protected'); END;
+CREATE TRIGGER IF NOT EXISTS trg_wethaq_founder_update_protection
+BEFORE UPDATE OF role,active,user_id ON admin_roles
+WHEN OLD.user_id=(SELECT id FROM users WHERE wethaq_id='Hatem_Hussin_Al_Haj_Ramadan1995') AND (NEW.user_id<>OLD.user_id OR NEW.role<>'founder' OR NEW.active<>1)
+BEGIN SELECT RAISE(ABORT,'founder_protected'); END;
+CREATE TRIGGER IF NOT EXISTS trg_wethaq_founder_delete_protection
+BEFORE DELETE ON admin_roles
+WHEN OLD.user_id=(SELECT id FROM users WHERE wethaq_id='Hatem_Hussin_Al_Haj_Ramadan1995')
+BEGIN SELECT RAISE(ABORT,'founder_protected'); END;
+
 `);
 
 db.exec(`
