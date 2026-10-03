@@ -216,13 +216,15 @@ assert(founderRecord.body.user?.personal_code === '842016', 'founder user record
 assert(founderRecord.body.user?.admin_code === assignment.body.adminCode, 'founder user record missing admin code');
 assert(Array.isArray(founderRecord.body.contacts) && Array.isArray(founderRecord.body.conversations), 'founder user record missing contacts/conversations');
 
+const assigneeAdminLogin = await request('/api/admin/login', { method: 'POST', body: JSON.stringify({ name: assigneeName, birthYear: 1998, adminCode: assignment.body.adminCode }) });
+assert(assigneeAdminLogin.response.ok && assigneeAdminLogin.body.role === 'admin_member' && assigneeAdminLogin.body.token, 'assigned admin login failed');
+
 const memberRecordDenied = await request(`/api/admin/founder/user-record/${encodeURIComponent(assignee.body.user.wethaq_id)}`, {
   headers: { authorization: `Bearer ${assigneeAdminLogin.body.token}` }
 });
 assert(memberRecordDenied.response.status === 403, 'non-founder accessed founder-only user record');
 
-const assigneeAdminLogin = await request('/api/admin/login', { method: 'POST', body: JSON.stringify({ name: assigneeName, birthYear: 1998, adminCode: assignment.body.adminCode }) });
-assert(assigneeAdminLogin.response.ok && assigneeAdminLogin.body.role === 'admin_member' && assigneeAdminLogin.body.token, 'assigned admin login failed');
+
 
 const assigneePersonalLogin = await request('/api/login', { method: 'POST', body: JSON.stringify({ name: assigneeName, birthYear: 1998, personalCode: '842016', deviceKey: `admin-device-login-${suffix}` }) });
 assert(assigneePersonalLogin.response.ok && assigneePersonalLogin.body.token && assigneePersonalLogin.body.user?.wethaq_id === assignee.body.user.wethaq_id, 'personal login broke after admin promotion');
