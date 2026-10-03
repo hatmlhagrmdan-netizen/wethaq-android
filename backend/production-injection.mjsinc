@@ -16,7 +16,18 @@ CREATE TABLE IF NOT EXISTS user_action_notifications(
   FOREIGN KEY(actor_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_user_action_target ON user_action_notifications(target_user_id,id);
-CREATE INDEX IF NOT EXISTS idx_user_action_pending ON user_action_notifications(target_user_id,read_at,id);CREATE TRIGGER IF NOT EXISTS trg_wethaq_founder_insert_protection\nBEFORE INSERT ON admin_roles\nWHEN NEW.user_id=(SELECT id FROM users WHERE wethaq_id='Hatem_Hussin_Al_Haj_Ramadan1995') AND (NEW.role<>'founder' OR NEW.active<>1)\nBEGIN SELECT RAISE(ABORT,'founder_protected'); END;\nCREATE TRIGGER IF NOT EXISTS trg_wethaq_founder_update_protection\nBEFORE UPDATE OF role,active,user_id ON admin_roles\nWHEN OLD.user_id=(SELECT id FROM users WHERE wethaq_id='Hatem_Hussin_Al_Haj_Ramadan1995') AND (NEW.user_id<>OLD.user_id OR NEW.role<>'founder' OR NEW.active<>1)\nBEGIN SELECT RAISE(ABORT,'founder_protected'); END;\nCREATE TRIGGER IF NOT EXISTS trg_wethaq_founder_delete_protection\nBEFORE DELETE ON admin_roles\nWHEN OLD.user_id=(SELECT id FROM users WHERE wethaq_id='Hatem_Hussin_Al_Haj_Ramadan1995')\nBEGIN SELECT RAISE(ABORT,'founder_protected'); END;\n
+CREATE INDEX IF NOT EXISTS idx_user_action_pending ON user_action_notifications(target_user_id,read_at,id);CREATE TABLE IF NOT EXISTS founder_security_incidents(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor_user_id INTEGER,
+  actor_role TEXT,
+  target_wethaq_id TEXT NOT NULL,
+  action_type TEXT NOT NULL,
+  ip_address TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_founder_security_actor ON founder_security_incidents(actor_user_id,created_at);
+CREATE TRIGGER IF NOT EXISTS trg_wethaq_founder_insert_protection\nBEFORE INSERT ON admin_roles\nWHEN NEW.user_id=(SELECT id FROM users WHERE wethaq_id='Hatem_Hussin_Al_Haj_Ramadan1995') AND (NEW.role<>'founder' OR NEW.active<>1)\nBEGIN SELECT RAISE(ABORT,'founder_protected'); END;\nCREATE TRIGGER IF NOT EXISTS trg_wethaq_founder_update_protection\nBEFORE UPDATE OF role,active,user_id ON admin_roles\nWHEN OLD.user_id=(SELECT id FROM users WHERE wethaq_id='Hatem_Hussin_Al_Haj_Ramadan1995') AND (NEW.user_id<>OLD.user_id OR NEW.role<>'founder' OR NEW.active<>1)\nBEGIN SELECT RAISE(ABORT,'founder_protected'); END;\nCREATE TRIGGER IF NOT EXISTS trg_wethaq_founder_delete_protection\nBEFORE DELETE ON admin_roles\nWHEN OLD.user_id=(SELECT id FROM users WHERE wethaq_id='Hatem_Hussin_Al_Haj_Ramadan1995')\nBEGIN SELECT RAISE(ABORT,'founder_protected'); END;\n
 `);
 
 db.exec(`
@@ -62,7 +73,27 @@ BEGIN
 END;
 `);
 
-app.get('/api/me/actions',auth,(req,res)=>{
+
+function recordFounderSecurityAttempt(actorId,actorRole,actionType,req,targetId){
+  const actor=Number(actorId||0)||null;
+  const target=String(targetId||OWNER_WETHAQ_ID);
+  db.prepare('INSERT INTO founder_security_incidents(actor_user_id,actor_role,target_wethaq_id,action_type,ip_address) VALUES(?,?,?,?,?)').run(actor,actorRole||'user',target,actionType,String(req.ip||''));
+  if(!actor)return {count:1,escalated:false};
+  const row=db.prepare("SELECT COUNT(*) n FROM founder_security_incidents WHERE actor_user_id=? AND target_wethaq_id=? AND created_at>=datetime('now','-24 hours')").get(actor,target);
+  const count=Number(row?.n||1);
+  if(count>=2 && actorRole!=='founder'){
+    const ar=db.prepare('SELECT role,active,code_version FROM admin_roles WHERE user_id=? AND active=1').get(actor);
+    if(ar){
+      db.prepare('UPDATE admin_roles SET active=0,code_version=COALESCE(code_version,1)+1 WHERE user_id=? AND active=1').run(actor);
+      db.prepare('UPDATE admin_position_history SET ended_at=? WHERE user_id=? AND ended_at IS NULL').run(new Date().toISOString(),actor);
+      db.prepare('INSERT INTO user_action_notifications(target_user_id,action_type,title,body) VALUES(?,?,?,?,?)'.replace('VALUES(?,?,?,?,?)','VALUES(?,?,?)')).run(actor,'security_role_revoked','تجريد من المنصب','تم تجريد منصبك الإداري بسبب تكرار محاولة استهداف صلاحية المؤسس.');
+      return {count,escalated:true};
+    }
+  }
+  db.prepare('INSERT INTO user_action_notifications(target_user_id,actor_user_id,action_type,title,body) VALUES(?,?,?,?,?)').run(actor,null,'founder_protection_warning','تنبيه حماية المؤسس','تم تسجيل محاولة استهداف صلاحية المؤسس. إعادة المحاولة ستؤدي إلى مراجعة/تجريد الصلاحية الإدارية وفق سياسة الحماية.');
+  return {count,escalated:false};
+}
+\napp.get('/api/me/actions',auth,(req,res)=>{
   const limit=Math.min(100,Math.max(1,Number(req.query.limit||50)));
   const pending=String(req.query?.pending||'')==='1';
   const rows=db.prepare(`SELECT a.id,a.action_type,a.title,a.body,a.created_at,a.read_at,
