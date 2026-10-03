@@ -65,6 +65,7 @@ jobs:
           node --check backend/smoke-test.mjs
           node --check backend/security-smoke-test.mjs
           node --check backend/hardening-smoke.mjs
+          node --input-type=module -e "import fs from 'node:fs'; const s=fs.readFileSync('backend/server.js','utf8'); const i=fs.readFileSync('backend/production-injection.mjsinc','utf8'); const m=\"server.listen(PORT,'0.0.0.0',()=>console.log(\\`Wethaq backend listening on \\${PORT}\\`));\"; if(!s.includes(m)) throw new Error('production start marker missing'); const p='backend/.ci-runtime-check.mjs'; fs.writeFileSync(p,s.replace(m,i+'\\n'+m)); try { const {spawnSync}=await import('node:child_process'); const r=spawnSync(process.execPath,['--check',p],{stdio:'inherit'}); if(r.status!==0) process.exit(r.status??1); } finally { fs.rmSync(p,{force:true}); }"
           grep -q 'personal_code_hash' backend/server.js
           grep -q 'scryptSync' backend/server.js
           grep -q 'timingSafeEqual' backend/server.js
