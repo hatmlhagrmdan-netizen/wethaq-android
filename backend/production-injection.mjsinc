@@ -86,7 +86,7 @@ function recordFounderSecurityAttempt(actorId,actorRole,actionType,req,targetId)
     if(ar){
       db.prepare('UPDATE admin_roles SET active=0,code_version=COALESCE(code_version,1)+1 WHERE user_id=? AND active=1').run(actor);
       db.prepare('UPDATE admin_position_history SET ended_at=? WHERE user_id=? AND ended_at IS NULL').run(new Date().toISOString(),actor);
-      db.prepare('INSERT INTO user_action_notifications(target_user_id,action_type,title,body) VALUES(?,?,?,?,?)'.replace('VALUES(?,?,?,?,?)','VALUES(?,?,?)')).run(actor,'security_role_revoked','تجريد من المنصب','تم تجريد منصبك الإداري بسبب تكرار محاولة استهداف صلاحية المؤسس.');
+      db.prepare('INSERT INTO user_action_notifications(target_user_id,action_type,title,body) VALUES(?,?,?,?)').run(actor,'security_role_revoked','تجريد من المنصب','تم تجريد منصبك الإداري بسبب تكرار محاولة استهداف صلاحية المؤسس.');
       return {count,escalated:true};
     }
   }
@@ -160,6 +160,25 @@ const __wethaqFixMiddleware=(req,res,next)=>{
   });
 };
 app.use(__wethaqFixMiddleware);
+const __wethaqFounderProtectionMiddleware=(req,res,next)=>{
+  if(!['/api/admin/remove-role','/api/admin/rbac/ban','/api/admin/unban','/api/admin/alert'].includes(req.path))return next();
+  const targetId=String(req.body?.wethaqId||'').trim();
+  if(!targetId)return next();
+  const target=db.prepare('SELECT id,wethaq_id FROM users WHERE wethaq_id=?').get(targetId);
+  if(!target||target.wethaq_id!==OWNER_WETHAQ_ID)return next();
+  try{
+    return adminAuth(req,res,()=>{
+      const role=String(req.adminRow?.role||req.admin?.role||'user');
+      if(role==='founder')return res.status(403).json({error:'founder_protected',warning:'صلاحية المؤسس محمية ولا يمكن استهدافها بهذا المسار.'});
+      const outcome=recordFounderSecurityAttempt(req.adminRow?.user_id||req.admin?.sub,role,req.path,req,target.wethaq_id);
+      return res.status(403).json({error:outcome.escalated?'founder_protection_escalated':'founder_protected',warning:outcome.escalated?'تم تجريد الصلاحية الإدارية بسبب تكرار محاولة استهداف المؤسس.':'تحذير: محاولة استهداف صلاحية المؤسس مسجلة. إعادة المحاولة مجددًا تؤدي إلى تجريد الصلاحية الإدارية.'});
+    });
+  }catch(e){console.error('founder protection middleware failed',e?.message||e);return res.status(403).json({error:'founder_protected',warning:'تم رفض محاولة استهداف صلاحية المؤسس.'});}
+};
+app.use(__wethaqFounderProtectionMiddleware);
+const __wethaqRouter2=app.router||app._router;
+if(__wethaqRouter2?.stack){const __idx3=__wethaqRouter2.stack.findIndex(x=>x.handle===__wethaqFounderProtectionMiddleware);if(__idx3>0)__wethaqRouter2.stack.unshift(__wethaqRouter2.stack.splice(__idx3,1)[0]);}
+
 const __wethaqRouter=app.router||app._router;
 if(__wethaqRouter?.stack){
   const __idx=__wethaqRouter.stack.findIndex(x=>x.handle===__wethaqFixMiddleware);
