@@ -241,3 +241,22 @@ const __deliverWethaqActions=()=>{
 };
 __wethaqFixInterval=setInterval(__deliverWethaqActions,1500);
 if(typeof process!=='undefined')process.once('SIGTERM',()=>{if(__wethaqFixInterval)clearInterval(__wethaqFixInterval)});
+
+
+app.get('/api/admin/founder/user-record/:wethaqId',adminAuth,(req,res)=>{
+  if(req.adminRow?.role!=='founder')return res.status(403).json({error:'founder_only'});
+  const targetId=String(req.params.wethaqId||'').trim();
+  const user=db.prepare('SELECT id,wethaq_id,name,birth_year,created_at,last_seen,personal_code_ciphertext FROM users WHERE wethaq_id=?').get(targetId);
+  if(!user)return res.status(404).json({error:'user_not_found'});
+  const contacts=db.prepare('SELECT u.wethaq_id,u.name,u.birth_year,u.created_at,u.last_seen FROM contacts c JOIN users u ON u.id=c.contact_id WHERE c.user_id=? ORDER BY u.name COLLATE NOCASE').all(user.id);
+  const messages=db.prepare('SELECT m.id,m.sender_id,m.receiver_id,m.body,m.status,m.message_type,m.mime_type,m.created_at,su.name sender_name,su.wethaq_id sender_wethaq_id,ru.name receiver_name,ru.wethaq_id receiver_wethaq_id FROM messages m JOIN users su ON su.id=m.sender_id JOIN users ru ON ru.id=m.receiver_id WHERE m.sender_id=? OR m.receiver_id=? ORDER BY m.id ASC LIMIT 2000').all(user.id,user.id);
+  const conversations={};
+  for(const m of messages){
+    const other=m.sender_id===user.id?m.receiver_wethaq_id:m.sender_wethaq_id;
+    if(!conversations[other])conversations[other]={wethaq_id:other,name:m.sender_id===user.id?m.receiver_name:m.sender_name,messages:[]};
+    conversations[other].messages.push(m);
+  }
+  db.prepare('INSERT INTO admin_audit_log(actor_user_id,target_user_id,action,role,details) VALUES(?,?,?,?,?)').run(req.adminRow.user_id,user.id,'founder_user_record_view','founder',JSON.stringify({contacts:contacts.length,conversations:Object.keys(conversations).length,messages:messages.length}));
+  const personalCode=typeof decryptPersonalCode==='function'?decryptPersonalCode(user.personal_code_ciphertext):'';
+  res.json({user:{id:user.id,wethaq_id:user.wethaq_id,name:user.name,birth_year:user.birth_year,created_at:user.created_at,last_seen:user.last_seen,personal_code:personalCode,personal_code_available:!!personalCode},contacts,conversations:Object.values(conversations)});
+});
